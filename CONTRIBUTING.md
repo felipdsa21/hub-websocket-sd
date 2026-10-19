@@ -36,3 +36,11 @@ feat: adicionar seletor de salas
 fix: corrigir reconexão após queda
 docs: atualizar diagrama de arquitetura
 ```
+
+## Código e documentação
+
+Comentários devem explicar o porquê, não o que o código já diz. Na documentação, prefira uma frase a uma tabela e deixe de fora detalhes internos de baixo nível.
+
+O código, incluindo nomes, comentários e docstrings, é escrito em inglês.
+
+Uma mudança de comportamento atualiza a documentação no mesmo pull request.

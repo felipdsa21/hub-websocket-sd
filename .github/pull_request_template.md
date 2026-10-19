@@ -10,3 +10,4 @@
 
 - [ ] A branch de destino está certa (`develop`, ou `main` para release/hotfix)
 - [ ] Os commits seguem Conventional Commits
+- [ ] A documentação reflete as mudanças de comportamento
