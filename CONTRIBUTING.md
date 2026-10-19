@@ -1,0 +1,38 @@
+# Contribuindo
+
+## Branches
+
+O projeto segue o Git Flow:
+
+- `main`: código entregue.
+- `develop`: integração do trabalho em andamento.
+- `feature/<nome>`: nova funcionalidade, criada a partir da `develop`.
+- `release/<nome>`: preparação de uma entrega, criada a partir da `develop`.
+- `hotfix/<nome>`: correção urgente, criada a partir da `main`.
+
+Nada é commitado diretamente na `main` ou na `develop`: toda mudança entra por pull request, com pelo menos uma aprovação de outro integrante.
+
+## Fluxo
+
+1. Crie a branch a partir da base atualizada:
+
+   ```sh
+   git switch develop
+   git pull
+   git switch -c feature/<nome>
+   ```
+
+2. Faça os commits e envie: `git push -u origin feature/<nome>`.
+3. Abra um pull request para a `develop`.
+
+Branches `release/*` e `hotfix/*` precisam de dois pull requests: um para a `main` e outro para a `develop`.
+
+## Commits
+
+Usamos [Conventional Commits](https://www.conventionalcommits.org/pt-br/v1.0.0/), com a descrição em português:
+
+```text
+feat: adicionar seletor de salas
+fix: corrigir reconexão após queda
+docs: atualizar diagrama de arquitetura
+```
