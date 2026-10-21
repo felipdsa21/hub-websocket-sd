@@ -8,5 +8,9 @@
         "parser": "angular"
       }
     }
-  ]
+  ],
+  "plugins": ["@trivago/prettier-plugin-sort-imports"],
+  "importOrder": ["^@/", "^\\."],
+  "importOrderParserPlugins": ["typescript", "jsx", "decorators"],
+  "importOrderSortSpecifiers": true
 }
