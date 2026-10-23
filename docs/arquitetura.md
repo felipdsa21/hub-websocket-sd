@@ -33,6 +33,7 @@ flowchart LR
     DB[("DynamoDB<br/>Users · Connections<br/>Conversations · Memberships<br/>Messages")]
     EB["EventBridge<br/>a cada 1 minuto"]
     CW["CloudWatch<br/>logs · métricas · painel"]
+    SSM["SSM Parameter Store<br/>segredo dos logs"]
 
     A & B -->|"HTTPS (página)"| CDN
     A & B <-->|"wss://"| GW
@@ -40,6 +41,7 @@ flowchart LR
     Lambda -->|"POST / DELETE @connections"| GW
     EB --> LS
     Lambda -->|"lê e grava"| DB
+    Lambda -->|"lê no início a frio"| SSM
     Lambda -.->|"logs e métricas"| CW
 ```
 
@@ -51,9 +53,12 @@ flowchart LR
 | Lambda `disconnect` | Rota `$disconnect`: desvincula a conexão (RF01, RF07). |
 | Lambda `default` | Rota `$default`: responde com erro às requisições sem rota (RF09). |
 | Lambda `app` | Todas as rotas de aplicação (seção 4), escolhidas internamente pelo `routeKey`. |
-| Lambda `presenceSweeper` | Acionada a cada minuto pelo EventBridge; desvincula as conexões sem requisições há 10 minutos (RF07, R01). |
+| Lambda `presenceSweeper` | Acionada a cada minuto pelo EventBridge; desvincula as conexões sem requisições há 10 minutos (RF07, R01) e publica o número de conexões abertas (seção 5). |
 | DynamoDB | Diretório de nomes (usuários e conexões), conversas, participações e mensagens (seção 3.3). |
+| SSM Parameter Store | Segredo usado para anonimizar os identificadores nos logs (seção 5). |
 | CloudWatch | Logs com identificadores anonimizados (RNF03), métricas e painel (RNF06). |
+
+As Lambdas são escritas em TypeScript, no runtime Node.js, e empacotadas pelo CDK. A `app` tem tempo limite de 10 s, do qual depende a sobreposição da reconexão (seção 4.4). Todas recebem permissão de leitura e gravação nas tabelas, `execute-api:ManageConnections` no estágio (R04) e `ssm:GetParameter` no segredo dos logs; o `presenceSweeper` recebe também `cloudwatch:PutMetricData`.
 
 Toda a infraestrutura é declarada no stack do AWS CDK em `backend/` (RNF05). Há um stack por estágio, `dev` para desenvolvimento e `prod` para a apresentação, cada um com as próprias tabelas, na região `sa-east-1` (D07).
 
@@ -164,7 +169,7 @@ Os membros de uma conversa ficam em `Conversations.members`, lido em uma única 
 **Vincular** (`$connect`):
 
 1. Validar `username` e `displayName` da query string; sem nome de usuário válido, a Lambda responde `400` e o handshake falha (RF01). Sem nome de exibição, vale o nome de usuário.
-2. Gravar `Connections[connectionId]`.
+2. Gravar `Connections[connectionId]`, com `lastSeenAt` igual a `connectedAt`.
 3. Em `Users[username]`, adicionar o `connectionId` ao conjunto `connections` (`ADD`) e gravar o `displayName`, pedindo os valores antigos. Se o conjunto antigo estava vazio, o usuário acabou de ficar online.
 4. Se o usuário ficou online ou mudou de nome de exibição, avisar os contatos (seção 3.5).
 
@@ -172,12 +177,15 @@ O `$connect` não envia nada à conexão que está abrindo, porque o API Gateway
 
 **Desvincular** é um procedimento único, chamado pelo `$disconnect`, pelo `GoneException` no fan-out (RF08) e pelo `presenceSweeper` (RF07):
 
-1. Apagar `Connections[connectionId]` pedindo o item antigo. Se não havia item, outro caminho já desvinculou a conexão, e o procedimento termina.
-2. Em `Users[username]`, remover o `connectionId` do conjunto (`DELETE`). Se o conjunto ficou vazio, o DynamoDB remove o atributo, e o usuário acabou de ficar offline: anunciar aos contatos.
+1. Ler `Connections[connectionId]` para obter o `username`. Se não há item, a conexão já foi desvinculada, e o procedimento termina.
+2. Em `Users[username]`, remover o `connectionId` do conjunto (`DELETE`) com a condição `contains(connections, :connectionId)`, pedindo os valores novos. Se a condição falha, outro caminho já removeu o id. Se ela passa e o conjunto ficou vazio, o DynamoDB remove o atributo, e o usuário acabou de ficar offline: anunciar aos contatos.
+3. Apagar `Connections[connectionId]`.
 
-Como só um chamador consegue apagar o item no passo 1, cada conexão é desvinculada uma única vez, mesmo com os três caminhos em paralelo, e a mudança para offline é anunciada uma única vez. Operações `ADD` e `DELETE` sobre um conjunto são atômicas, então conexões de abas diferentes do mesmo usuário não se atropelam.
+Como só um chamador passa na condição do passo 2, a mudança para offline é anunciada uma única vez, mesmo com os três caminhos em paralelo. Operações `ADD` e `DELETE` sobre um conjunto são atômicas, então conexões de abas diferentes do mesmo usuário não se atropelam.
 
-**Expiração por inatividade** (RF07): toda requisição atualiza `Connections.lastSeenAt`. A cada minuto, o `presenceSweeper` lê as conexões com `lastSeenAt` de mais de 10 minutos atrás, encerra cada uma com `DELETE @connections` (ignorando o `410`) e a desvincula. O offline é anunciado, assim, entre 10 e 11 minutos após a última requisição. O TTL do DynamoDB não serve para isso, porque apaga os itens sem prazo garantido e sem avisar ninguém (D05).
+A ordem dos passos mantém uma regra: todo id em `Users.connections` tem um item em `Connections`, porque o vínculo grava o item antes de incluir o id, e o desvínculo retira o id antes de apagar o item. Se uma Lambda falha no meio do desvínculo, o item continua em `Connections`, e o `presenceSweeper` refaz o desvínculo em até 11 minutos após a última requisição. Se uma Lambda falha no meio do vínculo, o handshake falha, e sobra só um item em `Connections` fora do conjunto, que o `presenceSweeper` apaga sem anunciar nada (D09).
+
+**Expiração por inatividade** (RF07): toda requisição, de qualquer rota além de `$connect` e `$disconnect` (inclusive `heartbeat`, `sync`, `search` e as que caem na `$default`), atualiza `Connections.lastSeenAt` com a condição `attribute_exists(connectionId)`, que impede recriar o item de uma conexão já desvinculada. A mesma atualização devolve o item e, com ele, o `username` (seção 3.2). A cada minuto, o `presenceSweeper` lê as conexões com `lastSeenAt` de mais de 10 minutos atrás, encerra cada uma com `DELETE @connections` (ignorando o `410`) e a desvincula. O offline é anunciado, assim, entre 10 e 11 minutos após a última requisição. O TTL do DynamoDB não serve para isso, porque apaga os itens sem prazo garantido e sem avisar ninguém (D05).
 
 ### 3.5 Contatos
 
@@ -216,7 +224,7 @@ Exemplo:
 }
 ```
 
-Antes de qualquer ação sobre uma conversa, a Lambda `app` resolve o usuário pela conexão (seção 3.2), confere se ele está em `Conversations.members` (RNF01) e atualiza `lastSeenAt`.
+Em toda requisição, a Lambda `app` atualiza `lastSeenAt` e resolve o usuário pela conexão (seções 3.2 e 3.4); a Lambda `default` faz o mesmo antes de responder com erro. Antes de qualquer ação sobre uma conversa, a Lambda `app` confere também se o usuário está em `Conversations.members` (RNF01).
 
 ### 4.2 Eventos enviados ao cliente
 
@@ -230,11 +238,16 @@ Tudo o que o cliente recebe, inclusive as respostas às próprias requisições,
 | `message` | nova mensagem em uma conversa (RF02) | `conversationId`, `sk`, `messageId`, `sender`, `text`, `sentAt` |
 | `presence` | mudança de presença de um contato (RF07) | `username`, `online`, `at` |
 | `displayName` | troca de nome de exibição de um contato (RF01) | `username`, `displayName` |
-| `conversationAdded` | conversa nova visível (RF10) | `conversation` |
+| `conversationAdded` | conversa nova visível (RF10) | `conversation`, com os membros e o `displayName` e o `online` de cada um |
 | `conversationRemoved` | saída de um grupo (RF04) | `conversationId` |
-| `memberJoined` / `memberLeft` | entrada ou saída de membro (RF04) | `conversationId`, `username` |
+| `memberJoined` | entrada de membro (RF04, RF07) | `conversationId`, `username`, `displayName`, `online` |
+| `memberLeft` | saída de membro (RF04) | `conversationId`, `username` |
 
 O evento `presence` leva o instante da mudança (`at`), e o cliente ignora um evento mais antigo que o último recebido para o mesmo usuário, já que dois avisos podem chegar fora de ordem.
+
+Os membros de uma conversa sempre chegam com o nome de exibição e o estado de presença: em `conversationAdded`, em `memberJoined` e nas respostas de `sync`, `openDirect` e `createGroup`. Assim, o cliente recebe a presença de quem surge em uma das suas conversas (RF07).
+
+Um evento `message` de uma conversa que o cliente ainda não conhece pode chegar antes do `conversationAdded` dela (seção 4.3); nesse caso, o cliente pede `sync` em vez de descartar a mensagem.
 
 ### 4.3 Roteamento de uma mensagem
 
@@ -248,10 +261,11 @@ sequenceDiagram
 
     A->>G: sendMessage (conversationId, messageId, text)
     G->>L: evento com routeKey, connectionId = cA, requestTimeEpoch
-    L->>D: Connections[cA] → username = a
+    L->>D: Connections[cA]: atualiza lastSeenAt → username = a
     L->>D: Conversations[conversationId] → members = {a, b}
     Note over L: a está em members? (RNF01)
     L->>D: transação: marcador id + mensagem m
+    L->>D: Conversations: lastMessageAt = sentAt, se maior
     L->>D: Users[a, b] → connections = {cA, cB1, cB2}
     par para cada conexão
         L->>G: POST @connections/cB1 e cB2
@@ -265,24 +279,36 @@ sequenceDiagram
 
 1. A Lambda resolve o remetente pelo `connectionId` e confere se ele é membro da conversa.
 2. Grava, em uma única transação, o marcador `id#<sender>#<messageId>` (com a condição de que ainda não exista) e a mensagem `m#<sentAt>#<sender>#<messageId>`. Como o marcador inclui o remetente, outro usuário pode usar o mesmo `messageId` sem que sua mensagem seja tomada por um reenvio (T7).
-3. Se a condição falha, é um reenvio da fila do cliente (RF12, R07): a Lambda lê a mensagem original pelo `ref` do marcador e a envia só à conexão que reenviou, como confirmação.
-4. Senão, resolve as conexões de todos os membros e envia o evento `message` a cada uma, em paralelo. Um `410 Gone` desvincula aquela conexão e não interrompe as demais (RF08). No primeiro envio de um chat privado, a Lambda marca `started`, cria a participação do outro usuário e envia a ele `conversationAdded` antes da mensagem (RF10).
+3. Se a transação é cancelada, a Lambda olha o motivo de cada item:
+   - `ConditionalCheckFailed` no marcador: é um reenvio da fila do cliente (RF12, R07). A Lambda lê a mensagem original pelo `ref` do marcador, refaz os passos 4 e 5 com ela, que não têm efeito se já foram feitos, e a envia só à conexão que reenviou, como confirmação.
+   - `TransactionConflict`: outra transação sobre o mesmo marcador está em andamento, como a do original de um reenvio que chegou antes de ele terminar. A Lambda repete a transação após uma espera curta, até 3 vezes, e o resultado cai em um dos outros casos. O mesmo tratamento vale para todas as transações do backend.
+4. Atualiza `Conversations.lastMessageAt` para o `sentAt`, com a condição de que o valor atual seja menor ou ausente, e ignora a falha da condição. Essa gravação fica fora da transação para que envios simultâneos na mesma conversa não entrem em conflito no item da conversa (R06, T8).
+5. No primeiro envio de um chat privado (`started` falso na leitura do passo 1), a Lambda cria a participação do outro usuário e marca `started` com a condição de que ainda seja falso. Só a Lambda que vence essa condição envia `conversationAdded` ao outro usuário, antes da mensagem (RF10), então duas primeiras mensagens simultâneas não geram o aviso em dobro.
+6. Resolve as conexões de todos os membros e envia o evento `message` a cada uma, em paralelo. Um `410 Gone` desvincula aquela conexão e não interrompe as demais (RF08).
+
+Refazer os passos 4 e 5 no reenvio cobre uma Lambda que falha depois da transação: sem isso, o outro usuário de um chat privado nunca receberia a participação e não veria a conversa. A mensagem em si não é entregue de novo aos demais (RF12); eles a recebem pelo histórico.
 
 ### 4.4 Ordem e reconexão
 
 A ordem de uma conversa é a ordem do `sk` (`sentAt` e, no empate, remetente e `messageId`). O cliente insere cada mensagem recebida na posição do `sk` e descarta uma mensagem que já tem (mesmo remetente e `messageId`), então todos os clientes exibem a mesma ordem (RNF04), mesmo que as entregas de duas Lambdas cheguem em ordem diferente.
 
-Ao reconectar (RF08), o cliente envia `sync` com o instante da última mensagem que recebeu e, para cada conversa com mensagens novas, pede `getHistory` com `after` igual ao último `sk` que tem menos 5 segundos. A sobreposição cobre uma mensagem com `sentAt` menor que gravada depois de outra; as repetidas são descartadas pelo remetente e `messageId`, e nada se perde nem aparece duas vezes.
+Ao reconectar (RF08), o cliente envia `sync` com `since` igual ao instante da última mensagem que recebeu menos 30 segundos, e o `sync` aponta as conversas com `lastMessageAt` posterior a ele. Para cada uma, o cliente pede `getHistory` com `after` igual ao último `sk` que tem, recuado também em 30 segundos. A sobreposição cobre uma mensagem gravada depois de outra com `sentAt` maior: o `sentAt` é o instante em que o API Gateway recebeu a requisição, e a gravação pode acontecer até o fim do início a frio e do tempo limite de 10 s da Lambda `app`. As repetidas são descartadas pelo remetente e `messageId`, e nada se perde nem aparece duas vezes.
 
-O histórico é enviado em páginas de até 50 mensagens e até 100 KB, abaixo do limite de 128 KB do `postToConnection` (RF06, T5).
+As mensagens pendentes são reenviadas uma por vez, cada uma após a confirmação da anterior (RF12). Reenviadas juntas, duas mensagens poderiam ter o mesmo `sentAt`, e o desempate pelo `messageId` inverteria a ordem original.
 
-## 5. Logs
+O histórico é enviado em páginas de até 50 mensagens e até 28 KB. A cota de frame de 32 KB vale também para os envios por `@connections`, e a documentação não diz se o API Gateway divide em frames um envio maior; o T5 mostra o comportamento real (RF06).
+
+## 5. Logs e métricas
 
 Cada Lambda escreve uma linha JSON por requisição (RNF03) com a rota, o resultado, o código de erro e a duração. Os identificadores (`connectionId`, `username` e `conversationId`) aparecem anonimizados como os 12 primeiros caracteres hexadecimais de `HMAC-SHA256(segredo, valor)`. O segredo fica no SSM Parameter Store e é o mesmo em todas as Lambdas do estágio, então um mesmo identificador gera sempre o mesmo valor anonimizado e os logs continuam correlacionáveis. O texto das mensagens nunca é registrado.
 
+O segredo é um parâmetro `SecureString` criado uma vez por estágio, fora do CDK, porque o CloudFormation não cria parâmetros desse tipo e o valor não pode ficar no repositório. O stack só referencia o parâmetro pelo nome e concede a leitura; cada Lambda o lê no início a frio.
+
+O painel (RNF06) usa as métricas que o API Gateway publica para a API WebSocket (`ConnectCount`, `MessageCount`, `IntegrationError`, `ClientError`, `ExecutionError` e `IntegrationLatency`) e as métricas das Lambdas. O API Gateway não publica o número de conexões abertas, então o `presenceSweeper`, que já percorre `Connections` a cada minuto, publica essa contagem como métrica própria.
+
 ## 6. Decisões
 
-- **D01 – Lambda e DynamoDB:** backend sem servidor, sem VPC e com cobrança por uso, que é a arquitetura mínima do tema e a do whitepaper de referência. Um Redis guardaria o diretório com menor latência, mas exigiria VPC e um nó sempre ligado.
+- **D01 – Lambda e DynamoDB:** backend sem servidor, sem VPC e com cobrança por uso, que é a arquitetura mínima do tema. Um Redis guardaria o diretório com menor latência, mas exigiria VPC e um nó sempre ligado.
 - **D02 – Uma Lambda para as rotas de aplicação:** as rotas de aplicação compartilham a mesma Lambda `app`, o que reduz os inícios a frio (R05) e o código repetido. `$connect`, `$disconnect` e `$default` ficam em Lambdas próprias, porque têm entradas e permissões diferentes. O log registra o `routeKey`, então as rotas continuam distinguíveis (RNF03).
 - **D03 – `conversationId` determinístico no chat privado:** `d:<username1>:<username2>` em ordem alfabética garante um único chat por par (RF03) com uma gravação condicional, mesmo que os dois usuários o iniciem ao mesmo tempo.
 - **D04 – Conjuntos no item em vez de índices secundários:** os índices secundários globais do DynamoDB só têm leitura eventualmente consistente, e uma conexão recém-aberta ou um membro recém-adicionado poderia ficar de fora de um fan-out. Os conjuntos `Users.connections` e `Conversations.members` são lidos de forma consistente e alterados atomicamente. Isso vale enquanto os conjuntos forem pequenos (o item tem limite de 400 KB), o que é o caso do projeto.
@@ -290,8 +316,10 @@ Cada Lambda escreve uma linha JSON por requisição (RNF03) com a rota, o result
 - **D06 – Todos os eventos por `@connections`:** as respostas às requisições também usam `postToConnection`, em vez da resposta da integração da rota. O cliente tem um único caminho de recebimento, e o custo é uma chamada a mais por requisição.
 - **D07 – Região `sa-east-1`:** os clientes e a demonstração estão no Brasil, e a região de São Paulo reduz a latência de rede (RNF02).
 - **D08 – Cliente no S3 com CloudFront:** o cliente estático fica no mesmo stack do CDK que o backend (RNF05) e é servido por HTTPS (RNF07).
+- **D09 – Desvínculo em passos ordenados em vez de transação:** uma transação no DynamoDB não devolve os valores novos, então não diria qual chamador deixou o conjunto vazio, e o offline poderia ser anunciado mais de uma vez. A ordem dos passos e a condição `contains` (seção 3.4) garantem um único anúncio, e uma falha no meio fica para o `presenceSweeper` terminar.
 
 ## 7. Limitações do esquema
 
 - A pesquisa de usuários (RF05) e o `presenceSweeper` percorrem a tabela inteira (`Scan`). Com o número de usuários do projeto isso é barato; com muitos usuários, seriam necessários um índice de pesquisa e um índice por `lastSeenAt`.
 - O fan-out faz uma chamada por conexão de cada destinatário (R06). O custo cresce com o tamanho do grupo e com o número de abas abertas.
+- Uma mensagem perto do limite do RF11 gera um evento `message` acima de 32 KB. Se o API Gateway não dividir em frames os envios por `@connections` (seção 4.4), o limite do RF11 terá de baixar; o T2 e o T5 mostram o comportamento real.
