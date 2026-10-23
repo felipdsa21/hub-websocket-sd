@@ -35,13 +35,13 @@ Neste documento, *mensagem* é sempre uma mensagem de chat. Tudo o que o cliente
 ## 3. Requisitos funcionais
 
 - **RF01 – Conexão:** O cliente abre uma conexão WebSocket persistente informando o nome de usuário e o nome de exibição. Vale o nome de exibição informado na conexão mais recente, e uma mudança de nome chega em tempo real aos participantes das conversas do usuário. Na rota `$connect`, o backend registra o identificador da conexão (`connectionId`) junto ao usuário, que passa a existir na primeira conexão. Uma conexão sem nome de usuário é recusada no `$connect`, e o handshake falha. Na rota `$disconnect`, o backend remove o registro.
-- **RF02 – Requisições e entrega:** O cliente envia requisições por rotas de aplicação, escolhidas pela route selection expression. Cada mensagem recebe o horário em que o backend a recebeu e é entregue, com o remetente e esse horário, a todas as conexões dos participantes da conversa, inclusive à que a enviou, o que confirma o envio. Sem essa confirmação, por falta de conexão ou por falha, a mensagem é indicada como não enviada até aparecer no histórico. A entrega usa `postToConnection`, pois responder à integração da rota não envia nada aos demais clientes.
+- **RF02 – Requisições e entrega:** O cliente envia requisições por rotas de aplicação, escolhidas pela route selection expression. Cada mensagem recebe o horário em que o backend a recebeu e é entregue, com o remetente e esse horário, a todas as conexões dos participantes da conversa, inclusive à que a enviou, o que confirma o envio. A entrega usa `postToConnection`, pois responder à integração da rota não envia nada aos demais clientes. Cada mensagem leva um identificador gerado pelo cliente. Enquanto a confirmação não chega, por falta de conexão ou por falha, a mensagem aparece como pendente e fica em uma fila de retentativa no cliente, que a reenvia ao se reconectar ou após um tempo sem confirmação. O backend reconhece um reenvio pelo identificador e apenas confirma o envio ao remetente, sem guardar nem entregar a mensagem de novo.
 - **RF03 – Chats privados:** Um usuário pode iniciar um chat privado com outro, e as mensagens chegam apenas aos dois. Existe no máximo um chat privado por par de usuários; iniciá-lo de novo abre o existente.
 - **RF04 – Chats em grupo:** Um usuário pode criar um chat em grupo com nome e com pelo menos um outro participante. Os membros podem adicionar outros usuários e sair, mas ninguém entra sem ser adicionado. Os membros são avisados de cada entrada e saída. Quem é adicionado vê todo o histórico do grupo; quem sai deixa de ver o grupo. As mensagens do grupo chegam apenas aos membros.
 - **RF05 – Pesquisa:** O usuário pode buscar pelo nome as conversas de que participa. Também pode buscar outros usuários, pelo nome de usuário ou de exibição, para iniciar um chat privado. Quando nomes de exibição se repetem, o nome de usuário aparece junto deles para distingui-los.
 - **RF06 – Histórico:** Cada conversa guarda suas mensagens. Ao abrir uma conversa, o usuário recebe as mensagens mais recentes, inclusive as enviadas enquanto estava offline, e as anteriores chegam conforme ele volta na conversa.
 - **RF07 – Presença:** Cada usuário está online ou offline: fica online enquanto tiver alguma conexão aberta e passa a offline quando a última se encerra. Uma conexão sem nenhuma requisição há 10 minutos é considerada encerrada, e a mudança para offline é anunciada em até 1 minuto. O cliente recebe o estado atual dos participantes das suas conversas ao conectar e quando surge um novo participante, e depois as mudanças em tempo real. Os usuários encontrados em uma pesquisa também vêm com o estado de presença.
-- **RF08 – Conexões encerradas:** Ao enviar para uma conexão que não existe mais, o backend trata o erro, remove o registro e continua a entrega às demais conexões. Como o API Gateway encerra as conexões que ficam 10 minutos ociosas, o cliente envia sinais periódicos (heartbeat) em intervalo bem menor que esse e considera a conexão perdida quando o heartbeat fica sem resposta. Após uma queda ou a expiração da conexão, o cliente se reconecta sozinho e recebe as mensagens enviadas enquanto estava desconectado, sem perder nem repetir mensagens.
+- **RF08 – Conexões encerradas:** Ao enviar para uma conexão que não existe mais, o backend trata o erro, remove o registro e continua a entrega às demais conexões. Como o API Gateway encerra as conexões que ficam 10 minutos ociosas, o cliente envia sinais periódicos (heartbeat) em intervalo bem menor que esse e considera a conexão perdida quando o heartbeat fica sem resposta. Após uma queda ou a expiração da conexão, o cliente se reconecta sozinho, com intervalos crescentes entre as tentativas (backoff exponencial), e recebe as mensagens enviadas enquanto estava desconectado, sem perder nem repetir mensagens.
 - **RF09 – Erros:** Uma requisição malformada, sem rota correspondente (que cai na `$default`, inclusive quando não é JSON) ou com uma ação não permitida recebe uma resposta de erro que diz o que falhou. Nenhuma requisição é descartada em silêncio, exceto no caso da L03.
 - **RF10 – Lista de conversas:** O usuário vê as conversas de que participa e, ao conectar ou reconectar, recebe a lista atualizada. Uma conversa nova aparece para ele em tempo real: um grupo, quando ele é adicionado; um chat privado, quando ele recebe a primeira mensagem.
 - **RF11 – Tamanho das mensagens:** O cliente impede o envio de mensagens cuja requisição passaria de 32 KB (L03) e avisa o usuário.
@@ -53,6 +53,8 @@ Neste documento, *mensagem* é sempre uma mensagem de chat. Tudo o que o cliente
 - **RNF03 – Logs:** O backend registra as rotas acionadas e as respostas, com os identificadores anonimizados.
 - **RNF04 – Ordem:** As mensagens de uma conversa são exibidas na mesma ordem para todos os participantes.
 - **RNF05 – Configuração versionada:** A configuração da API (rotas, integrações e estágio) fica versionada no repositório, junto com o código do backend e dos clientes.
+- **RNF06 – Métricas:** As métricas da API e do backend (conexões, mensagens, erros e latência de integração) ficam visíveis em um painel do CloudWatch.
+- **RNF07 – Publicação do cliente:** O cliente web fica publicado em uma URL HTTPS pública, conectado ao estágio da API.
 
 ## 5. Riscos
 
@@ -62,6 +64,7 @@ Neste documento, *mensagem* é sempre uma mensagem de chat. Tudo o que o cliente
 - **R04 – Permissão do backend** (impacto alto, probabilidade média): sem permissão para usar a Management API, o backend não consegue enviar nada aos clientes. **Mitigação:** repetir o teste T2 após cada implantação.
 - **R05 – Início a frio do Lambda** (impacto médio, probabilidade média): as primeiras requisições após um período ocioso demoram mais. **Mitigação:** descartar da medição de latência uma rodada inicial de aquecimento.
 - **R06 – Grupos grandes** (impacto médio, probabilidade média): o backend faz uma chamada por conexão de cada destinatário, então a latência cresce com o tamanho do grupo. **Mitigação:** medir a latência com todos os usuários do T8 no mesmo grupo.
+- **R07 – Mensagens duplicadas no reenvio** (impacto médio, probabilidade média): a confirmação pode se perder depois que o backend já guardou a mensagem, e o reenvio da fila a duplicaria. **Mitigação:** identificador da mensagem gerado pelo cliente (RF02) e teste T7.
 
 ### Limitações conhecidas
 
@@ -73,7 +76,7 @@ Riscos aceitos:
 
 ## 6. Plano de testes
 
-Os testes usam o cliente web, o wscat e um script de carga. Juntos, T1, T2, T7 e T8 geram as evidências exigidas pelo tema: demonstração bidirecional com dois clientes, logs com identificadores anonimizados, latências e tratamento da desconexão. O RNF05 é verificado pela inspeção do repositório.
+Os testes usam o cliente web, o wscat e um script de carga. Juntos, T1, T2, T7 e T8 geram as evidências exigidas pelo tema: demonstração bidirecional com dois clientes, logs com identificadores anonimizados, latências e tratamento da desconexão. O RNF05 é verificado pela inspeção do repositório, e os testes com o cliente web usam a versão publicada (RNF07).
 
 ### T1 – Conexão e registro
 
@@ -148,22 +151,24 @@ Os testes usam o cliente web, o wscat e um script de carga. Juntos, T1, T2, T7 e
 
 ### T7 – Conexões encerradas e reconexão
 
-**Cobre:** RF07, RF08, RF10, R01, R03.
+**Cobre:** RF02, RF07, RF08, RF10, R01, R03, R07.
 
 1. Conectar um cliente, anotar o `connectionId`, desconectá-lo e regravar o registro com a última requisição de agora. Enviar uma mensagem a esse usuário e confirmar que o backend trata o erro de conexão inexistente e remove o registro, e que o remetente recebe a confirmação.
 2. Regravar de novo o registro com a última requisição de agora, conectar outro usuário que tenha conversa com ele e confirmar que o vê online. Sem nenhuma requisição dessa conexão, confirmar que o outro usuário passa a vê-lo offline entre 10 e 11 minutos após a regravação.
-3. Desligar a rede da máquina de um cliente. Enquanto ele está fora, tentar enviar uma mensagem por ele e confirmar que ela é indicada como não enviada; depois, por outro usuário, enviar uma mensagem a ele e adicioná-lo a um grupo. Religar a rede e confirmar que o cliente se reconecta, recebe a mensagem uma única vez e vê o grupo novo na lista.
+3. Desligar a rede da máquina de um cliente. Enquanto ele está fora, tentar enviar uma mensagem por ele e confirmar que ela aparece como pendente; depois, por outro usuário, enviar uma mensagem a ele e adicioná-lo a um grupo. Religar a rede e confirmar que o cliente se reconecta, que a mensagem pendente é reenviada e chega ao outro usuário uma única vez, que o cliente recebe a mensagem do outro usuário uma única vez e que vê o grupo novo na lista.
 4. Com o heartbeat desativado por configuração de teste e sem nenhuma outra atividade, deixar um cliente conectado por mais de 10 minutos e confirmar que ele se reconecta após a expiração; repetir com o heartbeat ativo e confirmar que a conexão se mantém.
+5. Pelo wscat, enviar duas vezes a mesma mensagem, com o mesmo identificador, e confirmar que as duas requisições recebem a confirmação, mas que a mensagem é entregue ao destinatário e guardada no histórico uma única vez.
 
 **Evidência:** logs do tratamento da desconexão.
 
 ### T8 – Latência e logs
 
-**Cobre:** RNF02, RNF03, RNF04, R05, R06.
+**Cobre:** RNF02, RNF03, RNF04, RNF06, R05, R06.
 
 1. Com 10 usuários distintos em um mesmo grupo, simulados por um único script na mesma máquina, fazer uma rodada de aquecimento. Em seguida, fazer cada usuário enviar 10 mensagens ao mesmo tempo que os demais, registrando os instantes de envio e de recebimento de cada entrega.
 2. Calcular a latência média e o percentil 95 das entregas, sem a rodada de aquecimento, e informar a rodada de aquecimento à parte.
 3. Confirmar que todos os clientes ordenam as mensagens da mesma forma.
 4. Conferir que os logs mostram as rotas e as respostas sem identificadores em claro.
+5. Conferir que o painel do CloudWatch mostra as conexões, as mensagens, os erros e a latência de integração do período do teste.
 
-**Evidência:** latências calculadas e logs com identificadores anonimizados.
+**Evidência:** latências calculadas, logs com identificadores anonimizados e captura de tela do painel do CloudWatch.
