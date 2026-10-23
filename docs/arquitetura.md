@@ -45,7 +45,7 @@ flowchart LR
 
 | Componente | Papel |
 | --- | --- |
-| Cliente web | Aplicação Angular servida pelo CloudFront a partir de um bucket S3 (RNF07). Abre uma conexão WebSocket por aba, envia as requisições e mantém a fila de retentativa (RF02) e o heartbeat (RF08). |
+| Cliente web | Aplicação Angular servida pelo CloudFront a partir de um bucket S3 (RNF07). Abre uma conexão WebSocket por aba, envia as requisições e mantém a fila de reenvio (RF12) e o heartbeat (RF08). |
 | API Gateway | API WebSocket com a route selection expression `$request.body.action`. Encaminha cada rota a uma Lambda e expõe a Management API (`@connections`) para o envio aos clientes. |
 | Lambda `connect` | Rota `$connect`: valida o nome de usuário e vincula a conexão ao usuário (RF01). |
 | Lambda `disconnect` | Rota `$disconnect`: desvincula a conexão (RF01, RF07). |
@@ -69,7 +69,7 @@ O cronograma fala em *userId* e *sala*; neste projeto, eles correspondem ao nome
 | `displayName` | o usuário, no `$connect` | 1 a 50 caracteres, sem espaços nas pontas | o do último `$connect` (RF01) | nada; é só um rótulo |
 | `connectionId` | o API Gateway | opaco | uma conexão; até 2 horas (L02) | o ponto de entrega de uma aba |
 | `conversationId` | o backend | chat privado: `d:<username1>:<username2>`, em ordem alfabética; grupo: `g:<UUID v4>` | permanente | a conversa |
-| `messageId` | o cliente | UUID v4 (`crypto.randomUUID()`) | único na conversa | a mensagem, inclusive nos reenvios (RF02) |
+| `messageId` | o cliente | UUID v4 (`crypto.randomUUID()`) | único por remetente | a mensagem do remetente, inclusive nos reenvios (RF12) |
 | `requestId` | o cliente | UUID v4 | uma requisição | a requisição, para associar a ela a resposta ou o erro (RF09) |
 
 O `:` não é aceito no nome de usuário, então um `conversationId` nunca é ambíguo. O nome de exibição não identifica nada, porque se repete entre usuários (RF05) e muda a cada conexão (RF01).
@@ -150,7 +150,7 @@ As tabelas usam cobrança sob demanda. As leituras do diretório e dos membros s
 | Atributo | Tipo | Descrição |
 | --- | --- | --- |
 | `conversationId` | S (PK) | conversa |
-| `sk` | S (SK) | mensagem: `m#<sentAt com 13 dígitos>#<messageId>`; marcador de duplicata: `id#<messageId>` |
+| `sk` | S (SK) | mensagem: `m#<sentAt com 13 dígitos>#<sender>#<messageId>`; marcador de duplicata: `id#<sender>#<messageId>` |
 | `messageId` | S | identificador gerado pelo cliente |
 | `sender` | S | nome de usuário do remetente |
 | `text` | S | texto |
@@ -196,7 +196,7 @@ O API Gateway escolhe a rota pelo campo `action` da requisição (route selectio
 | `$default` | default | — | RF09 |
 | `sync` | app | `since` (opcional, instante em ms) | RF07, RF08, RF10 |
 | `heartbeat` | app | — | RF07, RF08 |
-| `sendMessage` | app | `conversationId`, `messageId`, `text` | RF02, RF11 |
+| `sendMessage` | app | `conversationId`, `messageId`, `text` | RF02, RF11, RF12 |
 | `openDirect` | app | `username` | RF03 |
 | `createGroup` | app | `name`, `members` | RF04 |
 | `addMember` | app | `conversationId`, `username` | RF04 |
@@ -225,7 +225,7 @@ Tudo o que o cliente recebe, inclusive as respostas às próprias requisições,
 | `type` | Quando | Campos principais |
 | --- | --- | --- |
 | `response` | resposta a uma requisição | `requestId`, `data` |
-| `error` | requisição recusada (RF09) | `requestId` (quando houver), `code`, `message` |
+| `error` | requisição recusada (RF09) | `requestId` (quando houver), `messageId` (quando a requisição é uma mensagem, RF12), `code`, `message` |
 | `pong` | resposta ao heartbeat | `requestId` |
 | `message` | nova mensagem em uma conversa (RF02) | `conversationId`, `sk`, `messageId`, `sender`, `text`, `sentAt` |
 | `presence` | mudança de presença de um contato (RF07) | `username`, `online`, `at` |
@@ -264,15 +264,15 @@ sequenceDiagram
 ```
 
 1. A Lambda resolve o remetente pelo `connectionId` e confere se ele é membro da conversa.
-2. Grava, em uma única transação, o marcador `id#<messageId>` (com a condição de que ainda não exista) e a mensagem `m#<sentAt>#<messageId>`.
-3. Se a condição falha, é um reenvio da fila de retentativa (RF02, R07): a Lambda lê a mensagem original pelo `ref` do marcador e a envia só à conexão que reenviou, como confirmação.
+2. Grava, em uma única transação, o marcador `id#<sender>#<messageId>` (com a condição de que ainda não exista) e a mensagem `m#<sentAt>#<sender>#<messageId>`. Como o marcador inclui o remetente, outro usuário pode usar o mesmo `messageId` sem que sua mensagem seja tomada por um reenvio (T7).
+3. Se a condição falha, é um reenvio da fila do cliente (RF12, R07): a Lambda lê a mensagem original pelo `ref` do marcador e a envia só à conexão que reenviou, como confirmação.
 4. Senão, resolve as conexões de todos os membros e envia o evento `message` a cada uma, em paralelo. Um `410 Gone` desvincula aquela conexão e não interrompe as demais (RF08). No primeiro envio de um chat privado, a Lambda marca `started`, cria a participação do outro usuário e envia a ele `conversationAdded` antes da mensagem (RF10).
 
 ### 4.4 Ordem e reconexão
 
-A ordem de uma conversa é a ordem do `sk` (`sentAt` e, no empate, `messageId`). O cliente insere cada mensagem recebida na posição do `sk` e descarta um `messageId` que já tem, então todos os clientes exibem a mesma ordem (RNF04), mesmo que as entregas de duas Lambdas cheguem em ordem diferente.
+A ordem de uma conversa é a ordem do `sk` (`sentAt` e, no empate, remetente e `messageId`). O cliente insere cada mensagem recebida na posição do `sk` e descarta uma mensagem que já tem (mesmo remetente e `messageId`), então todos os clientes exibem a mesma ordem (RNF04), mesmo que as entregas de duas Lambdas cheguem em ordem diferente.
 
-Ao reconectar (RF08), o cliente envia `sync` com o instante da última mensagem que recebeu e, para cada conversa com mensagens novas, pede `getHistory` com `after` igual ao último `sk` que tem menos 5 segundos. A sobreposição cobre uma mensagem com `sentAt` menor que gravada depois de outra; as repetidas são descartadas pelo `messageId`, e nada se perde nem aparece duas vezes.
+Ao reconectar (RF08), o cliente envia `sync` com o instante da última mensagem que recebeu e, para cada conversa com mensagens novas, pede `getHistory` com `after` igual ao último `sk` que tem menos 5 segundos. A sobreposição cobre uma mensagem com `sentAt` menor que gravada depois de outra; as repetidas são descartadas pelo remetente e `messageId`, e nada se perde nem aparece duas vezes.
 
 O histórico é enviado em páginas de até 50 mensagens e até 100 KB, abaixo do limite de 128 KB do `postToConnection` (RF06, T5).
 
