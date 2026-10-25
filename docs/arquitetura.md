@@ -6,7 +6,7 @@
 
 Este documento define a arquitetura distribuída do Hub Colaborativo WebSocket e o esquema de nomeação e endereçamento: como um usuário ou uma conversa é resolvido nas conexões WebSocket abertas e como uma requisição chega ao backend e volta aos clientes. Os requisitos citados (RF, RNF, R e L) estão na [especificação](especificacao.md).
 
-O ciclo de vida da sessão, com os diagramas de sequência de `$connect` e `$disconnect`, fica para o documento da fase 3.
+O ciclo de vida da sessão, com os diagramas de sequência de `$connect` e `$disconnect`, fica para um documento próprio.
 
 Os IDs das decisões (D) são estáveis, e o número de um item removido não é reaproveitado.
 
@@ -67,8 +67,6 @@ As configurações de teste da especificação ficam fora do estágio `prod`. As
 ## 3. Esquema de nomeação e endereçamento
 
 ### 3.1 Nomes
-
-O cronograma fala em *userId* e *sala*; neste projeto, eles correspondem ao nome de usuário (`username`) e à conversa (`conversationId`).
 
 | Nome | Quem gera | Formato | Escopo e duração | Identifica |
 | --- | --- | --- | --- | --- |
@@ -336,7 +334,7 @@ Cada Lambda escreve uma linha JSON por requisição (RNF03) com a rota, o result
 
 O segredo é um parâmetro `SecureString` criado uma vez por estágio, fora do CDK, porque o CloudFormation não cria parâmetros desse tipo e o valor não pode ficar no repositório. O stack só referencia o parâmetro pelo nome e concede a leitura; cada Lambda o lê no início a frio. O parâmetro é cifrado com a chave gerenciada pela AWS para o SSM (`aws/ssm`), e não com uma chave gerenciada pelo cliente. Decifrar um `SecureString` exige `kms:Decrypt`, então as Lambdas recebem essa permissão na chave `aws/ssm`, além de `ssm:GetParameter` no parâmetro.
 
-O painel (RNF06) usa as métricas que o API Gateway publica para a API WebSocket (`ConnectCount`, `MessageCount`, `IntegrationError`, `ClientError`, `ExecutionError` e `IntegrationLatency`) e as métricas das Lambdas. O API Gateway não publica o número de conexões abertas, então o `presenceSweeper`, que já percorre `Connections` a cada minuto, publica essa contagem como métrica própria.
+O painel (RNF06) usa as métricas que o API Gateway publica para a API WebSocket (`ConnectCount`, `MessageCount`, `IntegrationError`, `ClientError`, `ExecutionError` e `IntegrationLatency`) e as métricas das Lambdas. O `MessageCount` soma as requisições e os envios aos clientes; as requisições aparecem sozinhas nas invocações das Lambdas `app` e `default`. O API Gateway não publica o número de conexões abertas, então o `presenceSweeper`, que já percorre `Connections` a cada minuto, publica essa contagem como métrica própria.
 
 ## 6. Decisões
 
