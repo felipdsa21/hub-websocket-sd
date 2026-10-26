@@ -62,7 +62,7 @@ As Lambdas são escritas em TypeScript, no runtime Node.js, e empacotadas pelo C
 
 Toda a infraestrutura é declarada no stack do AWS CDK em `backend/` (RNF05). Há um stack por estágio, `dev` para desenvolvimento e `prod` para a apresentação, cada um com a própria API, as próprias Lambdas e as próprias tabelas, na região `sa-east-1` (D07).
 
-As configurações de teste da especificação ficam fora do estágio `prod`. As do backend são variáveis de ambiente definidas só no stack `dev`: responder com erro (T2, passo 6) e omitir a confirmação ao remetente na primeira tentativa de cada mensagem, o que simula uma confirmação que demora e leva ao reenvio (T2, passo 7). Cada uma é ligada só durante o passo que a usa, por uma nova implantação do stack `dev`, e nunca junto com a outra. A do cliente, desligar o heartbeat (T7, passo 4), é uma opção do cliente executado localmente, apontado para o stack `dev`; os passos com configuração de teste usam esse cliente.
+As configurações de teste da especificação ficam fora do estágio `prod`. As do backend são variáveis de ambiente definidas só no stack `dev`: responder com erro às mensagens e às pesquisas (T2, passo 6) e omitir a confirmação ao remetente na primeira tentativa de cada mensagem, o que simula uma confirmação que demora e leva ao reenvio (T2, passos 7 e 8). Cada uma é ligada só durante os passos que a usam, por uma nova implantação do stack `dev`, e nunca junto com a outra. A do cliente, desligar o heartbeat (T7, passo 4), é uma opção do cliente executado localmente, apontado para o stack `dev`; os passos com configuração de teste usam esse cliente.
 
 ## 3. Esquema de nomeação e endereçamento
 
@@ -320,7 +320,7 @@ O histórico é enviado em páginas de até 50 mensagens e até 28 KB, com pelo 
 ### 4.5 Demais rotas
 
 - **`heartbeat`:** atualiza `lastSeenAt` e responde `pong`.
-- **`sync`:** responde com o instante da requisição e com as conversas em que o usuário tem participação visível, cada uma com tipo, nome, membros com o estado de cada um (seção 4.2) e `lastMessageAt`, e marca as que têm `lastMessageAt` maior que `since` (seção 4.4).
+- **`sync`:** responde com o instante da requisição e com as conversas em que o usuário tem participação visível, cada uma com tipo, nome, membros com o estado de cada um (seção 4.2) e `lastMessageAt`, e aponta as que têm `lastMessageAt` maior que `since` (seção 4.4).
 - **`openDirect`:** recusa o próprio usuário (`invalidOperation`) e um usuário inexistente (`notFound`). Em uma transação com a condição de que a conversa ainda não exista, grava a conversa `d:…` com `started` falso, a participação de quem abriu e a do outro usuário, oculta. Se a conversa já existe (RF03), torna visível a participação de quem abriu, caso esteja oculta. Responde com a conversa.
 - **`createGroup`:** o nome segue a regra do nome de exibição. A Lambda retira de `members` o criador e as repetições, exige pelo menos um usuário (RF04) e recusa usuários inexistentes (`notFound`, com os nomes). Em uma transação, grava a conversa `g:<UUID v4>` e a participação de cada membro, o que limita a criação a 99 membros, incluindo o criador. Envia `conversationAdded` a todas as conexões dos membros, inclusive às do criador, e responde com a conversa.
 - **`addMember`:** só vale em grupo (`invalidOperation` no chat privado) e recusa um usuário inexistente (`notFound`) ou que já é membro (`invalidOperation`). Em uma transação, inclui o usuário em `Conversations.members`, com a condição de que quem adiciona ainda seja membro e o novo ainda não seja, e grava a participação dele. Envia `memberJoined` às conexões dos membros anteriores e `conversationAdded` às do novo membro, que passa a ler todo o histórico (RF04).
@@ -328,9 +328,33 @@ O histórico é enviado em páginas de até 50 mensagens e até 28 KB, com pelo 
 - **`getHistory`:** sem `before` nem `after`, responde com a página mais recente; com `before`, com a página anterior a esse limite; com `after`, com a seguinte. Os dois juntos são recusados (`invalidRequest`). A resposta traz as mensagens em ordem de `sk` e indica se há mais.
 - **`search`:** compara a `query`, sem diferenciar maiúsculas, com o nome das conversas em que o usuário tem participação visível (o nome do grupo ou o nome de exibição do outro usuário) e com o nome de usuário e o nome de exibição dos demais usuários. A comparação é feita na Lambda, sobre a leitura completa de `Users` (seção 7), e cada usuário encontrado vem com o seu estado (RF05, RF07).
 
+### 4.6 Comportamento do cliente
+
+O cliente web guarda no armazenamento local do navegador (`localStorage`), separado por usuário, com o nome de usuário (em minúsculas, seção 3.1) como chave:
+
+- o último nome de exibição com que o usuário entrou, que ele lê a cada `$connect` e usa quando o usuário não informa outro (RF01);
+- o `sentAt` da última mensagem vista em cada conversa. A conversa fica marcada quando tem uma mensagem de outro participante posterior a ele; se só o `lastMessageAt` da conversa é posterior, o cliente carrega as mensagens que faltam para saber quem as enviou; sem `sentAt` guardado, a conversa fica marcada se tem alguma mensagem de outro participante (RF10);
+- o último nome de exibição que conhece de cada usuário, vindo dos estados e dos anúncios (seção 3.5), para mostrar o remetente de mensagens antigas. Sem nenhum, o cliente mostra o nome de usuário.
+
+As abas do mesmo usuário mantêm esses dados em sincronia pelo evento `storage`, que avisa cada aba das gravações feitas pelas outras (RF01, RF10).
+
+A fila de reenvio (RF12) fica no armazenamento da aba (`sessionStorage`), que sobrevive à recarga e não é compartilhado com as outras abas, junto com o nome de usuário da aba. Depois de uma recarga, a aba entra de novo com esse nome de usuário, e as mensagens da fila voltam como pendentes. A fila só é reenviada por uma conexão do usuário que a criou; se outro usuário entra na aba, ela é descartada. As mensagens rejeitadas com erro, indicadas como não enviadas, não são guardadas e somem depois de uma recarga.
+
+Na lista de conversas, as conversas sem mensagens ficam acima das demais, na ordem em que apareceram para o usuário durante a sessão, a mais recente primeiro (RF10).
+
+Para trocar o nome de exibição, o cliente abre uma conexão nova com o nome novo e só então fecha a antiga, sem indicar perda de conexão, e os contatos não veem o usuário passar a offline (RF01).
+
+Os eventos `memberJoined` e `memberLeft` não ficam no histórico. O cliente os guarda em memória, por conversa, durante a sessão, e põe cada aviso logo depois da mensagem mais recente que conhece da conversa, inclusive as de eventos `message` recebidos com ela fechada, ou do `lastMessageAt` dela, se for maior; sem nenhum dos dois, no início da conversa. Assim a posição não depende do relógio do navegador (RF04).
+
+Depois de uma queda, a presença dos outros volta a ser mostrada com a resposta do `sync` da reconexão (RF07), e é com ela que o cliente indica a volta da conexão (RF08). Se a resposta de um `sync` não chega em 15 s, o cliente o repete e, se a segunda resposta também não chega, reconecta (RF08). Uma pesquisa ou um carregamento do histórico sem resposta em 15 s é tratado como falha, mostrado ao usuário e pode ser repetido (RF09).
+
+Para adicionar várias pessoas a um grupo, o cliente envia um `addMember` por pessoa, um de cada vez, e informa ao usuário as que falharam (RF04, RF09).
+
+O cliente registra no console do navegador as tentativas de reconexão, os anúncios de presença recebidos e as mensagens carregadas da fila e reenviadas; esses são os logs do cliente usados nos testes.
+
 ## 5. Logs e métricas
 
-Cada Lambda escreve uma linha JSON por requisição (RNF03) com a rota, o resultado, o código de erro e a duração. Os identificadores (`connectionId`, `username` e `conversationId`) aparecem anonimizados como os 12 primeiros caracteres hexadecimais de `HMAC-SHA256(segredo, valor)`. O segredo fica no SSM Parameter Store e é o mesmo em todas as Lambdas do estágio, então um mesmo identificador gera sempre o mesmo valor anonimizado e os logs continuam correlacionáveis. O texto das mensagens nunca é registrado.
+Cada Lambda escreve uma linha JSON por requisição (RNF03) com a rota, o resultado (inclusive se a mensagem era um reenvio), o código de erro e a duração. Os identificadores (`connectionId`, `username` e `conversationId`) aparecem anonimizados como os 12 primeiros caracteres hexadecimais de `HMAC-SHA256(segredo, valor)`. O segredo fica no SSM Parameter Store e é o mesmo em todas as Lambdas do estágio, então um mesmo identificador gera sempre o mesmo valor anonimizado e os logs continuam correlacionáveis. O texto das mensagens nunca é registrado.
 
 O segredo é um parâmetro `SecureString` criado uma vez por estágio, fora do CDK, porque o CloudFormation não cria parâmetros desse tipo e o valor não pode ficar no repositório. O stack só referencia o parâmetro pelo nome e concede a leitura; cada Lambda o lê no início a frio. O parâmetro é cifrado com a chave gerenciada pela AWS para o SSM (`aws/ssm`), e não com uma chave gerenciada pelo cliente. Decifrar um `SecureString` exige `kms:Decrypt`, então as Lambdas recebem essa permissão na chave `aws/ssm`, além de `ssm:GetParameter` no parâmetro.
 
@@ -358,4 +382,6 @@ O painel (RNF06) usa as métricas que o API Gateway publica para a API WebSocket
 - Se a Lambda falha entre tornar visível a participação do outro usuário e enviar o `conversationAdded`, a conversa só aparece para ele no próximo `sync` (RF10).
 - Se a Lambda falha depois de gravar a mensagem e antes do fan-out, ou se um conflito persiste nos passos 4 e 5 da seção 4.3, o reenvio só confirma ao remetente, e os demais participantes veem a mensagem ao abrir a conversa ou ao reconectar, e não em tempo real.
 - Uma conta nova da AWS pode ter uma cota baixa de execuções simultâneas de Lambda. Ela deve ser conferida, e aumentada se preciso, antes do T8, em que os envios simultâneos e os heartbeats somam execuções.
+- O nome de exibição guardado pelo cliente só é compartilhado entre as abas do mesmo navegador (seção 4.6). Um cliente aberto em outro navegador ou dispositivo antes da troca volta a enviar o nome antigo ao reconectar, e os contatos veem o nome voltar, porque vale o nome da conexão mais recente (RF01).
+- As entradas e saídas de membros não geram aviso em um cliente que estava desconectado ou que foi aberto ou recarregado depois delas, porque esses eventos não são reenviados nem guardados, e o `sync` traz só os membros atuais (RF04).
 - Uma mensagem perto do limite do RF11 gera um evento `message` acima de 32 KB. Se o API Gateway não dividir em frames os envios por `@connections` (seção 4.4), o limite do RF11 terá de baixar; o T2 e o T5 mostram o comportamento real.
