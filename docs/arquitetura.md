@@ -62,7 +62,7 @@ As Lambdas são escritas em TypeScript, no runtime Node.js, e empacotadas pelo C
 
 Toda a infraestrutura é declarada no stack do AWS CDK em `backend/` (RNF05). Há um stack por estágio, `dev` para desenvolvimento e `prod` para a apresentação, cada um com a própria API, as próprias Lambdas e as próprias tabelas, na região `sa-east-1` (D07).
 
-As configurações de teste da especificação ficam fora do estágio `prod`. As do backend são variáveis de ambiente definidas só no stack `dev`: responder com erro (T2, passo 6) e omitir a confirmação ao remetente na primeira tentativa de cada mensagem, o que simula uma confirmação que demora e leva ao reenvio (T2, passo 7). Cada uma é ligada só durante o passo que a usa, por uma nova implantação do stack `dev`, e nunca junto com a outra. A do cliente, desligar o heartbeat (T7, passo 4), é uma opção do cliente executado localmente, apontado para o stack `dev`; os passos com configuração de teste usam esse cliente.
+As configurações de teste da especificação ficam fora do estágio `prod`. As do backend são variáveis de ambiente definidas só no stack `dev`: responder com erro às mensagens e às pesquisas (T2, passo 6) e omitir a confirmação ao remetente na primeira tentativa de cada mensagem, o que simula uma confirmação que demora e leva ao reenvio (T2, passos 7 a 9). Cada uma é ligada só durante os passos que a usam, por uma nova implantação do stack `dev`, e nunca junto com a outra. A do cliente, desligar o heartbeat (T7, passo 4), é uma opção do cliente executado localmente, apontado para o stack `dev`; os passos com configuração de teste usam esse cliente.
 
 ## 3. Esquema de nomeação e endereçamento
 
@@ -137,6 +137,7 @@ As tabelas usam cobrança sob demanda. Todas as leituras são fortemente consist
 | `members` | SS | nomes de usuário dos membros |
 | `started` | BOOL | chat privado: já tem mensagem (RF10) |
 | `lastMessageAt` | N | instante da última mensagem |
+| `lastMessageBy` | S | remetente da última mensagem (RF10) |
 
 **Memberships**: usuário → conversas (RF10).
 
@@ -145,6 +146,7 @@ As tabelas usam cobrança sob demanda. Todas as leituras são fortemente consist
 | `username` | S (PK) | membro |
 | `conversationId` | S (SK) | conversa |
 | `hidden` | BOOL | só na participação do outro usuário em um chat privado sem mensagens, que ainda não aparece para ele (D11) |
+| `joinedAt` | N | `requestTimeEpoch` da requisição que tornou a participação visível; ausente enquanto ela está oculta (RF10) |
 
 **Messages**: histórico de cada conversa (RF06).
 
@@ -223,7 +225,7 @@ O API Gateway escolhe a rota pelo campo `action` da requisição (route selectio
 | `openDirect` | app | `username` | RF03 |
 | `createGroup` | app | `name`, `members` | RF04 |
 | `addMember` | app | `conversationId`, `username` | RF04 |
-| `leaveGroup` | app | `conversationId` | RF04 |
+| `leaveGroup` | app | `conversationId` e, opcionalmente, `confirm` | RF04 |
 | `getHistory` | app | `conversationId` e, opcionalmente, `before` ou `after` (um limite de `sk`) | RF06, RF08 |
 | `search` | app | `query` | RF05 |
 
@@ -252,14 +254,14 @@ Tudo o que o cliente recebe, inclusive as respostas às próprias requisições,
 | `pong` | resposta ao heartbeat | `requestId` |
 | `message` | nova mensagem em uma conversa (RF02) | `conversationId`, `sk`, `messageId`, `sender`, `text`, `sentAt` |
 | `presence` | anúncio do estado de um contato (RF01, RF07) | `username`, `displayName`, `online`, `version` |
-| `conversationAdded` | conversa nova visível (RF10) | `conversation`, com os membros e o estado de cada um |
+| `conversationAdded` | conversa nova visível (RF10) | `conversation`, com os mesmos campos de cada conversa do `sync` (seção 4.5) |
 | `conversationRemoved` | saída de um grupo (RF04) | `conversationId` |
 | `memberJoined` | entrada de membro (RF04, RF07) | `conversationId` e o estado do novo membro |
 | `memberLeft` | saída de membro (RF04) | `conversationId`, `username` |
 
 O estado de um usuário é sempre o mesmo conjunto de campos: `username`, `displayName`, `online` e `version`. Ele acompanha cada membro em `conversationAdded`, em `memberJoined` e nas respostas de `sync`, `openDirect` e `createGroup`, e cada usuário no resultado de `search`. Assim, o cliente recebe a presença de quem surge em uma das suas conversas (RF07) e compara pela versão o estado dessas respostas com o dos anúncios (seção 3.5). O backend lê esses estados depois de gravar a participação que torna os usuários contatos; uma mudança posterior à leitura já encontra a participação gravada e é anunciada ao novo contato.
 
-O `code` de um erro é um de: `invalidRequest` (campo ausente ou fora do formato), `unknownAction` (requisição na `$default`), `forbidden` (o usuário não participa da conversa, RNF01), `notFound` (usuário inexistente), `invalidOperation` (ação não permitida, como adicionar quem já é membro), `conflict` (seção 3.3) e `notRegistered` (conexão sem registro, seção 3.4). O `message` diz, em texto, o que falhou (RF09).
+O `code` de um erro é um de: `invalidRequest` (campo ausente ou fora do formato), `unknownAction` (requisição na `$default`), `forbidden` (o usuário não participa da conversa, RNF01), `notFound` (usuário inexistente), `invalidOperation` (ação não permitida, como adicionar quem já é membro), `conflict` (seção 3.3), `notRegistered` (conexão sem registro, seção 3.4) e `lastMember` (o último membro tenta sair do grupo sem confirmar, seção 4.5). O `message` diz, em texto, o que falhou (RF09).
 
 Quando uma Lambda falha ou passa do tempo limite, o API Gateway pode enviar ao cliente a própria mensagem de erro, sem `type` e sem o `requestId` do cliente. O cliente a registra e não a associa a nenhuma requisição, e uma mensagem pendente continua na fila (RF12).
 
@@ -281,7 +283,7 @@ sequenceDiagram
     L->>D: Conversations[conversationId] → members = {a, b}
     Note over L: a está em members? (RNF01)
     L->>D: transação: marcador id + mensagem m
-    L->>D: Conversations: lastMessageAt = sentAt, se maior
+    L->>D: Conversations: lastMessageAt = sentAt e lastMessageBy = a, se maior
     L->>D: Conversations[conversationId] → members (releitura)
     L->>D: Users[a, b] → connections = {cA, cB1, cB2}
     par para cada conexão
@@ -299,8 +301,8 @@ sequenceDiagram
 3. Se a transação é cancelada:
    - Por `ConditionalCheckFailed` no marcador, é um reenvio da fila do cliente (RF12, R07). A Lambda lê o marcador e, pelo `ref`, a mensagem original, refaz os passos 4 e 5 com ela, que não têm efeito se já foram feitos, e a envia só à conexão que reenviou, como confirmação.
    - Por `TransactionConflict`, outra transação sobre o mesmo marcador está em andamento: a do original de um reenvio, ou o contrário. A Lambda repete a transação (seção 3.3). Se o conflito persistir, lê o marcador: se ele existe, segue como reenvio; se não, não responde, e a mensagem continua pendente no cliente, que a reenvia (seção 4.4). A requisição não se perde, porque o reenvio conclui o trabalho; responder com erro a tiraria da fila (RF12), embora a transação concorrente ainda possa gravá-la.
-4. Atualiza `Conversations.lastMessageAt` para o `sentAt`, com a condição de que o valor atual seja menor ou ausente, e ignora a falha da condição. Essa gravação fica fora da transação para que envios simultâneos na mesma conversa não entrem em conflito no item da conversa (R06, T8).
-5. Se `started` ainda é falso (chat privado sem mensagens), a Lambda torna visíveis as participações ocultas da conversa, removendo `hidden` de cada uma com a condição de que ele exista, e marca `started`. Normalmente a oculta é a do outro usuário, mas também pode ser a do remetente, se ele envia sem ter aberto a conversa. Para cada participação que torna visível, a Lambda que vence a condição envia `conversationAdded` ao dono dela, antes da mensagem (RF10), então duas primeiras mensagens simultâneas não geram o aviso em dobro. Se o outro usuário já tinha aberto a conversa, a participação dele não está oculta, e ninguém envia o aviso.
+4. Atualiza `Conversations.lastMessageAt` para o `sentAt` e `lastMessageBy` para o remetente, com a condição de que o `lastMessageAt` atual seja menor ou ausente ou, se for igual, de que o `lastMessageBy` seja menor que o remetente, a mesma ordem do `sk`; ignora a falha da condição. Essa gravação fica fora da transação para que envios simultâneos na mesma conversa não entrem em conflito no item da conversa (R06, T8).
+5. Se `started` ainda é falso (chat privado sem mensagens), a Lambda torna visíveis as participações ocultas da conversa, removendo `hidden` de cada uma, com a condição de que ele exista, e gravando `joinedAt`, e marca `started`. Normalmente a oculta é a do outro usuário, mas também pode ser a do remetente, se ele envia sem ter aberto a conversa. Para cada participação que torna visível, a Lambda que vence a condição envia `conversationAdded` ao dono dela, antes da mensagem (RF10), então duas primeiras mensagens simultâneas não geram o aviso em dobro. Se o outro usuário já tinha aberto a conversa, a participação dele não está oculta, e ninguém envia o aviso.
 6. Relê `Conversations.members`, resolve as conexões de todos os membros e envia o evento `message` a cada uma, em paralelo. Um `410 Gone` desvincula aquela conexão e não interrompe as demais (RF08). A releitura acontece depois da transação, então um membro adicionado no meio do envio ou entra nesse fan-out, ou carrega o histórico depois que a mensagem já foi gravada.
 
 Se um conflito persistir nos passos 4 ou 5, a Lambda não envia a mensagem nem a confirma, e o reenvio da fila refaz esses passos. Refazê-los no reenvio também cobre uma Lambda que falha depois da transação: sem isso, `lastMessageAt` poderia ficar desatualizado, e uma participação, oculta. Nesses casos, a mensagem em si não é entregue de novo aos demais (RF12); eles a recebem pelo histórico (seção 7).
@@ -320,17 +322,41 @@ O histórico é enviado em páginas de até 50 mensagens e até 28 KB, com pelo 
 ### 4.5 Demais rotas
 
 - **`heartbeat`:** atualiza `lastSeenAt` e responde `pong`.
-- **`sync`:** responde com o instante da requisição e com as conversas em que o usuário tem participação visível, cada uma com tipo, nome, membros com o estado de cada um (seção 4.2) e `lastMessageAt`, e marca as que têm `lastMessageAt` maior que `since` (seção 4.4).
-- **`openDirect`:** recusa o próprio usuário (`invalidOperation`) e um usuário inexistente (`notFound`). Em uma transação com a condição de que a conversa ainda não exista, grava a conversa `d:…` com `started` falso, a participação de quem abriu e a do outro usuário, oculta. Se a conversa já existe (RF03), torna visível a participação de quem abriu, caso esteja oculta. Responde com a conversa.
-- **`createGroup`:** o nome segue a regra do nome de exibição. A Lambda retira de `members` o criador e as repetições, exige pelo menos um usuário (RF04) e recusa usuários inexistentes (`notFound`, com os nomes). Em uma transação, grava a conversa `g:<UUID v4>` e a participação de cada membro, o que limita a criação a 99 membros, incluindo o criador. Envia `conversationAdded` a todas as conexões dos membros, inclusive às do criador, e responde com a conversa.
-- **`addMember`:** só vale em grupo (`invalidOperation` no chat privado) e recusa um usuário inexistente (`notFound`) ou que já é membro (`invalidOperation`). Em uma transação, inclui o usuário em `Conversations.members`, com a condição de que quem adiciona ainda seja membro e o novo ainda não seja, e grava a participação dele. Envia `memberJoined` às conexões dos membros anteriores e `conversationAdded` às do novo membro, que passa a ler todo o histórico (RF04).
-- **`leaveGroup`:** só vale em grupo (`invalidOperation` no chat privado). Em uma transação, retira o usuário de `Conversations.members`, com a condição de que ele seja membro, e apaga a participação. Envia `conversationRemoved` a todas as conexões de quem saiu e `memberLeft` às dos que ficaram. Um grupo de que todos saíram fica sem membros e inacessível.
+- **`sync`:** responde com o instante da requisição e com as conversas em que o usuário tem participação visível, cada uma com tipo, nome, membros com o estado de cada um (seção 4.2), `lastMessageAt`, `lastMessageBy` e o `joinedAt` da participação do usuário, e aponta as que têm `lastMessageAt` maior que `since` (seção 4.4).
+- **`openDirect`:** recusa o próprio usuário (`invalidOperation`) e um usuário inexistente (`notFound`). Em uma transação com a condição de que a conversa ainda não exista, grava a conversa `d:…` com `started` falso, a participação de quem abriu, com `joinedAt`, e a do outro usuário, oculta. Se a conversa já existe (RF03), torna visível a participação de quem abriu, caso esteja oculta, gravando `joinedAt`. Responde com a conversa, com os mesmos campos de cada conversa do `sync`.
+- **`createGroup`:** o nome segue a regra do nome de exibição. A Lambda retira de `members` o criador e as repetições, exige pelo menos um usuário (RF04) e recusa usuários inexistentes (`notFound`, com os nomes). Em uma transação, grava a conversa `g:<UUID v4>` e a participação de cada membro, com `joinedAt`, o que limita a criação a 99 membros, incluindo o criador. Envia `conversationAdded` a todas as conexões dos membros, inclusive às do criador, e responde com a conversa, com os mesmos campos de cada conversa do `sync`.
+- **`addMember`:** só vale em grupo (`invalidOperation` no chat privado) e recusa um usuário inexistente (`notFound`) ou que já é membro (`invalidOperation`). Em uma transação, inclui o usuário em `Conversations.members`, com a condição de que quem adiciona ainda seja membro e o novo ainda não seja, e grava a participação dele, com `joinedAt`. Envia `memberJoined` às conexões dos membros anteriores e `conversationAdded` às do novo membro, que passa a ler todo o histórico (RF04).
+- **`leaveGroup`:** só vale em grupo (`invalidOperation` no chat privado). Em uma transação, retira o usuário de `Conversations.members`, com a condição de que ele seja membro e, se a requisição vem sem `confirm`, de que não seja o único (`size(members) > 1`), e apaga a participação. A Lambda pede o item na falha da condição (`ReturnValuesOnConditionCheckFailure`) para distinguir os casos: se o usuário já não está em `members`, responde `forbidden`; senão, `lastMember`. Como a condição faz parte da transação, dois membros que saem ao mesmo tempo não deixam o grupo vazio sem aviso: o segundo recebe o erro `lastMember`, o cliente mostra o aviso do RF04 e, se o usuário confirma, repete a requisição com `confirm` verdadeiro. Envia `conversationRemoved` a todas as conexões de quem saiu e `memberLeft` às dos que ficaram. Um grupo de que todos saíram fica sem membros e inacessível.
 - **`getHistory`:** sem `before` nem `after`, responde com a página mais recente; com `before`, com a página anterior a esse limite; com `after`, com a seguinte. Os dois juntos são recusados (`invalidRequest`). A resposta traz as mensagens em ordem de `sk` e indica se há mais.
 - **`search`:** compara a `query`, sem diferenciar maiúsculas, com o nome das conversas em que o usuário tem participação visível (o nome do grupo ou o nome de exibição do outro usuário) e com o nome de usuário e o nome de exibição dos demais usuários. A comparação é feita na Lambda, sobre a leitura completa de `Users` (seção 7), e cada usuário encontrado vem com o seu estado (RF05, RF07).
 
+### 4.6 Comportamento do cliente
+
+O cliente web guarda no armazenamento local do navegador (`localStorage`), separado por usuário, com o nome de usuário (em minúsculas, seção 3.1) como chave:
+
+- o último nome de exibição com que o usuário entrou, que ele lê a cada `$connect` e usa quando o usuário não informa outro (RF01);
+- o `sentAt` da última mensagem vista em cada conversa. A conversa fica marcada quando o `lastMessageAt` é posterior a ele e o `lastMessageBy` é outro participante; sem `sentAt` guardado, basta que o `lastMessageBy` seja outro participante. O cliente atualiza o `lastMessageAt` e o `lastMessageBy` da conversa com cada evento `message` mais recente que eles (RF10);
+- o último nome de exibição que conhece de cada usuário, vindo dos estados e dos anúncios (seção 3.5), para mostrar o remetente de mensagens antigas. Sem nenhum, o cliente mostra o nome de usuário.
+
+As abas do mesmo usuário mantêm esses dados em sincronia pelo evento `storage`, que avisa cada aba das gravações feitas pelas outras (RF01, RF10).
+
+A fila de reenvio (RF12) fica no armazenamento da aba (`sessionStorage`), que sobrevive à recarga e não é compartilhado com as outras abas, junto com o nome de usuário da aba. Depois de uma recarga, a aba entra de novo com esse nome de usuário, e as mensagens da fila voltam como pendentes. A fila só é reenviada por uma conexão do usuário que a criou. Para outro usuário entrar na aba, o atual sai; se há mensagens pendentes, o cliente avisa que elas serão descartadas e só as descarta depois que o usuário confirma a saída (RF12). Duplicar a aba copia o `sessionStorage`, e as duas abas reenviam a mesma fila; a deduplicação por remetente e `messageId` (seção 4.3) grava e entrega cada mensagem uma única vez. As mensagens rejeitadas com erro, indicadas como não enviadas, não são guardadas e somem depois de uma recarga.
+
+Na lista de conversas, as conversas sem mensagens ficam acima das demais, ordenadas pelo `joinedAt`, a mais recente primeiro, inclusive depois de uma recarga (RF10).
+
+Para trocar o nome de exibição, o cliente abre uma conexão nova com o nome novo e só então fecha a antiga, sem indicar perda de conexão, e os contatos não veem o usuário passar a offline (RF01).
+
+Os eventos `memberJoined` e `memberLeft` não ficam no histórico. O cliente os guarda em memória, por conversa, durante a sessão, e põe cada aviso logo depois da mensagem mais recente que conhece da conversa, inclusive as de eventos `message` recebidos com ela fechada, ou do `lastMessageAt` dela, se for maior; sem nenhum dos dois, no início da conversa. Assim a posição não depende do relógio do navegador (RF04).
+
+Depois de uma queda, a presença dos outros volta a ser mostrada com a resposta do `sync` da reconexão (RF07), e é com ela que o cliente indica a volta da conexão (RF08). Se a resposta de um `sync` não chega em 15 s, o cliente o repete e, se a segunda resposta também não chega, reconecta (RF08). Uma pesquisa ou um carregamento do histórico sem resposta em 15 s é tratado como falha, mostrado ao usuário e pode ser repetido (RF09).
+
+Para adicionar várias pessoas a um grupo, o cliente envia um `addMember` por pessoa, um de cada vez, e informa ao usuário as que falharam (RF04, RF09).
+
+O cliente registra no console do navegador as tentativas de reconexão, os anúncios de presença recebidos e as mensagens carregadas da fila e reenviadas; esses são os logs do cliente usados nos testes.
+
 ## 5. Logs e métricas
 
-Cada Lambda escreve uma linha JSON por requisição (RNF03) com a rota, o resultado, o código de erro e a duração. Os identificadores (`connectionId`, `username` e `conversationId`) aparecem anonimizados como os 12 primeiros caracteres hexadecimais de `HMAC-SHA256(segredo, valor)`. O segredo fica no SSM Parameter Store e é o mesmo em todas as Lambdas do estágio, então um mesmo identificador gera sempre o mesmo valor anonimizado e os logs continuam correlacionáveis. O texto das mensagens nunca é registrado.
+Cada Lambda escreve uma linha JSON por requisição (RNF03) com a rota, o resultado (inclusive se a mensagem era um reenvio), o código de erro e a duração. Os identificadores (`connectionId`, `username` e `conversationId`) aparecem anonimizados como os 12 primeiros caracteres hexadecimais de `HMAC-SHA256(segredo, valor)`. O segredo fica no SSM Parameter Store e é o mesmo em todas as Lambdas do estágio, então um mesmo identificador gera sempre o mesmo valor anonimizado e os logs continuam correlacionáveis. O texto das mensagens nunca é registrado.
 
 O segredo é um parâmetro `SecureString` criado uma vez por estágio, fora do CDK, porque o CloudFormation não cria parâmetros desse tipo e o valor não pode ficar no repositório. O stack só referencia o parâmetro pelo nome e concede a leitura; cada Lambda o lê no início a frio. O parâmetro é cifrado com a chave gerenciada pela AWS para o SSM (`aws/ssm`), e não com uma chave gerenciada pelo cliente. Decifrar um `SecureString` exige `kms:Decrypt`, então as Lambdas recebem essa permissão na chave `aws/ssm`, além de `ssm:GetParameter` no parâmetro.
 
@@ -358,4 +384,7 @@ O painel (RNF06) usa as métricas que o API Gateway publica para a API WebSocket
 - Se a Lambda falha entre tornar visível a participação do outro usuário e enviar o `conversationAdded`, a conversa só aparece para ele no próximo `sync` (RF10).
 - Se a Lambda falha depois de gravar a mensagem e antes do fan-out, ou se um conflito persiste nos passos 4 e 5 da seção 4.3, o reenvio só confirma ao remetente, e os demais participantes veem a mensagem ao abrir a conversa ou ao reconectar, e não em tempo real.
 - Uma conta nova da AWS pode ter uma cota baixa de execuções simultâneas de Lambda. Ela deve ser conferida, e aumentada se preciso, antes do T8, em que os envios simultâneos e os heartbeats somam execuções.
+- O nome de exibição guardado pelo cliente só é compartilhado entre as abas do mesmo navegador (seção 4.6). Um cliente aberto em outro navegador ou dispositivo antes da troca volta a enviar o nome antigo ao reconectar, e os contatos veem o nome voltar, porque vale o nome da conexão mais recente (RF01).
+- Fechar uma aba descarta sem aviso as mensagens pendentes dela, porque a fila fica no armazenamento da aba (seção 4.6); as que o backend já gravou chegam normalmente.
+- As entradas e saídas de membros não geram aviso em um cliente que estava desconectado ou que foi aberto ou recarregado depois delas, porque esses eventos não são reenviados nem guardados, e o `sync` traz só os membros atuais (RF04).
 - Uma mensagem perto do limite do RF11 gera um evento `message` acima de 32 KB. Se o API Gateway não dividir em frames os envios por `@connections` (seção 4.4), o limite do RF11 terá de baixar; o T2 e o T5 mostram o comportamento real.

@@ -44,3 +44,10 @@ Comentários devem explicar o porquê, não o que o código já diz. Na document
 O código, incluindo nomes, comentários e docstrings, é escrito em inglês.
 
 Uma mudança de comportamento atualiza a documentação no mesmo pull request.
+
+## Onde documentar
+
+- **Especificação:** o que o sistema faz e o que o usuário vê, sem detalhes de tela, em requisitos, riscos, limitações e plano de testes.
+- **Arquitetura:** como o sistema funciona por dentro, com serviços da AWS, nomes e dados, rotas e eventos, logs e métricas, decisões e limitações. O funcionamento do cliente por trás do que o usuário vê fica na seção "Comportamento do cliente".
+- **Design no Figma:** telas, layout, componentes e decisões visuais. Uma nota no arquivo indica o commit de `docs/` que o design segue e é atualizada quando o design é ajustado a uma mudança em `docs/`.
+- **README:** visão geral do projeto e links para os documentos.
