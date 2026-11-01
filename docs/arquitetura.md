@@ -311,7 +311,7 @@ Se um conflito persistir nos passos 4 ou 5, a Lambda não envia a mensagem nem a
 
 A ordem de uma conversa é a ordem do `sk` (`sentAt` e, no empate, remetente e `messageId`). O cliente insere cada mensagem recebida na posição do `sk` e descarta uma mensagem que já tem (mesmo remetente e `messageId`), então todos os clientes exibem a mesma ordem (RNF04), mesmo que as entregas de duas Lambdas cheguem em ordem diferente.
 
-O cliente envia `heartbeat` a cada 30 s e, sem `pong` em 10 s, considera a conexão perdida e se reconecta com backoff exponencial (RF08).
+O cliente envia `heartbeat` a cada 30 s e, sem `pong` em 10 s, considera a conexão perdida e se reconecta com backoff exponencial, com a primeira tentativa imediata (RF08).
 
 Ao reconectar, o cliente envia `sync` com `since` igual ao maior destes dois instantes, menos 30 segundos: o `sentAt` da última mensagem recebida e o instante do último `sync`, que vem na resposta dele. Na primeira conexão, o `sync` vai sem `since`. O `sync` aponta as conversas com `lastMessageAt` posterior a ele. Para cada uma, o cliente pede `getHistory` com `after` igual ao último `sk` que tem, recuado também em 30 segundos, ou, se não tem nenhuma mensagem dela, sem `after`. A sobreposição cobre uma mensagem gravada depois de outra com `sentAt` maior: o `sentAt` é o instante em que o API Gateway recebeu a requisição, e a gravação pode acontecer até o fim do início a frio e do tempo limite de 10 s da Lambda `app`. As repetidas são descartadas pelo remetente e `messageId`, e nada se perde nem aparece duas vezes.
 
@@ -334,7 +334,7 @@ O histórico é enviado em páginas de até 50 mensagens e até 28 KB, com pelo 
 
 O cliente web guarda no armazenamento local do navegador (`localStorage`), separado por usuário, com o nome de usuário (em minúsculas, seção 3.1) como chave:
 
-- o último nome de exibição que o usuário usou, ao entrar ou ao trocar o nome, que ele lê a cada `$connect` e usa quando o usuário não informa outro (RF01);
+- o último nome de exibição que o usuário usou, ao entrar ou ao trocar o nome, que ele envia nas reconexões e nas outras abas e que propõe ao entrar; se o usuário entra sem nome de exibição, o cliente apaga o nome guardado e não envia nenhum, e vale o nome de usuário (seção 3.4, RF01);
 - o `sentAt` da última mensagem vista em cada conversa. A conversa fica marcada quando o `lastMessageAt` é posterior a ele e o `lastMessageBy` é outro participante; sem `sentAt` guardado, basta que o `lastMessageBy` seja outro participante. O cliente atualiza o `lastMessageAt` e o `lastMessageBy` da conversa com cada evento `message` mais recente que eles (RF10).
 
 As abas do mesmo usuário mantêm esses dados em sincronia pelo evento `storage`, que avisa cada aba das gravações feitas pelas outras (RF01, RF10).
@@ -345,11 +345,13 @@ A fila de reenvio (RF12) fica só na memória da aba. Se há mensagens pendentes
 
 Na lista de conversas, as conversas sem mensagens ficam acima das demais, ordenadas pelo `joinedAt`, a mais recente primeiro, inclusive depois de uma recarga (RF10).
 
-Para trocar o nome de exibição, o cliente abre uma conexão nova com o nome novo e só então fecha a antiga, sem indicar perda de conexão, e os contatos não veem o usuário passar a offline (RF01).
+Para trocar o nome de exibição, o cliente abre uma conexão nova com o nome novo, passa a enviar as requisições por ela e fecha a antiga depois que as respostas pendentes nela chegam ou expiram, sem indicar perda de conexão, e os contatos não veem o usuário passar a offline (RF01). Nesse intervalo, um aviso de entrada ou saída de membro que chega pelas duas conexões é mostrado uma vez só.
 
 Os eventos `memberJoined` e `memberLeft` não ficam no histórico. O cliente os guarda em memória, por conversa, durante a sessão, e põe cada aviso logo depois da mensagem mais recente que conhece da conversa, inclusive as de eventos `message` recebidos com ela fechada, ou do `lastMessageAt` dela, se for maior; sem nenhum dos dois, no início da conversa. Assim a posição não depende do relógio do navegador (RF04).
 
-Depois de uma queda, a presença dos outros volta a ser mostrada com a resposta do `sync` da reconexão (RF07), e é com ela que o cliente indica a volta da conexão (RF08). Se a resposta de um `sync` não chega em 15 s, o cliente o repete e, se a segunda resposta também não chega, reconecta (RF08). Uma pesquisa ou um carregamento do histórico sem resposta em 15 s é tratado como falha, mostrado ao usuário e pode ser repetido (RF09).
+Quando o cliente detecta a queda, pelo fechamento da conexão ou pelo heartbeat sem resposta, ele a indica (RF08) e oculta a presença dos outros (RF07) se a resposta do `sync` da reconexão não chegar em até 3 s a partir dessa detecção; uma queda mais curta, como em geral o fim das 2 horas (L02), não é indicada. Depois de uma queda indicada, a presença dos outros volta a ser mostrada com a resposta do `sync` da reconexão (RF07), e é com ela que o cliente indica a volta da conexão (RF08). Se a resposta de um `sync` não chega em 15 s, o cliente o repete e, se a segunda resposta também não chega, reconecta (RF08).
+
+Sem conexão, as mensagens entram na fila de reenvio (RF12), mas as demais ações ficam desabilitadas desde a queda, mesmo antes de ela ser indicada: pesquisar, iniciar um chat, criar um grupo, adicionar pessoas, sair de um grupo, trocar o nome de exibição, abrir uma conversa ainda não carregada e voltar no histórico (RF08). Uma requisição sem resposta em 15 s, exceto `sendMessage`, `heartbeat` e `sync`, que têm tratamento próprio, é dada como sem resposta: o cliente avisa que ela pode não ter sido feita, e uma pesquisa ou um carregamento do histórico pode ser repetido (RF09). Uma resposta ou um erro que chega depois é ignorado; um evento como o `conversationAdded` de um grupo criado é aplicado normalmente.
 
 Para adicionar várias pessoas a um grupo, o cliente envia um `addMember` por pessoa, um de cada vez, e informa ao usuário as que falharam (RF04, RF09).
 
