@@ -32,7 +32,7 @@ Branches `release/*` e `hotfix/*` precisam de dois pull requests: um para a `mai
 Usamos [Conventional Commits](https://www.conventionalcommits.org/pt-br/v1.0.0/), com a descrição em português:
 
 ```text
-feat: adicionar seletor de salas
+feat: adicionar pesquisa de conversas
 fix: corrigir reconexão após queda
 docs: atualizar diagrama de arquitetura
 ```
