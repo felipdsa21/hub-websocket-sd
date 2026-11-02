@@ -6,7 +6,7 @@
 
 Este documento define a arquitetura distribuída do Hub Colaborativo WebSocket e o esquema de nomeação e endereçamento: como um usuário ou uma conversa é resolvido nas conexões WebSocket abertas e como uma requisição chega ao backend e volta aos clientes. Os requisitos citados (RF, RNF, R e L) estão na [especificação](especificacao.md).
 
-O ciclo de vida da sessão, com os diagramas de sequência de `$connect` e `$disconnect`, fica para um documento próprio.
+O ciclo de vida da sessão, com os diagramas de sequência de `$connect` e `$disconnect`, está em [sessao.md](sessao.md).
 
 Os IDs das decisões (D) são estáveis, e o número de um item removido não é reaproveitado.
 
@@ -98,7 +98,7 @@ CALLBACK_URL = https://{api-id}.execute-api.sa-east-1.amazonaws.com/{estágio}
 URI          = {CALLBACK_URL}/@connections/{connectionId}
 ```
 
-O backend usa `POST` (`postToConnection`) para entregar eventos e `DELETE` (`deleteConnection`) para encerrar conexões no `presenceSweeper`. Um `POST` para uma conexão que não existe mais responde `410 Gone` (`GoneException`), e o backend desvincula a conexão (seção 3.4).
+O backend usa `POST` (`postToConnection`) para entregar eventos e `DELETE` (`deleteConnection`) para encerrar conexões no `presenceSweeper` e as conexões sem registro (seção 3.4). Um `POST` para uma conexão que não existe mais responde `410 Gone` (`GoneException`), e o backend desvincula a conexão (seção 3.4).
 
 O backend nunca confia em um nome de usuário vindo no corpo de uma requisição. O usuário de cada requisição é sempre o que está vinculado ao `connectionId`, que o API Gateway informa e o cliente não consegue falsificar.
 
