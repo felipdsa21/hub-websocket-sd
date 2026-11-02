@@ -1,5 +1,5 @@
+import { ActionFailure, AddMembersResult } from '@/core/model/action-result';
 import { HubError } from '@/core/model/error';
-import { ActionFailure, AddMembersResult } from '@/core/state/group-actions';
 
 const listFormat = new Intl.ListFormat('pt-BR', { type: 'conjunction' });
 

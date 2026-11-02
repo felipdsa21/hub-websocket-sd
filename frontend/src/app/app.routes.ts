@@ -1,5 +1,5 @@
 import { Routes } from '@angular/router';
-import { guestGuard, sessionGuard } from './core/state/session-guards';
+import { guestGuard, sessionGuard } from './core/routing/session-guards';
 
 export const routes: Routes = [
   {

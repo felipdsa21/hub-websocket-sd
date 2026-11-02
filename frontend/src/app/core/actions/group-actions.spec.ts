@@ -1,12 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { Scenario } from '@/core/fixtures/scenarios';
 import { provideTestFixtures } from '@/core/fixtures/testing';
+import { ConversationsStore } from '@/core/state/conversations-store';
+import { MessagesStore } from '@/core/state/messages-store';
+import { SessionStore } from '@/core/state/session-store';
+import { UsersStore } from '@/core/state/users-store';
 import { addMembersNotice } from '@/shared/format/error-messages';
-import { ConversationsStore } from './conversations-store';
 import { GroupActions } from './group-actions';
-import { MessagesStore } from './messages-store';
-import { SessionStore } from './session-store';
-import { UsersStore } from './users-store';
 
 const TEAM = 'g:3f2b7c1e-5a4d-4e8f-9b6a-1c2d3e4f5a6b';
 

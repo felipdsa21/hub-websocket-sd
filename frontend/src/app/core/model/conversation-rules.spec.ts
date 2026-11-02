@@ -1,4 +1,4 @@
-import { Conversation } from '@/core/model/conversation';
+import { Conversation } from './conversation';
 import { compareConversations, hasNewActivity } from './conversation-rules';
 
 function conversation(id: string, fields: Partial<Conversation> = {}): Conversation {

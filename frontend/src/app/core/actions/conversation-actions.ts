@@ -1,14 +1,12 @@
 import { Service, inject } from '@angular/core';
 import { Scenarios } from '@/core/fixtures/scenarios';
+import { ActionFailure, StartResult } from '@/core/model/action-result';
 import { directConversationId } from '@/core/model/conversation';
 import { normalizeDisplayName } from '@/core/model/names';
+import { ConversationsStore } from '@/core/state/conversations-store';
+import { CurrentUser } from '@/core/state/current-user';
+import { DirectoryStore } from '@/core/state/directory-store';
 import { Clock } from '@/core/time/clock';
-import { ConversationsStore } from './conversations-store';
-import { CurrentUser } from './current-user';
-import { DirectoryStore } from './directory-store';
-import { ActionFailure } from './group-actions';
-
-export type StartResult = { readonly conversationId: string } | ActionFailure;
 
 /** Starting conversations on the fixed data, with the failures of the action scenarios. */
 @Service()

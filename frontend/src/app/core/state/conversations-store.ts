@@ -1,6 +1,6 @@
 import { Service, computed, inject, signal } from '@angular/core';
 import { Conversation } from '@/core/model/conversation';
-import { compareConversations, hasNewActivity } from './conversation-rules';
+import { compareConversations, hasNewActivity } from '@/core/model/conversation-rules';
 import { CurrentUser } from './current-user';
 
 @Service()

@@ -1,4 +1,4 @@
-import { Conversation } from '@/core/model/conversation';
+import { Conversation } from './conversation';
 
 /**
  * List order (RF10): conversations without messages first, the most recently joined on top; then

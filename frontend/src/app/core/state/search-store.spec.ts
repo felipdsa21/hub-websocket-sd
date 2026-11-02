@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { ConversationActions } from '@/core/actions/conversation-actions';
 import { Scenario } from '@/core/fixtures/scenarios';
 import { provideTestFixtures } from '@/core/fixtures/testing';
-import { ConversationActions } from './conversation-actions';
 import { ConversationsStore } from './conversations-store';
 import { SearchStore } from './search-store';
 import { SessionStore } from './session-store';

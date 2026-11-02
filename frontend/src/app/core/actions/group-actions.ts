@@ -1,20 +1,10 @@
 import { Service, inject } from '@angular/core';
 import { Scenarios } from '@/core/fixtures/scenarios';
-import { HubError } from '@/core/model/error';
-import { ConnectionStore } from './connection-store';
-import { ConversationsStore } from './conversations-store';
-import { DirectoryStore } from './directory-store';
-import { MessagesStore } from './messages-store';
-
-/** An action without a response within the deadline may or may not have been done (RF09). */
-export type ActionFailure = HubError | 'noResponse';
-
-export interface AddMembersResult {
-  readonly added: readonly string[];
-  readonly failed: readonly { readonly username: string; readonly reason: ActionFailure }[];
-}
-
-export type LeaveResult = 'left' | ActionFailure;
+import { ActionFailure, AddMembersResult, LeaveResult } from '@/core/model/action-result';
+import { ConnectionStore } from '@/core/state/connection-store';
+import { ConversationsStore } from '@/core/state/conversations-store';
+import { DirectoryStore } from '@/core/state/directory-store';
+import { MessagesStore } from '@/core/state/messages-store';
 
 /**
  * Group changes on the fixed data. The "erro-acao" and "sem-resposta" scenarios make them fail as
