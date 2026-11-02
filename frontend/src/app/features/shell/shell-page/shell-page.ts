@@ -43,7 +43,7 @@ export class ShellPage {
   /** The phone's "Novo" button opens "Novo chat" and "Novo grupo" above it. */
   protected readonly newMenuOpen = signal(false);
 
-  protected readonly compact = computed(() => this.breakpoints.windowSize() === 'compact');
+  protected readonly compact = this.breakpoints.compact;
 
   private readonly url = urlSignal(this.router);
 

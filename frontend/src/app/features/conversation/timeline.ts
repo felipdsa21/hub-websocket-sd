@@ -2,7 +2,7 @@ import { Message, OutgoingMessage } from '@/core/model/message';
 import { MemberNotice } from '@/core/model/notice';
 import { UserState } from '@/core/model/user';
 import { TimeContext, daySeparatorLabel, isSameDay, timeLabel } from '@/core/time/time-format';
-import { repeatedDisplayNames } from '@/shared/format/display-names';
+import { nameWithUsername, repeatedDisplayNames } from '@/shared/format/display-names';
 import { messageErrorReason } from '@/shared/format/error-messages';
 import { AvatarKind } from '@/shared/ui/avatar/avatar';
 
@@ -141,11 +141,7 @@ function messageItem(
       own || !first
         ? undefined
         : {
-            label: !user
-              ? `@${message.sender}`
-              : repeated.has(user.displayName)
-                ? `${user.displayName} · @${user.username}`
-                : user.displayName,
+            label: user ? nameWithUsername(user, repeated) : `@${message.sender}`,
             avatarKind: user ? 'person' : 'unknown',
             name: user?.displayName ?? '',
           },

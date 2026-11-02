@@ -1,24 +1,13 @@
 import { TestBed } from '@angular/core/testing';
-import { Temporal } from 'temporal-polyfill';
 import { HubFixtures } from '@/core/fixtures/hub-fixtures';
-import { Scenario, Scenarios } from '@/core/fixtures/scenarios';
-import { Clock } from '@/core/time/clock';
+import { Scenario } from '@/core/fixtures/scenarios';
+import { provideTestFixtures } from '@/core/fixtures/testing';
 import { ConversationsStore } from './conversations-store';
 import { SessionStore } from './session-store';
 import { UsersStore } from './users-store';
 
 function setUp(scenarios: readonly Scenario[] = []) {
-  const timeZone = 'America/Sao_Paulo';
-  const now = Temporal.PlainDateTime.from('2026-11-02T09:46').toZonedDateTime(timeZone).toInstant();
-  TestBed.configureTestingModule({
-    providers: [
-      { provide: Clock, useValue: { context: () => ({ now, timeZone }) } },
-      {
-        provide: Scenarios,
-        useValue: { has: (s: Scenario) => scenarios.includes(s), any: () => scenarios.length > 0 },
-      },
-    ],
-  });
+  TestBed.configureTestingModule({ providers: provideTestFixtures({ scenarios }) });
   return TestBed.inject(SessionStore);
 }
 

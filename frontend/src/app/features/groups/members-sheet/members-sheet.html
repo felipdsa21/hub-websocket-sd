@@ -1,9 +1,4 @@
-<header>
-  <h2 mat-dialog-title>Membros</h2>
-  <button matIconButton mat-dialog-close aria-label="Fechar membros">
-    <mat-icon>close</mat-icon>
-  </button>
-</header>
+<app-members-header (dismiss)="dialogRef.close()" />
 <app-members-panel
   [conversationId]="conversationId()"
   (addPeople)="groupDialogs.openAddPeople(conversationId())"

@@ -5,7 +5,6 @@ import { ConnectionStore } from './connection-store';
 import { ConversationsStore } from './conversations-store';
 import { DirectoryStore } from './directory-store';
 import { MessagesStore } from './messages-store';
-import { UsersStore } from './users-store';
 
 /** An action without a response within the deadline may or may not have been done (RF09). */
 export type ActionFailure = HubError | 'noResponse';
@@ -25,7 +24,6 @@ export type LeaveResult = 'left' | ActionFailure;
 export class GroupActions {
   private readonly conversations = inject(ConversationsStore);
   private readonly messages = inject(MessagesStore);
-  private readonly users = inject(UsersStore);
   private readonly directory = inject(DirectoryStore);
   private readonly connection = inject(ConnectionStore);
   private readonly scenarios = inject(Scenarios);
@@ -40,10 +38,7 @@ export class GroupActions {
         failed.push({ username, reason: failure });
         continue;
       }
-      const state = this.directory.get(username);
-      if (state) {
-        this.users.apply(state);
-      }
+      this.directory.makeKnown([username]);
       this.conversations.addMember(conversationId, username);
       this.messages.addNotice(conversationId, 'joined', username);
       added.push(username);

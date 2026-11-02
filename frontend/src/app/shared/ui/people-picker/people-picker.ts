@@ -4,10 +4,16 @@ import { MatChip, MatChipRemove, MatChipSet } from '@angular/material/chips';
 import { MatFormField, MatLabel, MatSuffix } from '@angular/material/form-field';
 import { MatIcon } from '@angular/material/icon';
 import { MatInput } from '@angular/material/input';
-import { UserState } from '@/core/model/user';
+import { Presence, UserState } from '@/core/model/user';
 import { ConnectionStore } from '@/core/state/connection-store';
 import { DirectoryStore } from '@/core/state/directory-store';
-import { repeatedDisplayNames } from '@/shared/format/display-names';
+import {
+  joinParts,
+  nameWithUsername,
+  presenceOf,
+  presenceText,
+  repeatedDisplayNames,
+} from '@/shared/format/display-names';
 import { ResultRow } from '../result-row/result-row';
 
 /**
@@ -53,19 +59,19 @@ export class PeoplePicker {
   );
 
   /** Chips carry the username next to a repeated name; results carry it in the subtitle. */
-  protected nameOf(user: UserState, withUsername = true): string {
-    return withUsername && this.repeated().has(user.displayName)
-      ? `${user.displayName} · @${user.username}`
-      : user.displayName;
+  protected nameOf(user: UserState): string {
+    return nameWithUsername(user, this.repeated());
+  }
+
+  protected presenceOf(user: UserState): Presence | null {
+    return presenceOf(user, this.connected());
   }
 
   protected subtitleOf(user: UserState): string {
-    return [
-      this.repeated().has(user.displayName) ? `@${user.username}` : '',
-      this.connected() ? (user.online ? 'Online' : 'Offline') : '',
-    ]
-      .filter(Boolean)
-      .join(' · ');
+    return joinParts(
+      this.repeated().has(user.displayName) && `@${user.username}`,
+      presenceText(this.presenceOf(user)),
+    );
   }
 
   protected isSelected(user: UserState): boolean {

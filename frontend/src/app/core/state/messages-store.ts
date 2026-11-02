@@ -1,12 +1,26 @@
 import { Service, inject, signal } from '@angular/core';
 import { Fixtures } from '@/core/fixtures/fixtures';
 import { Scenarios } from '@/core/fixtures/scenarios';
-import { Message, OutgoingMessage, compareMessages, messageSk } from '@/core/model/message';
+import { HubError } from '@/core/model/error';
+import {
+  Message,
+  OutgoingMessage,
+  compareMessages,
+  messageSk,
+  skAfterInstant,
+} from '@/core/model/message';
 import { MemberNotice } from '@/core/model/notice';
 import { Clock } from '@/core/time/clock';
 import { ConnectionStore } from './connection-store';
 import { ConversationsStore } from './conversations-store';
 import { CurrentUser } from './current-user';
+
+/** The error of a message the "nao-enviada" scenario rejects. */
+const REJECTED_TEXT: HubError = {
+  code: 'invalidRequest',
+  message: 'text: invalid',
+  details: { field: 'text' },
+};
 
 /** Messages per page of history (architecture, section 4.4). */
 export const HISTORY_PAGE_SIZE = 50;
@@ -116,7 +130,7 @@ export class MessagesStore {
           conversationId,
           messageId,
           text,
-          error: { code: 'invalidRequest', message: 'text: invalid', details: { field: 'text' } },
+          error: REJECTED_TEXT,
         },
       ]);
       return;
@@ -155,11 +169,8 @@ export class MessagesStore {
   public addNotice(conversationId: string, kind: MemberNotice['kind'], username: string): void {
     const lastLoaded = this.history(conversationId)?.messages.at(-1)?.sk;
     const lastMessageAt = this.conversations.get(conversationId)?.lastMessageAt;
-    // The highest character sorts after any sender and id at that instant.
     const fromLastMessageAt =
-      lastMessageAt === undefined
-        ? undefined
-        : `m#${String(lastMessageAt).padStart(13, '0')}#\uffff`;
+      lastMessageAt === undefined ? undefined : skAfterInstant(lastMessageAt);
     const afterSk = [lastLoaded, fromLastMessageAt]
       .filter((sk) => sk !== undefined)
       .reduce<string | undefined>(
@@ -209,7 +220,7 @@ export class MessagesStore {
         conversationId,
         messageId: crypto.randomUUID(),
         text: 'Segue o resumo do T5 para conferir.',
-        error: { code: 'invalidRequest', message: 'text: invalid', details: { field: 'text' } },
+        error: REJECTED_TEXT,
       });
     }
     return outgoing;

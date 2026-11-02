@@ -1,23 +1,17 @@
 <div class="conversation">
   @if (header(); as header) {
-    <header class="conversation-header">
-      @if (compact()) {
-        <a matIconButton routerLink="/" aria-label="Voltar para as conversas">
-          <mat-icon>arrow_back</mat-icon>
-        </a>
-      } @else {
-        <app-avatar
-          [kind]="header.avatarKind"
-          [name]="header.avatarName"
-          [presence]="header.presence"
-        />
-      }
-      <div class="title">
-        <h1>{{ header.title }}</h1>
-        @if (header.detail) {
-          <span class="detail">{{ header.detail }}</span>
-        }
-      </div>
+    <app-screen-header
+      [title]="header.title"
+      [detail]="header.detail"
+      [backLink]="compact() ? '/' : null"
+      backLabel="Voltar para as conversas"
+    >
+      <app-avatar
+        leading
+        [kind]="header.avatarKind"
+        [name]="header.avatarName"
+        [presence]="header.presence"
+      />
       @if (conversation()?.type === 'group') {
         <button
           matIconButton
@@ -37,7 +31,7 @@
           <button mat-menu-item [disabled]="!connected()" (click)="leave()">Sair do grupo</button>
         </mat-menu>
       }
-    </header>
+    </app-screen-header>
   }
   @if (compact() && !connected()) {
     <app-connection-banner />
@@ -88,7 +82,7 @@
             } @else if (history()?.status === 'older-error') {
               <div class="older load-error" role="alert">
                 <p>Não foi possível carregar as mensagens anteriores.</p>
-                <button matButton (click)="retryOlder()" [disabled]="!connected()">
+                <button matButton (click)="loadOlder()" [disabled]="!connected()">
                   Tentar de novo
                 </button>
               </div>
@@ -124,12 +118,7 @@
 
 @if (showInlineMembers()) {
   <aside class="members" aria-labelledby="members-title">
-    <header>
-      <h2 id="members-title">Membros</h2>
-      <button matIconButton aria-label="Fechar membros" (click)="membersOpen.set(false)">
-        <mat-icon>close</mat-icon>
-      </button>
-    </header>
+    <app-members-header (dismiss)="membersOpen.set(false)" />
     <app-members-panel [conversationId]="conversationId()" (addPeople)="addPeople()" />
   </aside>
 }

@@ -95,6 +95,41 @@ mat-hint {
   color: var(--mat-sys-on-surface-variant);
 }
 
+// A list without bullets, with the 2 px gap of the design's lists.
+.plain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// Two-line text of a list item: a title and a subtitle, each cut with an ellipsis.
+.item-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.item-title,
+.item-subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-title {
+  font: var(--mat-sys-body-large);
+  color: var(--mat-sys-on-surface);
+}
+
+.item-subtitle {
+  font: var(--mat-sys-body-medium);
+  color: var(--mat-sys-on-surface-variant);
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

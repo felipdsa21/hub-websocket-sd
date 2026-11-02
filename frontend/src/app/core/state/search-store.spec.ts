@@ -1,32 +1,13 @@
 import { TestBed } from '@angular/core/testing';
-import { Temporal } from 'temporal-polyfill';
-import { Scenario, Scenarios } from '@/core/fixtures/scenarios';
-import { Clock } from '@/core/time/clock';
+import { Scenario } from '@/core/fixtures/scenarios';
+import { provideTestFixtures } from '@/core/fixtures/testing';
 import { ConversationActions } from './conversation-actions';
 import { ConversationsStore } from './conversations-store';
 import { SearchStore } from './search-store';
 import { SessionStore } from './session-store';
 
 function setUp(scenarios: readonly Scenario[] = []) {
-  let ticks = 0;
-  const timeZone = 'America/Sao_Paulo';
-  const now = Temporal.PlainDateTime.from('2026-11-02T09:46').toZonedDateTime(timeZone).toInstant();
-  TestBed.configureTestingModule({
-    providers: [
-      {
-        provide: Clock,
-        // Each read moves the clock on, as real actions happen at different instants.
-        useValue: {
-          context: () => ({ now, timeZone }),
-          instant: () => now.add({ seconds: ++ticks }),
-        },
-      },
-      {
-        provide: Scenarios,
-        useValue: { has: (s: Scenario) => scenarios.includes(s), any: () => scenarios.length > 0 },
-      },
-    ],
-  });
+  TestBed.configureTestingModule({ providers: provideTestFixtures({ scenarios }) });
   TestBed.inject(SessionStore).enter('marina', 'Marina Alves');
 }
 

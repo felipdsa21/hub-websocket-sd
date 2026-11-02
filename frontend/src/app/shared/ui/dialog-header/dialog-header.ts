@@ -1,4 +1,4 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, inject, input } from '@angular/core';
 import { MatIconButton } from '@angular/material/button';
 import { MatDialogClose, MatDialogTitle } from '@angular/material/dialog';
 import { MatIcon } from '@angular/material/icon';
@@ -19,5 +19,5 @@ export class DialogHeader {
 
   public readonly title = input.required<string>();
 
-  protected readonly compact = computed(() => this.breakpoints.windowSize() === 'compact');
+  protected readonly compact = this.breakpoints.compact;
 }

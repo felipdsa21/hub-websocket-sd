@@ -16,4 +16,6 @@ export class Breakpoints {
   public readonly windowSize = computed<WindowSize>(() =>
     this.expanded() ? 'expanded' : this.medium() ? 'medium' : 'compact',
   );
+  /** Phones, where lists, conversations and dialogs take the whole screen. */
+  public readonly compact = computed(() => this.windowSize() === 'compact');
 }

@@ -5,3 +5,6 @@ export interface UserState {
   readonly online: boolean;
   readonly version: number;
 }
+
+/** What others see of a user: online while any connection is open (RF07). */
+export type Presence = 'online' | 'offline';

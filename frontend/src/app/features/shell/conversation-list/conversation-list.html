@@ -42,10 +42,10 @@
       >
         <span class="row">
           <app-avatar [kind]="row.avatarKind" [name]="row.avatarName" [presence]="row.presence" />
-          <span class="text">
-            <span class="title">{{ row.title }}</span>
+          <span class="item-text">
+            <span class="item-title">{{ row.title }}</span>
             @if (row.subtitle) {
-              <span class="subtitle">{{ row.subtitle }}</span>
+              <span class="item-subtitle">{{ row.subtitle }}</span>
             }
           </span>
           @if (row.newActivity) {

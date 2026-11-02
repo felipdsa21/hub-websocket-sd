@@ -4,14 +4,22 @@ import { MatIcon } from '@angular/material/icon';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { Router } from '@angular/router';
 import { Conversation } from '@/core/model/conversation';
-import { UserState } from '@/core/model/user';
+import { Presence, UserState } from '@/core/model/user';
 import { ConnectionStore } from '@/core/state/connection-store';
 import { CurrentUser } from '@/core/state/current-user';
 import { SearchStore } from '@/core/state/search-store';
 import { UsersStore } from '@/core/state/users-store';
 import { NewConversationDialogs } from '@/features/new-conversation/new-conversation-dialogs';
-import { membersLabel, repeatedDisplayNames } from '@/shared/format/display-names';
-import { AvatarKind, AvatarPresence } from '@/shared/ui/avatar/avatar';
+import { conversationIdentity } from '@/shared/format/conversation-identity';
+import {
+  joinParts,
+  membersLabel,
+  partnerOf,
+  presenceOf,
+  presenceText,
+  repeatedDisplayNames,
+} from '@/shared/format/display-names';
+import { AvatarKind } from '@/shared/ui/avatar/avatar';
 import { ResultRow } from '@/shared/ui/result-row/result-row';
 
 interface ResultView {
@@ -20,7 +28,7 @@ interface ResultView {
   readonly subtitle: string;
   readonly avatarKind: AvatarKind;
   readonly avatarName: string;
-  readonly presence: AvatarPresence | null;
+  readonly presence: Presence | null;
 }
 
 /** The search bar of the top bar, which opens the results; full screen on phones (RF05). */
@@ -52,13 +60,16 @@ export class SearchBox {
   protected readonly status = this.search.status;
   private readonly input = viewChild<ElementRef<HTMLInputElement>>('input');
 
+  private readonly me = computed(() => this.currentUser.user()?.username ?? '');
+
   /** Display names repeated among the results show the username (specification, section 2). */
   private readonly repeated = computed(() => {
     const { conversations, people } = this.search.results();
-    return repeatedDisplayNames([
-      ...conversations.map((c) => this.partnerOf(c)).filter((u) => u !== undefined),
-      ...people,
-    ]);
+    const partners = conversations
+      .filter((c) => c.type === 'direct')
+      .map((c) => this.users.get(partnerOf(c, this.me())))
+      .filter((u) => u !== undefined);
+    return repeatedDisplayNames([...partners, ...people]);
   });
 
   protected readonly conversations = computed(() =>
@@ -111,58 +122,32 @@ export class SearchBox {
     }
   }
 
-  private partnerOf(conversation: Conversation): UserState | undefined {
-    if (conversation.type !== 'direct') {
-      return undefined;
-    }
-    const me = this.currentUser.user()?.username;
-    return this.users.get(conversation.members.find((m) => m !== me) ?? '');
-  }
-
-  private presenceOf(user: UserState): AvatarPresence | null {
-    return this.connected() ? (user.online ? 'online' : 'offline') : null;
-  }
-
   private conversationView(conversation: Conversation): ResultView {
-    if (conversation.type === 'group') {
-      return {
-        key: conversation.conversationId,
-        title: conversation.name ?? '',
-        subtitle: `Grupo · ${membersLabel(conversation.members.length)}`,
-        avatarKind: 'group',
-        avatarName: conversation.name ?? '',
-        presence: null,
-      };
-    }
-    const partner = this.partnerOf(conversation);
-    const presence = partner ? this.presenceOf(partner) : null;
+    const identity = conversationIdentity(conversation, {
+      me: this.me(),
+      users: this.users.all(),
+      connected: this.connected(),
+      repeated: this.repeated(),
+    });
     return {
+      ...identity,
       key: conversation.conversationId,
-      title: partner?.displayName ?? conversation.conversationId,
-      subtitle: [
-        partner && this.repeated().has(partner.displayName) ? `@${partner.username}` : '',
-        'Chat privado',
-        presence === 'online' ? 'Online' : presence === 'offline' ? 'Offline' : '',
-      ]
-        .filter(Boolean)
-        .join(' · '),
-      avatarKind: partner ? 'person' : 'unknown',
-      avatarName: partner?.displayName ?? '',
-      presence,
+      subtitle:
+        conversation.type === 'group'
+          ? joinParts('Grupo', membersLabel(conversation.members.length))
+          : joinParts(identity.usernameTag, 'Chat privado', presenceText(identity.presence)),
     };
   }
 
   private personView(user: UserState): ResultView {
-    const presence = this.presenceOf(user);
+    const presence = presenceOf(user, this.connected());
     return {
       key: user.username,
       title: user.displayName,
-      subtitle: [
-        this.repeated().has(user.displayName) ? `@${user.username}` : '',
-        presence === 'online' ? 'Online' : presence === 'offline' ? 'Offline' : '',
-      ]
-        .filter(Boolean)
-        .join(' · '),
+      subtitle: joinParts(
+        this.repeated().has(user.displayName) && `@${user.username}`,
+        presenceText(presence),
+      ),
       avatarKind: 'person',
       avatarName: user.displayName,
       presence,

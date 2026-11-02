@@ -1,5 +1,6 @@
 import { Component, input } from '@angular/core';
-import { Avatar, AvatarKind, AvatarPresence } from '../avatar/avatar';
+import { Presence } from '@/core/model/user';
+import { Avatar, AvatarKind } from '../avatar/avatar';
 
 /** A selectable row of a search result: a person or a conversation. Clicks reach the host. */
 @Component({
@@ -11,7 +12,7 @@ import { Avatar, AvatarKind, AvatarPresence } from '../avatar/avatar';
 export class ResultRow {
   public readonly avatarKind = input<AvatarKind>('person');
   public readonly avatarName = input('');
-  public readonly presence = input<AvatarPresence | null>(null);
+  public readonly presence = input<Presence | null>(null);
   public readonly title = input.required<string>();
   public readonly subtitle = input('');
   public readonly selected = input(false);

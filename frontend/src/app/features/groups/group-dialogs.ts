@@ -7,7 +7,7 @@ import { ConversationsStore } from '@/core/state/conversations-store';
 import { DirectoryStore } from '@/core/state/directory-store';
 import { GroupActions } from '@/core/state/group-actions';
 import { UsersStore } from '@/core/state/users-store';
-import { repeatedDisplayNames } from '@/shared/format/display-names';
+import { nameWithUsername, repeatedDisplayNames } from '@/shared/format/display-names';
 import { addMembersNotice, leaveFailureText } from '@/shared/format/error-messages';
 import { formDialogConfig } from '@/shared/ui/dialog-config';
 import { AddPeopleDialog } from './add-people-dialog/add-people-dialog';
@@ -36,6 +36,7 @@ export class GroupDialogs {
       maxHeight: '100%',
       panelClass: 'side-sheet-panel',
       autoFocus: 'dialog',
+      ariaLabelledBy: 'members-title',
     });
   }
 
@@ -51,13 +52,16 @@ export class GroupDialogs {
         return;
       }
       const result = this.actions.addMembers(conversationId, usernames);
-      const people = usernames
-        .map((u) => this.users.get(u) ?? this.directory.get(u))
-        .filter((u) => u !== undefined);
-      const repeated = repeatedDisplayNames(people);
+      const people = new Map(
+        usernames
+          .map((u) => this.users.get(u) ?? this.directory.get(u))
+          .filter((u) => u !== undefined)
+          .map((u) => [u.username, u]),
+      );
+      const repeated = repeatedDisplayNames(people.values());
       const notice = addMembersNotice(result, (username) => {
-        const name = this.nameOf(username);
-        return repeated.has(name) ? `${name} · @${username}` : name;
+        const user = people.get(username);
+        return user ? nameWithUsername(user, repeated) : `@${username}`;
       });
       if (notice) {
         this.snackBar.open(notice, undefined, { duration: 6000 });
@@ -92,13 +96,5 @@ export class GroupDialogs {
         this.snackBar.open(leaveFailureText(result), undefined, { duration: 6000 });
       }
     });
-  }
-
-  private nameOf(username: string): string {
-    return (
-      this.users.get(username)?.displayName ??
-      this.directory.get(username)?.displayName ??
-      `@${username}`
-    );
   }
 }

@@ -1,19 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { Scenario, Scenarios } from '@/core/fixtures/scenarios';
+import { Scenario } from '@/core/fixtures/scenarios';
+import { provideTestFixtures } from '@/core/fixtures/testing';
 import { SessionStore } from '@/core/state/session-store';
 import { LoginPage } from './login-page';
 
 async function render(scenarios: readonly Scenario[] = []) {
   TestBed.configureTestingModule({
     imports: [LoginPage],
-    providers: [
-      provideRouter([]),
-      {
-        provide: Scenarios,
-        useValue: { has: (s: Scenario) => scenarios.includes(s), any: () => scenarios.length > 0 },
-      },
-    ],
+    providers: [provideRouter([]), ...provideTestFixtures({ scenarios })],
   });
   const fixture = TestBed.createComponent(LoginPage);
   await fixture.whenStable();

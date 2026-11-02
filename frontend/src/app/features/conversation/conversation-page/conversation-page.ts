@@ -15,7 +15,7 @@ import { MatButton, MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { Breakpoints } from '@/core/layout/breakpoints';
 import { ConnectionStore } from '@/core/state/connection-store';
 import { ConversationsStore } from '@/core/state/conversations-store';
@@ -24,10 +24,18 @@ import { MessagesStore } from '@/core/state/messages-store';
 import { UsersStore } from '@/core/state/users-store';
 import { Clock } from '@/core/time/clock';
 import { GroupDialogs } from '@/features/groups/group-dialogs';
+import { MembersHeader } from '@/features/groups/members-header/members-header';
 import { MembersPanel } from '@/features/groups/members-panel/members-panel';
-import { membersLabel, repeatedDisplayNames } from '@/shared/format/display-names';
-import { Avatar, AvatarKind, AvatarPresence } from '@/shared/ui/avatar/avatar';
+import { conversationIdentity } from '@/shared/format/conversation-identity';
+import {
+  joinParts,
+  membersLabel,
+  presenceText,
+  repeatedDisplayNames,
+} from '@/shared/format/display-names';
+import { Avatar } from '@/shared/ui/avatar/avatar';
 import { ConnectionBanner } from '@/shared/ui/connection-banner/connection-banner';
+import { ScreenHeader } from '@/shared/ui/screen-header/screen-header';
 import { MessageBubble } from '../message-bubble/message-bubble';
 import { MessageComposer } from '../message-composer/message-composer';
 import { buildTimeline } from '../timeline';
@@ -47,10 +55,11 @@ const BOTTOM_THRESHOLD = 48;
     MatMenuItem,
     MatMenuTrigger,
     MatProgressSpinner,
+    MembersHeader,
     MembersPanel,
     MessageBubble,
     MessageComposer,
-    RouterLink,
+    ScreenHeader,
   ],
   templateUrl: './conversation-page.html',
   styleUrl: './conversation-page.scss',
@@ -70,7 +79,7 @@ export class ConversationPage {
 
   public readonly conversationId = input.required<string>();
 
-  protected readonly compact = computed(() => this.breakpoints.windowSize() === 'compact');
+  protected readonly compact = this.breakpoints.compact;
 
   protected readonly conversation = computed(() => this.conversations.get(this.conversationId()));
   protected readonly history = computed(() => this.messages.history(this.conversationId()));
@@ -84,6 +93,7 @@ export class ConversationPage {
       this.breakpoints.windowSize() === 'expanded',
   );
 
+  /** The conversation's identity; a repeated name compares only with who is in it. */
   protected readonly header = computed(() => {
     const conversation = this.conversation();
     if (!conversation) {
@@ -91,35 +101,21 @@ export class ConversationPage {
     }
     const connected = this.connected();
     const users = this.users.all();
-    if (conversation.type === 'group') {
-      const online = conversation.members.filter((m) => users.get(m)?.online).length;
-      return {
-        title: conversation.name ?? '',
-        detail:
-          membersLabel(conversation.members.length) + (connected ? ` · ${online} online` : ''),
-        avatarKind: 'group' as AvatarKind,
-        avatarName: conversation.name ?? '',
-        presence: null,
-      };
-    }
-    const me = this.currentUser.user()?.username;
-    const username = conversation.members.find((m) => m !== me) ?? me ?? '';
-    const partner = users.get(username);
-    const presence: AvatarPresence | null =
-      partner && connected ? (partner.online ? 'online' : 'offline') : null;
-    const repeated = partner && repeatedDisplayNames(users.values()).has(partner.displayName);
-    return {
-      title: partner?.displayName ?? `@${username}`,
-      detail: [
-        repeated ? `@${username}` : '',
-        presence === 'online' ? 'Online' : presence === 'offline' ? 'Offline' : '',
-      ]
-        .filter(Boolean)
-        .join(' · '),
-      avatarKind: (partner ? 'person' : 'unknown') as AvatarKind,
-      avatarName: partner?.displayName ?? '',
-      presence,
-    };
+    const members = conversation.members.map((m) => users.get(m)).filter((u) => u !== undefined);
+    const identity = conversationIdentity(conversation, {
+      me: this.currentUser.user()?.username ?? '',
+      users,
+      connected,
+      repeated: repeatedDisplayNames(members),
+    });
+    const detail =
+      conversation.type === 'group'
+        ? joinParts(
+            membersLabel(conversation.members.length),
+            connected && `${members.filter((m) => m.online).length} online`,
+          )
+        : joinParts(identity.usernameTag, presenceText(identity.presence));
+    return { ...identity, detail };
   });
 
   protected readonly timeline = computed(() => {
@@ -221,22 +217,16 @@ export class ConversationPage {
     }
   }
 
+  /** From the sentinel at the top and from "Tentar de novo" after a failure. */
   protected loadOlder(): void {
     const element = this.scroller()?.nativeElement;
+    const status = this.history()?.status;
     // Going back in the history needs the connection (RF08).
-    if (!element || !this.connected() || this.history()?.status !== 'loaded') {
+    if (!element || !this.connected() || (status !== 'loaded' && status !== 'older-error')) {
       return;
     }
     this.anchorFromBottom = element.scrollHeight - element.scrollTop;
     this.messages.loadOlder(this.conversationId());
-  }
-
-  protected retryOlder(): void {
-    const element = this.scroller()?.nativeElement;
-    if (element && this.connected()) {
-      this.anchorFromBottom = element.scrollHeight - element.scrollTop;
-      this.messages.loadOlder(this.conversationId());
-    }
   }
 
   protected retryLatest(): void {

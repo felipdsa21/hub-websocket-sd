@@ -53,32 +53,8 @@ mat-nav-list {
   gap: 12px;
 }
 
-.text {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.title,
-.subtitle {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.title {
-  font: var(--mat-sys-body-large);
-  color: var(--mat-sys-on-surface);
-}
-
-.new-activity .title {
+.new-activity .item-title {
   font-weight: 500;
-}
-
-.subtitle {
-  font: var(--mat-sys-body-medium);
-  color: var(--mat-sys-on-surface-variant);
 }
 
 .time {

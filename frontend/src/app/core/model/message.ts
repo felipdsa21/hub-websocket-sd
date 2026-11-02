@@ -19,7 +19,17 @@ export interface OutgoingMessage {
 }
 
 export function messageSk(sentAt: number, sender: string, messageId: string): string {
-  return `m#${String(sentAt).padStart(13, '0')}#${sender}#${messageId}`;
+  return `${skInstant(sentAt)}#${sender}#${messageId}`;
+}
+
+/** An `sk` after every message sent at the instant, to place something right after them. */
+export function skAfterInstant(sentAt: number): string {
+  // The highest character sorts after any sender and id.
+  return `${skInstant(sentAt)}#\uffff`;
+}
+
+function skInstant(sentAt: number): string {
+  return `m#${String(sentAt).padStart(13, '0')}`;
 }
 
 export function compareMessages(a: Message, b: Message): number {

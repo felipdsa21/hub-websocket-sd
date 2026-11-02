@@ -7,7 +7,6 @@ import { ConversationsStore } from './conversations-store';
 import { CurrentUser } from './current-user';
 import { DirectoryStore } from './directory-store';
 import { ActionFailure } from './group-actions';
-import { UsersStore } from './users-store';
 
 export type StartResult = { readonly conversationId: string } | ActionFailure;
 
@@ -15,7 +14,6 @@ export type StartResult = { readonly conversationId: string } | ActionFailure;
 @Service()
 export class ConversationActions {
   private readonly conversations = inject(ConversationsStore);
-  private readonly users = inject(UsersStore);
   private readonly directory = inject(DirectoryStore);
   private readonly currentUser = inject(CurrentUser);
   private readonly scenarios = inject(Scenarios);
@@ -30,7 +28,7 @@ export class ConversationActions {
     }
     const conversationId = directConversationId(me, username);
     if (!this.conversations.get(conversationId)) {
-      this.makeKnown([username]);
+      this.directory.makeKnown([username]);
       this.conversations.add({
         conversationId,
         type: 'direct',
@@ -49,7 +47,7 @@ export class ConversationActions {
       return failure;
     }
     const conversationId = `g:${crypto.randomUUID()}`;
-    this.makeKnown(usernames);
+    this.directory.makeKnown(usernames);
     this.conversations.add({
       conversationId,
       type: 'group',
@@ -70,14 +68,5 @@ export class ConversationActions {
     return missing.length > 0
       ? { code: 'notFound', message: 'user not found', details: { usernames: missing } }
       : undefined;
-  }
-
-  private makeKnown(usernames: readonly string[]): void {
-    for (const username of usernames) {
-      const state = this.directory.get(username);
-      if (state) {
-        this.users.apply(state);
-      }
-    }
   }
 }

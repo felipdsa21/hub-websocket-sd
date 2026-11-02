@@ -21,13 +21,13 @@
   </mat-chip-set>
 }
 
-<ul aria-label="Pessoas encontradas">
+<ul class="plain-list" aria-label="Pessoas encontradas">
   @for (user of results(); track user.username) {
     <li>
       <app-result-row
         [avatarName]="user.displayName"
-        [presence]="connected() ? (user.online ? 'online' : 'offline') : null"
-        [title]="nameOf(user, false)"
+        [presence]="presenceOf(user)"
+        [title]="user.displayName"
         [subtitle]="subtitleOf(user)"
         [selected]="multiple() && isSelected(user)"
         [pressed]="multiple() ? isSelected(user) : null"

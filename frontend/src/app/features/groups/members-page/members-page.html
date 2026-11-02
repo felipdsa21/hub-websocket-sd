@@ -1,12 +1,9 @@
-<header>
-  <a matIconButton [routerLink]="['/c', conversationId()]" aria-label="Voltar para a conversa">
-    <mat-icon>arrow_back</mat-icon>
-  </a>
-  <div class="title">
-    <h1>Membros</h1>
-    <span class="detail">{{ groupName() }}</span>
-  </div>
-</header>
+<app-screen-header
+  title="Membros"
+  [detail]="groupName()"
+  [backLink]="['/c', conversationId()]"
+  backLabel="Voltar para a conversa"
+/>
 @if (!connected()) {
   <app-connection-banner />
 }

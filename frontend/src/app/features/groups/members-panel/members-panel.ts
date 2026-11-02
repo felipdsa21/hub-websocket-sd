@@ -1,19 +1,20 @@
 import { Component, computed, inject, input, output } from '@angular/core';
 import { MatButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
+import { Presence } from '@/core/model/user';
 import { ConnectionStore } from '@/core/state/connection-store';
 import { ConversationsStore } from '@/core/state/conversations-store';
 import { CurrentUser } from '@/core/state/current-user';
 import { UsersStore } from '@/core/state/users-store';
-import { repeatedDisplayNames } from '@/shared/format/display-names';
-import { Avatar, AvatarPresence } from '@/shared/ui/avatar/avatar';
+import { nameWithUsername, presenceOf, repeatedDisplayNames } from '@/shared/format/display-names';
+import { Avatar } from '@/shared/ui/avatar/avatar';
 
 interface MemberRow {
   readonly username: string;
   readonly label: string;
   readonly name: string;
   readonly known: boolean;
-  readonly presence: AvatarPresence | null;
+  readonly presence: Presence | null;
 }
 
 interface MemberSection {
@@ -53,17 +54,13 @@ export class MembersPanel {
     const rows = members
       .map((username): MemberRow & { online: boolean } => {
         const user = users.get(username);
-        const label = !user
-          ? `@${username}`
-          : repeated.has(user.displayName)
-            ? `${user.displayName} · @${username}`
-            : user.displayName;
+        const label = user ? nameWithUsername(user, repeated) : `@${username}`;
         return {
           username,
           label: username === me ? `${label} (você)` : label,
           name: user?.displayName ?? '',
           known: user !== undefined,
-          presence: user && connected ? (user.online ? 'online' : 'offline') : null,
+          presence: presenceOf(user, connected),
           online: user?.online ?? false,
         };
       })
