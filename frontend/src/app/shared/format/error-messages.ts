@@ -41,6 +41,19 @@ function addMemberFailureText(name: string, username: string, reason: ActionFail
   }
 }
 
+/** Failure to start a direct chat or create a group; `notFound` lists the missing users. */
+export function startFailureText(kind: 'chat' | 'group', reason: ActionFailure): string {
+  if (reason === 'noResponse') {
+    return kind === 'group'
+      ? 'Sem resposta. O grupo pode não ter sido criado.'
+      : 'Sem resposta. O chat pode não ter sido iniciado.';
+  }
+  if (reason.code === 'notFound') {
+    return `Usuário não encontrado: ${(reason.details?.usernames ?? []).join(', ')}`;
+  }
+  return actionErrorText(reason);
+}
+
 export function leaveFailureText(reason: ActionFailure): string {
   return reason === 'noResponse'
     ? 'Sem resposta. Você pode não ter saído do grupo.'

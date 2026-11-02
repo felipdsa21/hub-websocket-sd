@@ -9,6 +9,7 @@ import { GroupActions } from '@/core/state/group-actions';
 import { UsersStore } from '@/core/state/users-store';
 import { repeatedDisplayNames } from '@/shared/format/display-names';
 import { addMembersNotice, leaveFailureText } from '@/shared/format/error-messages';
+import { formDialogConfig } from '@/shared/ui/dialog-config';
 import { AddPeopleDialog } from './add-people-dialog/add-people-dialog';
 import { LeaveGroupDialog } from './leave-group-dialog/leave-group-dialog';
 import { MembersSheet } from './members-sheet/members-sheet';
@@ -39,15 +40,12 @@ export class GroupDialogs {
   }
 
   public openAddPeople(conversationId: string): void {
-    const compact = this.breakpoints.windowSize() === 'compact';
-    const ref = this.dialog.open<AddPeopleDialog, unknown, readonly string[]>(AddPeopleDialog, {
-      bindings: [inputBinding('conversationId', () => conversationId)],
-      width: compact ? '100vw' : '480px',
-      height: compact ? '100%' : undefined,
-      maxWidth: compact ? '100vw' : '80vw',
-      maxHeight: compact ? '100%' : undefined,
-      panelClass: compact ? 'full-screen-dialog-panel' : undefined,
-    });
+    const ref = this.dialog.open<AddPeopleDialog, unknown, readonly string[]>(
+      AddPeopleDialog,
+      formDialogConfig(this.breakpoints.windowSize(), [
+        inputBinding('conversationId', () => conversationId),
+      ]),
+    );
     ref.afterClosed().subscribe((usernames) => {
       if (!usernames?.length) {
         return;

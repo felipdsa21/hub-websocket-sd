@@ -1,0 +1,38 @@
+<mat-form-field appearance="outline" subscriptSizing="dynamic">
+  <mat-label>{{ label() }}</mat-label>
+  <input matInput autocomplete="off" [value]="query()" (input)="onQuery($event)" />
+  @if (query()) {
+    <button matIconButton matSuffix aria-label="Limpar" (click)="query.set('')">
+      <mat-icon>cancel</mat-icon>
+    </button>
+  }
+</mat-form-field>
+
+@if (multiple() && selected().length > 0) {
+  <mat-chip-set aria-label="Pessoas escolhidas">
+    @for (user of selected(); track user.username) {
+      <mat-chip (removed)="toggle(user)">
+        {{ nameOf(user) }}
+        <button matChipRemove [attr.aria-label]="'Remover ' + nameOf(user)">
+          <mat-icon>close</mat-icon>
+        </button>
+      </mat-chip>
+    }
+  </mat-chip-set>
+}
+
+<ul aria-label="Pessoas encontradas">
+  @for (user of results(); track user.username) {
+    <li>
+      <app-result-row
+        [avatarName]="user.displayName"
+        [presence]="connected() ? (user.online ? 'online' : 'offline') : null"
+        [title]="nameOf(user, false)"
+        [subtitle]="subtitleOf(user)"
+        [selected]="multiple() && isSelected(user)"
+        [pressed]="multiple() ? isSelected(user) : null"
+        (click)="choose(user)"
+      ></app-result-row>
+    </li>
+  }
+</ul>

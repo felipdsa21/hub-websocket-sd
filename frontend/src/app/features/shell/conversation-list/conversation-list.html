@@ -1,9 +1,18 @@
 <div class="list-header">
   <h2 id="conversation-list-title">Chat</h2>
   @if (!compact()) {
-    <button matIconButton [disabled]="!connected()" aria-label="Novo chat ou grupo">
+    <button
+      matIconButton
+      [disabled]="!connected()"
+      [matMenuTriggerFor]="newMenu"
+      aria-label="Novo chat ou grupo"
+    >
       <mat-icon>add</mat-icon>
     </button>
+    <mat-menu #newMenu="matMenu" xPosition="before">
+      <button mat-menu-item (click)="newConversations.openNewChat()">Novo chat</button>
+      <button mat-menu-item (click)="newConversations.openNewGroup()">Novo grupo</button>
+    </mat-menu>
   }
 </div>
 

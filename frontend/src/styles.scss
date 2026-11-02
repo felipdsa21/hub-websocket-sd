@@ -77,6 +77,22 @@ mat-hint {
   .mat-mdc-dialog-surface {
     border-radius: 0;
   }
+
+  .mat-mdc-dialog-content {
+    flex: 1;
+    max-height: none;
+  }
+
+  // The main action moves to the header (DialogHeader), and closing is the header's X.
+  .mat-mdc-dialog-actions {
+    display: none;
+  }
+}
+
+.dialog-intro {
+  margin: 0 0 16px;
+  font: var(--mat-sys-body-medium);
+  color: var(--mat-sys-on-surface-variant);
 }
 
 .visually-hidden {

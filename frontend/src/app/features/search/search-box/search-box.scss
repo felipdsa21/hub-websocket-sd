@@ -1,0 +1,134 @@
+:host {
+  position: relative;
+  flex: 0 1 560px;
+  min-width: 0;
+  height: 56px;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 56px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  border-radius: 28px;
+  background: var(--mat-sys-surface-container-high);
+  color: var(--mat-sys-on-surface-variant);
+
+  &.disabled > * {
+    opacity: 0.38;
+  }
+
+  input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--mat-sys-on-surface);
+    font: var(--mat-sys-body-large);
+
+    &::placeholder {
+      color: var(--mat-sys-on-surface-variant);
+    }
+
+    // The bar draws its own clear button.
+    &::-webkit-search-cancel-button {
+      display: none;
+    }
+  }
+}
+
+:host(.open) .bar {
+  gap: 4px;
+  padding: 0 4px;
+}
+
+:host(:focus-within) .bar {
+  outline: 2px solid var(--mat-sys-primary);
+}
+
+:host(.open:focus-within) .bar {
+  outline: none;
+}
+
+// The open search is one elevated container: the bar on top of the results.
+.panel {
+  position: absolute;
+  top: 56px;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  max-height: min(560px, 70vh);
+  padding-bottom: 8px;
+  overflow-y: auto;
+  border-top: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 0 0 28px 28px;
+  background: var(--mat-sys-surface-container-high);
+  box-shadow: var(--mat-sys-level3);
+}
+
+:host(.open) .bar:has(+ .panel) {
+  border-radius: 28px 28px 0 0;
+  box-shadow: var(--mat-sys-level3);
+}
+
+h2 {
+  margin: 0;
+  padding: 16px 16px 4px;
+  font: var(--mat-sys-title-small);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 16px;
+  font: var(--mat-sys-body-medium);
+  color: var(--mat-sys-on-surface-variant);
+
+  &.error {
+    justify-content: space-between;
+  }
+}
+
+p.state {
+  justify-content: flex-start;
+}
+
+// On phones, the open search covers the screen.
+:host(.compact.open) {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  background: var(--mat-sys-surface-container-high);
+
+  .bar {
+    flex: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .panel {
+    position: static;
+    flex: 1;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}

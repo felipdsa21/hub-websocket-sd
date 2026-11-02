@@ -1,0 +1,25 @@
+<app-dialog-header title="Novo grupo">
+  <button matButton [disabled]="!canCreate()" (click)="create()">Criar</button>
+</app-dialog-header>
+<mat-dialog-content>
+  <p class="dialog-intro">Dê um nome ao grupo e adicione pelo menos uma pessoa.</p>
+  <mat-form-field appearance="outline">
+    <mat-label>Nome do grupo</mat-label>
+    <input matInput autocomplete="off" [formField]="groupForm.name" />
+    @if (groupForm.name().touched() && groupForm.name().invalid()) {
+      <mat-icon matSuffix class="filled-icon error-icon" aria-hidden="true">error</mat-icon>
+    }
+    <mat-hint>Até 50 caracteres.</mat-hint>
+    <mat-error>Dê um nome ao grupo, com até 50 caracteres.</mat-error>
+  </mat-form-field>
+  <app-people-picker
+    label="Adicionar pessoas"
+    [multiple]="true"
+    [exclude]="me()"
+    [(selected)]="selected"
+  />
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button matButton mat-dialog-close>Cancelar</button>
+  <button matButton [disabled]="!canCreate()" (click)="create()">Criar grupo</button>
+</mat-dialog-actions>

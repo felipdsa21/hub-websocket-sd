@@ -5,11 +5,11 @@
     ou crie um grupo e adicione os membros.
   </p>
   <div class="actions">
-    <button matButton="filled" [disabled]="!connected()">
+    <button matButton="filled" [disabled]="!connected()" (click)="newConversations.openNewChat()">
       <mat-icon>edit</mat-icon>
       Novo chat
     </button>
-    <button matButton="tonal" [disabled]="!connected()">
+    <button matButton="tonal" [disabled]="!connected()" (click)="newConversations.openNewGroup()">
       <mat-icon>groups</mat-icon>
       Novo grupo
     </button>

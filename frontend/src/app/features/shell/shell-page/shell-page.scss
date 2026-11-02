@@ -28,42 +28,6 @@
   color: var(--mat-sys-on-surface);
 }
 
-.search {
-  flex: 0 1 560px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  min-width: 0;
-  height: 56px;
-  padding: 0 16px;
-  box-sizing: border-box;
-  border-radius: 28px;
-  background: var(--mat-sys-surface-container-high);
-  color: var(--mat-sys-on-surface-variant);
-
-  &:focus-within {
-    outline: 2px solid var(--mat-sys-primary);
-  }
-
-  &.disabled > * {
-    opacity: 0.38;
-  }
-
-  input {
-    flex: 1;
-    min-width: 0;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: var(--mat-sys-on-surface);
-    font: var(--mat-sys-body-large);
-
-    &::placeholder {
-      color: var(--mat-sys-on-surface-variant);
-    }
-  }
-}
-
 .spacer {
   flex: 1;
 }
@@ -88,10 +52,19 @@
   background: var(--mat-sys-surface);
 }
 
-.new-fab {
+.fab-menu {
   position: absolute;
   right: 16px;
   bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.fab-close {
+  --mat-fab-container-color: var(--mat-sys-primary);
+  --mat-fab-foreground-color: var(--mat-sys-on-primary);
 }
 
 :host(.compact) {
@@ -101,7 +74,7 @@
     background: var(--mat-sys-surface);
   }
 
-  .search {
+  app-search-box {
     flex: 1;
   }
 
