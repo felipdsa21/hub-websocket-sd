@@ -15,6 +15,13 @@ module.exports = defineConfig([
     ],
     processor: angular.processInlineTemplates,
     rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'Date',
+          message: "Use Temporal from 'temporal-polyfill'.",
+        },
+      ],
       '@angular-eslint/directive-selector': [
         'error',
         {
