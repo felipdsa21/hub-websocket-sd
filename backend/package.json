@@ -12,15 +12,21 @@
     "@swc/core": "^1.15.0",
     "@swc/jest": "^0.2.39",
     "@trivago/prettier-plugin-sort-imports": "^6.0.2",
+    "@types/aws-lambda": "^8.10.164",
     "@types/jest": "^30",
     "@types/node": "^24.10.1",
     "aws-cdk": "2.1146.0",
+    "aws-sdk-client-mock": "^4.1.0",
+    "esbuild": "^0.28.2",
     "jest": "^30",
     "prettier": "^3.9.10",
     "tsx": "^4.23.0",
     "typescript": "~7.0.2"
   },
   "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.1161.0",
+    "@aws-sdk/client-dynamodb": "^3.1161.0",
+    "@aws-sdk/lib-dynamodb": "^3.1161.0",
     "aws-cdk-lib": "^2.273.0",
     "constructs": "^10.5.0"
   },
