@@ -46,6 +46,15 @@ html {
   --hub-presence-online: light-dark(#2e7d32, #7fd88f);
 }
 
+// The kit draws supporting text in on-surface-variant; Material's hint inherits on-surface.
+mat-hint {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.filled-icon {
+  font-variation-settings: 'FILL' 1;
+}
+
 body {
   color-scheme: light dark;
   background-color: var(--mat-sys-surface);

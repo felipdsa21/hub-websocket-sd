@@ -1,0 +1,48 @@
+<main class="card" aria-labelledby="login-title">
+  <h1 id="login-title">Hub Colaborativo</h1>
+  <p class="intro">Entre com um nome de usuário. Não há senha.</p>
+
+  @if (failed()) {
+    <div class="connection-error" role="alert">
+      <mat-icon class="filled-icon" aria-hidden="true">error</mat-icon>
+      <span>Não foi possível conectar. Tente de novo.</span>
+    </div>
+  }
+
+  <form novalidate (submit)="submit($event)">
+    <mat-form-field appearance="outline">
+      <mat-label>Nome de usuário</mat-label>
+      <input
+        matInput
+        [formField]="loginForm.username"
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+      />
+      @if (loginForm.username().touched() && loginForm.username().invalid()) {
+        <mat-icon matSuffix class="filled-icon" aria-hidden="true">error</mat-icon>
+      }
+      <mat-hint>{{ usernameHint }}</mat-hint>
+      <mat-error>{{ loginForm.username().errors()[0]?.message }}</mat-error>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Nome de exibição (opcional)</mat-label>
+      <input matInput [formField]="loginForm.displayName" autocomplete="nickname" />
+      @if (loginForm.displayName().touched() && loginForm.displayName().invalid()) {
+        <mat-icon matSuffix class="filled-icon" aria-hidden="true">error</mat-icon>
+      }
+      <mat-hint>{{ displayNameHint }}</mat-hint>
+      <mat-error>{{ loginForm.displayName().errors()[0]?.message }}</mat-error>
+    </mat-form-field>
+
+    <div class="actions">
+      @if (connecting()) {
+        <mat-progress-spinner mode="indeterminate" diameter="24" aria-label="Conectando" />
+      }
+      <button matButton="filled" type="submit" [disabled]="loginForm().invalid() || connecting()">
+        {{ connecting() ? 'Conectando…' : 'Entrar' }}
+      </button>
+    </div>
+  </form>
+</main>
