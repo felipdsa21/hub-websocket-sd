@@ -1,0 +1,26 @@
+import { Component, computed, input } from '@angular/core';
+import { MatIcon } from '@angular/material/icon';
+import { initials } from '@/shared/format/display-names';
+
+export type AvatarKind = 'person' | 'group' | 'unknown';
+export type AvatarPresence = 'online' | 'offline';
+
+/** Initials for a person, an icon for a group, or a neutral icon for someone who isn't a contact. */
+@Component({
+  selector: 'app-avatar',
+  imports: [MatIcon],
+  templateUrl: './avatar.html',
+  styleUrl: './avatar.scss',
+  host: {
+    'aria-hidden': 'true',
+    '[class]': "'size-' + size() + ' ' + kind()",
+  },
+})
+export class Avatar {
+  public readonly kind = input<AvatarKind>('person');
+  public readonly name = input('');
+  public readonly size = input<40 | 32>(40);
+  public readonly presence = input<AvatarPresence | null>(null);
+
+  protected readonly initials = computed(() => initials(this.name()));
+}

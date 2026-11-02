@@ -1,2 +1,37 @@
-<p>Entrou como {{ session.user()?.displayName }} (&#64;{{ session.user()?.username }}).</p>
-<button matButton (click)="leave()">Sair</button>
+@if (showList()) {
+  <header class="top-bar">
+    <h1 class="app-title" [class.visually-hidden]="compact()">Hub Colaborativo</h1>
+    <div class="search" [class.disabled]="!connected()">
+      <mat-icon aria-hidden="true">search</mat-icon>
+      <input
+        type="search"
+        [placeholder]="compact() ? 'Pesquisar' : 'Pesquisar conversas e pessoas'"
+        aria-label="Pesquisar conversas e pessoas"
+        [disabled]="!connected()"
+      />
+    </div>
+    <span class="spacer"></span>
+    <app-account-menu />
+  </header>
+  @if (!connected()) {
+    <app-connection-banner />
+  }
+}
+
+<div class="body">
+  @if (showList()) {
+    <app-conversation-list class="list" [selectedId]="selectedId()" [compact]="compact()" />
+  }
+  @if (showMain()) {
+    <main class="main">
+      <router-outlet />
+    </main>
+  }
+</div>
+
+@if (compact() && showList()) {
+  <button matFab extended class="new-fab" [disabled]="!connected()">
+    <mat-icon>edit</mat-icon>
+    Novo
+  </button>
+}

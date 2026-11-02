@@ -25,6 +25,8 @@ export class ConversationsStore {
   });
 
   public readonly openedIds = this.opened.asReadonly();
+  /** True until the list arrives after entering. */
+  public readonly loading = signal(false);
 
   public get(conversationId: string): Conversation | undefined {
     return this.conversations().find((c) => c.conversationId === conversationId);

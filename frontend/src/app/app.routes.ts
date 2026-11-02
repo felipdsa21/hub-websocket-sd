@@ -11,6 +11,20 @@ export const routes: Routes = [
     path: '',
     canActivate: [sessionGuard],
     loadComponent: () => import('./features/shell/shell-page/shell-page').then((m) => m.ShellPage),
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./features/shell/no-conversation/no-conversation').then((m) => m.NoConversation),
+      },
+      {
+        path: 'c/:conversationId',
+        loadComponent: () =>
+          import('./features/conversation/conversation-page/conversation-page').then(
+            (m) => m.ConversationPage,
+          ),
+      },
+    ],
   },
   { path: '**', redirectTo: '' },
 ];

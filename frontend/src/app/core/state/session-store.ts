@@ -59,6 +59,7 @@ export class SessionStore {
     this.fixtures.data.set(data);
     this.users.reset(data.directory.filter((u) => known.has(u.username)));
     this.conversations.reset(data.conversations, data.seen);
+    this.conversations.loading.set(this.scenarios.has('carregando'));
     this.currentUser.user.set(user);
     this.enterStatus.set('idle');
   }

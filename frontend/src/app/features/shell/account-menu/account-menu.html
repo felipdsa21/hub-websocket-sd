@@ -1,0 +1,18 @@
+<button
+  matIconButton
+  class="trigger"
+  [matMenuTriggerFor]="menu"
+  [attr.aria-label]="'Conta de ' + user()?.displayName"
+>
+  <app-avatar [name]="user()?.displayName ?? ''" [presence]="connected() ? 'online' : 'offline'" />
+</button>
+<mat-menu #menu="matMenu" xPosition="before">
+  <div class="identity">
+    <span class="name">{{ user()?.displayName }}</span>
+    <span class="detail">
+      &#64;{{ user()?.username }} · {{ connected() ? 'Conectado' : 'Sem conexão' }}
+    </span>
+  </div>
+  <mat-divider />
+  <button mat-menu-item (click)="leave()">Sair</button>
+</mat-menu>

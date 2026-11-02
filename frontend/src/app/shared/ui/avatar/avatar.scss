@@ -1,0 +1,74 @@
+:host {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 40px;
+  height: 40px;
+}
+
+.circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
+  font: var(--mat-sys-title-small);
+  user-select: none;
+}
+
+:host(.group) .circle {
+  background: var(--mat-sys-tertiary-container);
+  color: var(--mat-sys-on-tertiary-container);
+}
+
+:host(.unknown) .circle {
+  background: var(--mat-sys-surface-container-highest);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+mat-icon {
+  width: 24px;
+  height: 24px;
+  font-size: 24px;
+}
+
+// A ring in the surface color separates the dot from the circle, as in the design.
+.presence {
+  position: absolute;
+  top: 28px;
+  left: 28px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--mat-sys-outline);
+  box-shadow: 0 0 0 2px var(--mat-sys-surface);
+
+  &.online {
+    background: var(--hub-presence-online);
+  }
+}
+
+:host(.size-32) {
+  width: 32px;
+  height: 32px;
+
+  .circle {
+    font: var(--mat-sys-label-medium);
+  }
+
+  mat-icon {
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+  }
+
+  .presence {
+    top: 22px;
+    left: 22px;
+    width: 10px;
+    height: 10px;
+  }
+}

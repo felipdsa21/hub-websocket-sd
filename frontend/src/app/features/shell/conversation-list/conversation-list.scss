@@ -1,0 +1,136 @@
+@use '@angular/material' as mat;
+
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-block: 8px;
+  box-sizing: border-box;
+  overflow-y: auto;
+
+  @include mat.list-overrides(
+    (
+      active-indicator-color: var(--mat-sys-secondary-container),
+      active-indicator-shape: 12px,
+      list-item-container-shape: 12px,
+      // The item's content is a single wrapper, which Material treats as one line.
+      list-item-one-line-container-height: 64px,
+      // The dimming of unloaded conversations comes from the opacity below instead.
+      list-item-disabled-state-layer-opacity: 0,
+      list-item-disabled-label-text-color: var(--mat-sys-on-surface),
+      list-item-disabled-label-text-opacity: 1,
+    )
+  );
+}
+
+.list-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px 4px 16px;
+  min-height: 48px;
+  box-sizing: border-box;
+}
+
+h2 {
+  flex: 1;
+  margin: 0;
+  font: var(--mat-sys-title-large);
+  color: var(--mat-sys-on-surface);
+}
+
+mat-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+}
+
+// Material's two-line items align by text baselines, off the design's vertical center, so the
+// avatar, the text and the time sit in a wrapper of our own instead of Material's slots.
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.title,
+.subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title {
+  font: var(--mat-sys-body-large);
+  color: var(--mat-sys-on-surface);
+}
+
+.new-activity .title {
+  font-weight: 500;
+}
+
+.subtitle {
+  font: var(--mat-sys-body-medium);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.time {
+  flex: none;
+  font: var(--mat-sys-label-small);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+// Unloaded conversations while offline (RF08): dimmed and not openable.
+.mdc-list-item--disabled {
+  opacity: 0.38;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
+.empty {
+  margin: 0;
+  padding: 8px 16px;
+  font: var(--mat-sys-body-medium);
+  color: var(--mat-sys-on-surface);
+}
+
+.empty-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  font: var(--mat-sys-body-medium);
+  color: var(--mat-sys-on-surface-variant);
+
+  p {
+    margin: 0;
+  }
+
+  .empty-title {
+    font: var(--mat-sys-title-large);
+    color: var(--mat-sys-on-surface);
+  }
+}
+
+:host(.compact) mat-nav-list {
+  padding: 0;
+}
+
+:host(.compact) .list-header {
+  padding-inline: 16px;
+}

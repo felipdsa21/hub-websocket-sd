@@ -1,0 +1,20 @@
+@if (empty()) {
+  <h2>Comece uma conversa</h2>
+  <p>
+    Procure uma pessoa pelo nome para iniciar um chat privado,<br />
+    ou crie um grupo e adicione os membros.
+  </p>
+  <div class="actions">
+    <button matButton="filled" [disabled]="!connected()">
+      <mat-icon>edit</mat-icon>
+      Novo chat
+    </button>
+    <button matButton="tonal" [disabled]="!connected()">
+      <mat-icon>groups</mat-icon>
+      Novo grupo
+    </button>
+  </div>
+} @else {
+  <h2>Selecione uma conversa</h2>
+  <p>Ou comece uma nova pelo botão + ao lado de Chat.</p>
+}

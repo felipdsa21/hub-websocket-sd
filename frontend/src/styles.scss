@@ -55,6 +55,15 @@ mat-hint {
   font-variation-settings: 'FILL' 1;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 body {
   color-scheme: light dark;
   background-color: var(--mat-sys-surface);
