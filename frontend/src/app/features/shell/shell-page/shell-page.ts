@@ -1,7 +1,9 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { MatFabButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router, RouterOutlet } from '@angular/router';
+import { Scenarios } from '@/core/fixtures/scenarios';
 import { Breakpoints } from '@/core/layout/breakpoints';
 import { urlSignal } from '@/core/signals/observed-signals';
 import { ConnectionStore } from '@/core/state/connection-store';
@@ -35,6 +37,8 @@ export class ShellPage {
   protected readonly breakpoints = inject(Breakpoints);
   protected readonly connected = inject(ConnectionStore).connected;
   private readonly newConversations = inject(NewConversationDialogs);
+  private readonly scenarios = inject(Scenarios);
+  private readonly snackBar = inject(MatSnackBar);
 
   /** The phone's "Novo" button opens "Novo chat" and "Novo grupo" above it. */
   protected readonly newMenuOpen = signal(false);
@@ -51,6 +55,13 @@ export class ShellPage {
   /** On phones, the list and the conversation are separate screens. */
   protected readonly showList = computed(() => !this.compact() || this.selectedId() === null);
   protected readonly showMain = computed(() => !this.compact() || this.selectedId() !== null);
+
+  constructor() {
+    // With the fixed data, the return of the connection only happens in this scenario (RF08).
+    if (this.scenarios.has('reconectado')) {
+      this.snackBar.open('Conectado novamente.', undefined, { duration: 4000 });
+    }
+  }
 
   protected newChat(): void {
     this.newMenuOpen.set(false);

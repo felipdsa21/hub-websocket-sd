@@ -44,6 +44,26 @@ export class SessionStore {
     this.load({ username: 'marina', displayName: 'Marina Alves' });
   }
 
+  /**
+   * Changes the display name. The client reconnects with it, without going offline (RF01); with
+   * the fixed data, the user's own state just takes the new name, with a newer version.
+   */
+  public changeDisplayName(displayName: string): void {
+    const user = this.currentUser.user();
+    if (!user) {
+      return;
+    }
+    const name = normalizeDisplayName(displayName);
+    this.currentUser.user.set({ ...user, displayName: name });
+    const state = this.users.get(user.username);
+    this.users.apply({
+      username: user.username,
+      displayName: name,
+      online: true,
+      version: (state?.version ?? 0) + 1,
+    });
+  }
+
   public leave(): void {
     this.fixtures.data.set(null);
     this.users.reset([]);

@@ -93,4 +93,16 @@ describe('SessionStore', () => {
     setUp(['sem-conversas']).enter('marina', '');
     expect(TestBed.inject(ConversationsStore).sorted()).toEqual([]);
   });
+
+  it('changes the display name with a newer version of the own state', () => {
+    const session = setUp();
+    session.enter('marina', 'Marina Alves');
+    const users = TestBed.inject(UsersStore);
+    const before = users.get('marina')!.version;
+
+    session.changeDisplayName('  Marina A.  ');
+
+    expect(session.user()?.displayName).toBe('Marina A.');
+    expect(users.get('marina')).toMatchObject({ displayName: 'Marina A.', version: before + 1 });
+  });
 });
