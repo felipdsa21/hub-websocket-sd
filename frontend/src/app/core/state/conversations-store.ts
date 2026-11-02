@@ -45,6 +45,16 @@ export class ConversationsStore {
     ]);
   }
 
+  public addMember(conversationId: string, username: string): void {
+    this.conversations.update((list) =>
+      list.map((c) =>
+        c.conversationId === conversationId && !c.members.includes(username)
+          ? { ...c, members: [...c.members, username] }
+          : c,
+      ),
+    );
+  }
+
   public remove(conversationId: string): void {
     this.conversations.update((list) => list.filter((c) => c.conversationId !== conversationId));
   }

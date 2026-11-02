@@ -43,6 +43,13 @@ html {
     )
   );
 
+  // Material draws dialogs on surface; the kit uses surface-container-high, as Material 3 does.
+  @include mat.dialog-overrides(
+    (
+      container-color: var(--mat-sys-surface-container-high),
+    )
+  );
+
   --hub-presence-online: light-dark(#2e7d32, #7fd88f);
 }
 
@@ -53,6 +60,23 @@ mat-hint {
 
 .filled-icon {
   font-variation-settings: 'FILL' 1;
+}
+
+// Modal side sheet (members at intermediate widths), with the design's rounded leading corners.
+.side-sheet-panel {
+  --mat-dialog-container-color: var(--mat-sys-surface-container-low);
+
+  .mat-mdc-dialog-surface {
+    border-radius: 16px 0 0 16px;
+  }
+}
+
+.full-screen-dialog-panel {
+  --mat-dialog-container-color: var(--mat-sys-surface);
+
+  .mat-mdc-dialog-surface {
+    border-radius: 0;
+  }
 }
 
 .visually-hidden {

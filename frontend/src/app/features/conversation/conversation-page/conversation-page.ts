@@ -7,11 +7,13 @@ import {
   effect,
   inject,
   input,
+  signal,
   untracked,
   viewChild,
 } from '@angular/core';
 import { MatButton, MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
+import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { Router, RouterLink } from '@angular/router';
 import { Breakpoints } from '@/core/layout/breakpoints';
@@ -21,6 +23,8 @@ import { CurrentUser } from '@/core/state/current-user';
 import { MessagesStore } from '@/core/state/messages-store';
 import { UsersStore } from '@/core/state/users-store';
 import { Clock } from '@/core/time/clock';
+import { GroupDialogs } from '@/features/groups/group-dialogs';
+import { MembersPanel } from '@/features/groups/members-panel/members-panel';
 import { membersLabel, repeatedDisplayNames } from '@/shared/format/display-names';
 import { Avatar, AvatarKind, AvatarPresence } from '@/shared/ui/avatar/avatar';
 import { ConnectionBanner } from '@/shared/ui/connection-banner/connection-banner';
@@ -39,7 +43,11 @@ const BOTTOM_THRESHOLD = 48;
     MatButton,
     MatIcon,
     MatIconButton,
+    MatMenu,
+    MatMenuItem,
+    MatMenuTrigger,
     MatProgressSpinner,
+    MembersPanel,
     MessageBubble,
     MessageComposer,
     RouterLink,
@@ -55,9 +63,10 @@ export class ConversationPage {
   private readonly currentUser = inject(CurrentUser);
   private readonly clock = inject(Clock);
   private readonly router = inject(Router);
+  private readonly groupDialogs = inject(GroupDialogs);
   private readonly destroyRef = inject(DestroyRef);
   protected readonly connected = inject(ConnectionStore).connected;
-  private readonly breakpoints = inject(Breakpoints);
+  protected readonly breakpoints = inject(Breakpoints);
 
   public readonly conversationId = input.required<string>();
 
@@ -65,6 +74,15 @@ export class ConversationPage {
 
   protected readonly conversation = computed(() => this.conversations.get(this.conversationId()));
   protected readonly history = computed(() => this.messages.history(this.conversationId()));
+
+  /** On desktop, the members sit next to a group's conversation and can be hidden. */
+  protected readonly membersOpen = signal(true);
+  protected readonly showInlineMembers = computed(
+    () =>
+      this.membersOpen() &&
+      this.conversation()?.type === 'group' &&
+      this.breakpoints.windowSize() === 'expanded',
+  );
 
   protected readonly header = computed(() => {
     const conversation = this.conversation();
@@ -223,6 +241,27 @@ export class ConversationPage {
 
   protected retryLatest(): void {
     this.messages.loadLatest(this.conversationId());
+  }
+
+  protected toggleMembers(): void {
+    switch (this.breakpoints.windowSize()) {
+      case 'expanded':
+        this.membersOpen.update((open) => !open);
+        break;
+      case 'medium':
+        this.groupDialogs.openMembersSheet(this.conversationId());
+        break;
+      case 'compact':
+        void this.router.navigate(['/c', this.conversationId(), 'membros']);
+    }
+  }
+
+  protected addPeople(): void {
+    this.groupDialogs.openAddPeople(this.conversationId());
+  }
+
+  protected leave(): void {
+    this.groupDialogs.confirmLeave(this.conversationId());
   }
 
   protected discard(messageId: string): void {

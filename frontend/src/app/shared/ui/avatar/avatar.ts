@@ -14,6 +14,7 @@ export type AvatarPresence = 'online' | 'offline';
   host: {
     'aria-hidden': 'true',
     '[class]': "'size-' + size() + ' ' + kind()",
+    '[class.muted]': 'muted()',
   },
 })
 export class Avatar {
@@ -21,6 +22,8 @@ export class Avatar {
   public readonly name = input('');
   public readonly size = input<40 | 32>(40);
   public readonly presence = input<AvatarPresence | null>(null);
+  /** Grayed out, as for offline members, keeping the initials readable (WCAG AA). */
+  public readonly muted = input(false);
 
   protected readonly initials = computed(() => initials(this.name()));
 }

@@ -1,0 +1,52 @@
+:host {
+  display: block;
+  padding: 0 8px 8px;
+}
+
+.actions {
+  display: flex;
+  align-items: flex-start;
+  height: 56px;
+  padding-left: 8px;
+}
+
+.section-label {
+  margin: 0;
+  padding: 12px 8px 4px;
+  font: var(--mat-sys-title-small);
+  color: var(--mat-sys-on-surface);
+}
+
+ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 10px 16px;
+  box-sizing: border-box;
+
+  // The design fades offline members to 60%, below WCAG AA for the text; a gray avatar and
+  // on-surface-variant text keep the faded look at over 7:1.
+  &.offline .name {
+    color: var(--mat-sys-on-surface-variant);
+  }
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font: var(--mat-sys-body-large);
+  color: var(--mat-sys-on-surface);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

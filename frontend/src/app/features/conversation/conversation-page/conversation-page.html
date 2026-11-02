@@ -1,100 +1,135 @@
-@if (header(); as header) {
-  <header class="conversation-header">
-    @if (compact()) {
-      <a matIconButton routerLink="/" aria-label="Voltar para as conversas">
-        <mat-icon>arrow_back</mat-icon>
-      </a>
-    } @else {
-      <app-avatar
-        [kind]="header.avatarKind"
-        [name]="header.avatarName"
-        [presence]="header.presence"
-      />
-    }
-    <div class="title">
-      <h1>{{ header.title }}</h1>
-      @if (header.detail) {
-        <span class="detail">{{ header.detail }}</span>
-      }
-    </div>
-  </header>
-}
-@if (compact() && !connected()) {
-  <app-connection-banner />
-}
-
-<div
-  #scroller
-  class="scroller"
-  role="log"
-  tabindex="0"
-  aria-label="Mensagens"
-  (scroll)="onScroll()"
->
-  @switch (history()?.status) {
-    @case ('loading') {
-      <div class="center">
-        <mat-progress-spinner
-          mode="indeterminate"
-          diameter="40"
-          aria-label="Carregando mensagens"
-        />
-      </div>
-    }
-    @case ('error') {
-      <div class="center load-error" role="alert">
-        <p>Não foi possível carregar as mensagens.</p>
-        <button matButton (click)="retryLatest()" [disabled]="!connected()">Tentar de novo</button>
-      </div>
-    }
-    @default {
-      @if (empty()) {
-        <div class="center empty">
-          <p class="empty-title">Nenhuma mensagem ainda</p>
-          <p>Envie a primeira mensagem para começar a conversa.</p>
-        </div>
+<div class="conversation">
+  @if (header(); as header) {
+    <header class="conversation-header">
+      @if (compact()) {
+        <a matIconButton routerLink="/" aria-label="Voltar para as conversas">
+          <mat-icon>arrow_back</mat-icon>
+        </a>
       } @else {
-        <div #timelineList class="timeline">
-          @if (history()?.status === 'loading-older') {
-            <div class="older">
-              <mat-progress-spinner
-                mode="indeterminate"
-                diameter="40"
-                aria-label="Carregando mensagens anteriores"
-              />
-            </div>
-          } @else if (history()?.status === 'older-error') {
-            <div class="older load-error" role="alert">
-              <p>Não foi possível carregar as mensagens anteriores.</p>
-              <button matButton (click)="retryOlder()" [disabled]="!connected()">
-                Tentar de novo
-              </button>
-            </div>
-          } @else if (history()?.hasOlder) {
-            <div #olderSentinel class="sentinel"></div>
-          }
-          @for (item of timeline(); track item.key) {
-            @switch (item.kind) {
-              @case ('start') {
-                <p class="marker">Início da conversa</p>
-              }
-              @case ('day') {
-                <p class="day">
-                  <span>{{ item.label }}</span>
-                </p>
-              }
-              @case ('notice') {
-                <p class="notice">{{ item.text }}</p>
-              }
-              @case ('message') {
-                <app-message-bubble [message]="item" (discard)="discard($event)" />
+        <app-avatar
+          [kind]="header.avatarKind"
+          [name]="header.avatarName"
+          [presence]="header.presence"
+        />
+      }
+      <div class="title">
+        <h1>{{ header.title }}</h1>
+        @if (header.detail) {
+          <span class="detail">{{ header.detail }}</span>
+        }
+      </div>
+      @if (conversation()?.type === 'group') {
+        <button
+          matIconButton
+          [attr.aria-label]="showInlineMembers() ? 'Esconder membros' : 'Mostrar membros'"
+          [attr.aria-pressed]="breakpoints.windowSize() === 'expanded' ? membersOpen() : null"
+          (click)="toggleMembers()"
+        >
+          <mat-icon>groups</mat-icon>
+        </button>
+        <button matIconButton [matMenuTriggerFor]="groupMenu" aria-label="Mais opções">
+          <mat-icon>more_vert</mat-icon>
+        </button>
+        <mat-menu #groupMenu="matMenu" xPosition="before">
+          <button mat-menu-item [disabled]="!connected()" (click)="addPeople()">
+            Adicionar pessoas
+          </button>
+          <button mat-menu-item [disabled]="!connected()" (click)="leave()">Sair do grupo</button>
+        </mat-menu>
+      }
+    </header>
+  }
+  @if (compact() && !connected()) {
+    <app-connection-banner />
+  }
+
+  <div
+    #scroller
+    class="scroller"
+    role="log"
+    tabindex="0"
+    aria-label="Mensagens"
+    (scroll)="onScroll()"
+  >
+    @switch (history()?.status) {
+      @case ('loading') {
+        <div class="center">
+          <mat-progress-spinner
+            mode="indeterminate"
+            diameter="40"
+            aria-label="Carregando mensagens"
+          />
+        </div>
+      }
+      @case ('error') {
+        <div class="center load-error" role="alert">
+          <p>Não foi possível carregar as mensagens.</p>
+          <button matButton (click)="retryLatest()" [disabled]="!connected()">
+            Tentar de novo
+          </button>
+        </div>
+      }
+      @default {
+        @if (empty()) {
+          <div class="center empty">
+            <p class="empty-title">Nenhuma mensagem ainda</p>
+            <p>Envie a primeira mensagem para começar a conversa.</p>
+          </div>
+        } @else {
+          <div #timelineList class="timeline">
+            @if (history()?.status === 'loading-older') {
+              <div class="older">
+                <mat-progress-spinner
+                  mode="indeterminate"
+                  diameter="40"
+                  aria-label="Carregando mensagens anteriores"
+                />
+              </div>
+            } @else if (history()?.status === 'older-error') {
+              <div class="older load-error" role="alert">
+                <p>Não foi possível carregar as mensagens anteriores.</p>
+                <button matButton (click)="retryOlder()" [disabled]="!connected()">
+                  Tentar de novo
+                </button>
+              </div>
+            } @else if (history()?.hasOlder) {
+              <div #olderSentinel class="sentinel"></div>
+            }
+            @for (item of timeline(); track item.key) {
+              @switch (item.kind) {
+                @case ('start') {
+                  <p class="marker">Início da conversa</p>
+                }
+                @case ('day') {
+                  <p class="day">
+                    <span>{{ item.label }}</span>
+                  </p>
+                }
+                @case ('notice') {
+                  <p class="notice">{{ item.text }}</p>
+                }
+                @case ('message') {
+                  <app-message-bubble [message]="item" (discard)="discard($event)" />
+                }
               }
             }
-          }
-        </div>
+          </div>
+        }
       }
     }
-  }
+  </div>
+
+  <app-message-composer [conversationId]="conversationId()" />
 </div>
 
-<app-message-composer [conversationId]="conversationId()" />
+@if (showInlineMembers()) {
+  <aside class="members" aria-labelledby="members-title">
+    <header>
+      <h2 id="members-title">Membros</h2>
+      <button matIconButton aria-label="Fechar membros" (click)="membersOpen.set(false)">
+        <mat-icon>close</mat-icon>
+      </button>
+    </header>
+    <app-members-panel [conversationId]="conversationId()" (addPeople)="addPeople()" />
+  </aside>
+}

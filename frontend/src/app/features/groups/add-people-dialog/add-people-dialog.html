@@ -1,0 +1,80 @@
+@if (compact()) {
+  <header class="full-screen-header">
+    <button matIconButton mat-dialog-close aria-label="Fechar">
+      <mat-icon>close</mat-icon>
+    </button>
+    <h2 mat-dialog-title>Adicionar pessoas</h2>
+    <button matButton [disabled]="selected().length === 0 || !connected()" (click)="add()">
+      Adicionar
+    </button>
+  </header>
+} @else {
+  <h2 mat-dialog-title>Adicionar pessoas</h2>
+}
+
+<mat-dialog-content>
+  <p class="intro">Quem for adicionado verá todo o histórico de {{ groupName() }}.</p>
+
+  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+    <mat-label>Pessoa</mat-label>
+    <input
+      matInput
+      autocomplete="off"
+      [value]="query()"
+      (input)="onQuery($event)"
+      aria-describedby="add-people-results"
+    />
+    @if (query()) {
+      <button matIconButton matSuffix aria-label="Limpar" (click)="query.set('')">
+        <mat-icon>cancel</mat-icon>
+      </button>
+    }
+  </mat-form-field>
+
+  @if (selected().length > 0) {
+    <mat-chip-set aria-label="Pessoas escolhidas">
+      @for (user of selected(); track user.username) {
+        <mat-chip (removed)="remove(user)">
+          {{ label(user) }}
+          <button matChipRemove [attr.aria-label]="'Remover ' + label(user)">
+            <mat-icon>close</mat-icon>
+          </button>
+        </mat-chip>
+      }
+    </mat-chip-set>
+  }
+
+  <ul id="add-people-results" class="results" aria-label="Resultados">
+    @for (user of results(); track user.username) {
+      <li>
+        <button
+          type="button"
+          class="result"
+          [class.selected]="isSelected(user)"
+          [attr.aria-pressed]="isSelected(user)"
+          (click)="toggle(user)"
+        >
+          <app-avatar
+            [name]="user.displayName"
+            [presence]="connected() ? (user.online ? 'online' : 'offline') : null"
+          />
+          <span class="text">
+            <span class="title">{{ label(user) }}</span>
+            @if (connected()) {
+              <span class="subtitle">{{ user.online ? 'Online' : 'Offline' }}</span>
+            }
+          </span>
+        </button>
+      </li>
+    }
+  </ul>
+</mat-dialog-content>
+
+@if (!compact()) {
+  <mat-dialog-actions align="end">
+    <button matButton mat-dialog-close>Cancelar</button>
+    <button matButton [disabled]="selected().length === 0 || !connected()" (click)="add()">
+      Adicionar
+    </button>
+  </mat-dialog-actions>
+}

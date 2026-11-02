@@ -1,8 +1,36 @@
 :host {
   flex: 1;
   display: flex;
-  flex-direction: column;
   min-height: 0;
+}
+
+.conversation {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.members {
+  flex: none;
+  width: 320px;
+  overflow-y: auto;
+  border-left: 1px solid var(--mat-sys-outline-variant);
+
+  header {
+    display: flex;
+    align-items: center;
+    height: 76px;
+    padding: 0 12px 0 24px;
+    box-sizing: border-box;
+  }
+
+  h2 {
+    flex: 1;
+    margin: 0;
+    font: var(--mat-sys-title-large);
+    color: var(--mat-sys-on-surface-variant);
+  }
 }
 
 .conversation-header {

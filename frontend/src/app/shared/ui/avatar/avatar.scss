@@ -24,7 +24,8 @@
   color: var(--mat-sys-on-tertiary-container);
 }
 
-:host(.unknown) .circle {
+:host(.unknown) .circle,
+:host(.muted) .circle {
   background: var(--mat-sys-surface-container-highest);
   color: var(--mat-sys-on-surface-variant);
 }

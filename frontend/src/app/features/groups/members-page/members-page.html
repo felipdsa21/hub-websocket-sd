@@ -1,0 +1,17 @@
+<header>
+  <a matIconButton [routerLink]="['/c', conversationId()]" aria-label="Voltar para a conversa">
+    <mat-icon>arrow_back</mat-icon>
+  </a>
+  <div class="title">
+    <h1>Membros</h1>
+    <span class="detail">{{ groupName() }}</span>
+  </div>
+</header>
+@if (!connected()) {
+  <app-connection-banner />
+}
+<app-members-panel
+  [conversationId]="conversationId()"
+  [sectionLevel]="2"
+  (addPeople)="groupDialogs.openAddPeople(conversationId())"
+/>

@@ -1,0 +1,13 @@
+<h2 mat-dialog-title>Sair de {{ groupName() }}?</h2>
+<mat-dialog-content>
+  @if (lastMember()) {
+    Você é o último membro. Ao sair, o grupo fica inacessível, e ninguém poderá voltar a vê-lo.
+  } @else {
+    Você deixa de ver o grupo e o histórico dele. Para voltar, alguém do grupo precisa adicionar
+    você de novo.
+  }
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button matButton mat-dialog-close>Cancelar</button>
+  <button matButton [mat-dialog-close]="true">Sair</button>
+</mat-dialog-actions>

@@ -148,6 +148,30 @@ export class MessagesStore {
     this.outgoing.update((list) => list.filter((m) => m.messageId !== messageId));
   }
 
+  /**
+   * Records a member joining or leaving, right after the latest message the client knows: the
+   * loaded ones or the conversation's `lastMessageAt`, if later (architecture, section 4.6).
+   */
+  public addNotice(conversationId: string, kind: MemberNotice['kind'], username: string): void {
+    const lastLoaded = this.history(conversationId)?.messages.at(-1)?.sk;
+    const lastMessageAt = this.conversations.get(conversationId)?.lastMessageAt;
+    // The highest character sorts after any sender and id at that instant.
+    const fromLastMessageAt =
+      lastMessageAt === undefined
+        ? undefined
+        : `m#${String(lastMessageAt).padStart(13, '0')}#\uffff`;
+    const afterSk = [lastLoaded, fromLastMessageAt]
+      .filter((sk) => sk !== undefined)
+      .reduce<string | undefined>(
+        (max, sk) => (max === undefined || sk > max ? sk : max),
+        undefined,
+      );
+    this.notices.update((list) => [
+      ...list,
+      { id: crypto.randomUUID(), conversationId, kind, username, afterSk },
+    ]);
+  }
+
   private backendIn(conversationId: string): Message[] {
     return this.backend.filter((m) => m.conversationId === conversationId);
   }

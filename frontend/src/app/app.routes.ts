@@ -24,6 +24,11 @@ export const routes: Routes = [
             (m) => m.ConversationPage,
           ),
       },
+      {
+        path: 'c/:conversationId/membros',
+        loadComponent: () =>
+          import('./features/groups/members-page/members-page').then((m) => m.MembersPage),
+      },
     ],
   },
   { path: '**', redirectTo: '' },
