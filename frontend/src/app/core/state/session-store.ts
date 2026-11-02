@@ -6,6 +6,7 @@ import { normalizeDisplayName, normalizeUsername } from '@/core/model/names';
 import { Clock } from '@/core/time/clock';
 import { ConversationsStore } from './conversations-store';
 import { CurrentUser, SessionUser } from './current-user';
+import { MessagesStore } from './messages-store';
 import { UsersStore } from './users-store';
 
 export type EnterStatus = 'idle' | 'connecting' | 'failed';
@@ -16,6 +17,7 @@ export class SessionStore {
   private readonly fixtures = inject(HubFixtures);
   private readonly users = inject(UsersStore);
   private readonly conversations = inject(ConversationsStore);
+  private readonly messages = inject(MessagesStore);
   private readonly scenarios = inject(Scenarios);
   private readonly clock = inject(Clock);
 
@@ -46,6 +48,7 @@ export class SessionStore {
     this.fixtures.data.set(null);
     this.users.reset([]);
     this.conversations.reset([], new Map());
+    this.messages.reset(null);
     this.currentUser.user.set(null);
     this.enterStatus.set('idle');
   }
@@ -60,6 +63,7 @@ export class SessionStore {
     this.users.reset(data.directory.filter((u) => known.has(u.username)));
     this.conversations.reset(data.conversations, data.seen);
     this.conversations.loading.set(this.scenarios.has('carregando'));
+    this.messages.reset(data);
     this.currentUser.user.set(user);
     this.enterStatus.set('idle');
   }

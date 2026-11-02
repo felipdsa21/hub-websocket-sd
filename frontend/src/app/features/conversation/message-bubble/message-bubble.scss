@@ -1,0 +1,103 @@
+:host {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+:host(.first) {
+  align-items: flex-start;
+  padding-top: 12px;
+}
+
+:host(.own) {
+  justify-content: flex-end;
+}
+
+.indent {
+  flex: none;
+  width: 32px;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  max-width: min(560px, 80%);
+}
+
+:host(.own) .column {
+  align-items: flex-end;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.name {
+  font: var(--mat-sys-label-large);
+  color: var(--mat-sys-on-surface);
+}
+
+.time {
+  flex: none;
+  font: var(--mat-sys-body-small);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.bubble {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 16px;
+  background: var(--mat-sys-surface-container-high);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-body-medium);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+:host(.own) .bubble {
+  background: var(--mat-sys-primary-container);
+  color: var(--mat-sys-on-primary-container);
+
+  // The design fades pending messages to 60%, below WCAG AA; a lighter bubble with
+  // on-surface-variant text keeps the faded look at over 8:1.
+  &.pending {
+    background: color-mix(in srgb, var(--mat-sys-primary-container) 50%, var(--mat-sys-surface));
+    color: var(--mat-sys-on-surface-variant);
+  }
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font: var(--mat-sys-body-small);
+  color: var(--mat-sys-on-surface-variant);
+
+  mat-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+  }
+
+  &.error {
+    color: var(--mat-sys-error);
+  }
+}
+
+.discard {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--mat-sys-primary);
+  font: var(--mat-sys-label-medium);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
