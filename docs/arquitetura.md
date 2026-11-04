@@ -6,7 +6,7 @@
 
 Este documento define a arquitetura distribuída do Hub Colaborativo WebSocket e o esquema de nomeação e endereçamento: como um usuário ou uma conversa é resolvido nas conexões WebSocket abertas e como uma requisição chega ao backend e volta aos clientes. Os requisitos citados (RF, RNF, R e L) estão na [especificação](especificacao.md).
 
-O ciclo de vida da sessão, com os diagramas de sequência de `$connect` e `$disconnect`, fica para um documento próprio.
+O ciclo de vida da sessão, com os diagramas de sequência de `$connect` e `$disconnect`, está em [sessao.md](sessao.md).
 
 Os IDs das decisões (D) são estáveis, e o número de um item removido não é reaproveitado.
 
@@ -98,7 +98,7 @@ CALLBACK_URL = https://{api-id}.execute-api.sa-east-1.amazonaws.com/{estágio}
 URI          = {CALLBACK_URL}/@connections/{connectionId}
 ```
 
-O backend usa `POST` (`postToConnection`) para entregar eventos e `DELETE` (`deleteConnection`) para encerrar conexões no `presenceSweeper`. Um `POST` para uma conexão que não existe mais responde `410 Gone` (`GoneException`), e o backend desvincula a conexão (seção 3.4).
+O backend usa `POST` (`postToConnection`) para entregar eventos e `DELETE` (`deleteConnection`) para encerrar as conexões inativas, no `presenceSweeper`, e as conexões sem registro (seção 3.4). Um `POST` para uma conexão que não existe mais responde `410 Gone` (`GoneException`), e o backend desvincula a conexão (seção 3.4).
 
 O backend nunca confia em um nome de usuário vindo no corpo de uma requisição. O usuário de cada requisição é sempre o que está vinculado ao `connectionId`, que o API Gateway informa e o cliente não consegue falsificar.
 
@@ -189,7 +189,7 @@ Operações `ADD` e `DELETE` sobre um conjunto são atômicas, então conexões 
 A ordem dos passos mantém uma regra: todo id em `Users.connections` tem um item em `Connections`, porque o vínculo grava o item antes de incluir o id, e o desvínculo retira o id antes de apagar o item (D09). Assim, uma falha no meio sempre deixa um item em `Connections`, que o `presenceSweeper` encontra quando o `lastSeenAt` passa de 10 minutos:
 
 - Falha no vínculo antes do passo 3: sobra um item fora do conjunto, que o `presenceSweeper` apaga; a condição do passo 2 falha, e nada é anunciado.
-- Falha no vínculo depois do passo 3, como um tempo limite: o handshake falha, mas o id fica no conjunto, e o usuário aparece online até o `presenceSweeper` desvinculá-lo.
+- Falha no vínculo depois do passo 3, como um tempo limite: o handshake falha, mas o id fica no conjunto, e o usuário aparece online até um `410 Gone` em um envio ou o `presenceSweeper` desvinculá-lo.
 - Falha no desvínculo depois do passo 2: o `presenceSweeper` refaz o desvínculo, a condição falha, e o item é apagado. Um anúncio que tenha faltado é refeito pela regra da seção 3.5.
 
 O TTL de `Connections` só alcança itens que o `presenceSweeper` não conseguiu tratar. Se ele apagar um item cujo id ainda está no conjunto, o id sai no próximo fan-out que receber `410` ou na varredura de `Users` do `presenceSweeper` (seção 3.5). Nessa varredura, cada id do conjunto sem item em `Connections` é conferido com uma leitura de `Connections[connectionId]` logo antes de ser desvinculado a partir do passo 2. Como o vínculo grava o item antes de incluir o id, essa leitura nunca toma por órfã uma conexão que está abrindo; a varredura em si não basta, porque um `Scan` não é um retrato de um único instante.
