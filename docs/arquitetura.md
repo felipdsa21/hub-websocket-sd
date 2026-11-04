@@ -347,6 +347,8 @@ A fila de reenvio (RF12) fica só na memória da aba. Se há mensagens pendentes
 
 Na lista de conversas, as conversas sem mensagens ficam acima das demais, ordenadas pelo `joinedAt`, a mais recente primeiro, inclusive depois de uma recarga (RF10).
 
+Na pesquisa, as conversas seguem a ordem da lista, e uma pessoa encontrada que já tem um chat privado visível com o usuário aparece só como esse chat, mesmo que a pesquisa tenha encontrado apenas o nome de usuário dela (RF05).
+
 Para trocar o nome de exibição, o cliente abre uma conexão nova com o nome novo, passa a enviar as requisições por ela e fecha a antiga depois que as respostas pendentes nela chegam ou expiram, sem indicar perda de conexão, e os contatos não veem o usuário passar a offline (RF01). Nesse intervalo, um aviso de entrada ou saída de membro que chega pelas duas conexões é mostrado uma vez só.
 
 Os eventos `memberJoined` e `memberLeft` não ficam no histórico. O cliente os guarda em memória, por conversa, durante a sessão, e põe cada aviso logo depois da mensagem mais recente que conhece da conversa, inclusive as de eventos `message` recebidos com ela fechada, ou do `lastMessageAt` dela, se for maior; sem nenhum dos dois, no início da conversa. Assim a posição não depende do relógio do navegador (RF04).
