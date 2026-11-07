@@ -29,6 +29,7 @@ read a whole README into context or re-read a section you have already read.
 ## Check your work
 
 - `npm run build` — type-check the project.
+- `npm run lint` — run ESLint.
 - `npm run test` — run the jest unit tests.
 - `npx cdk synth` — synthesize the CloudFormation template.
 - `npx cdk diff` — compare against the deployed stack.
