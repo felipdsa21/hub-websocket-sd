@@ -1,6 +1,5 @@
 import { PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
-import { db, log } from './shared';
+import { db, withRequestLog } from './shared';
 
 const USERNAME = /^[a-z0-9._-]{3,32}$/;
 // Only a cleanup for records the presence sweeper missed (D05).
@@ -16,18 +15,10 @@ export function parseIdentity(query: Record<string, string | undefined> | undefi
   return { username, displayName };
 }
 
-export async function handler(event: APIGatewayProxyWebsocketEventV2) {
+export const handler = withRequestLog(async (event) => {
   const { connectionId, requestTimeEpoch: now } = event.requestContext;
   const identity = parseIdentity(event.queryStringParameters);
-  if (!identity) {
-    log({
-      route: '$connect',
-      result: 'rejected',
-      code: 'invalidRequest',
-      durationMs: Date.now() - now,
-    });
-    return { statusCode: 400 };
-  }
+  if (!identity) return { statusCode: 400, result: 'rejected', code: 'invalidRequest' };
 
   // The record is written before the id joins Users.connections, so every id in the set has a record (D09).
   await db.send(
@@ -60,6 +51,5 @@ export async function handler(event: APIGatewayProxyWebsocketEventV2) {
   );
   // shortcut: presence is not announced to contacts yet (section 3.5); the sweeper or week 5 catches up.
 
-  log({ route: '$connect', result: 'ok', durationMs: Date.now() - now });
-  return { statusCode: 200 };
-}
+  return { result: 'ok' };
+});

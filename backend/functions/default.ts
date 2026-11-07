@@ -1,21 +1,24 @@
-import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
-import { close, log, parseBody, send, touch } from './shared';
+import { ErrorCode, close, parseBody, sendError, touch, withRequestLog } from './shared';
 
 /** Answers requests with no matching route, including non-JSON ones (RF09). */
-export async function handler(event: APIGatewayProxyWebsocketEventV2) {
+export const handler = withRequestLog(async (event) => {
   const { connectionId, requestTimeEpoch: now } = event.requestContext;
   const requestId = parseBody(event.body)?.requestId;
   const username = await touch(connectionId, now);
-  const code = username ? 'unknownAction' : 'notRegistered';
+  const code: ErrorCode = username ? 'unknownAction' : 'notRegistered';
+  const message = username
+    ? 'No route matches this request.'
+    : 'This connection is not registered.';
 
-  await send(connectionId, username ?? '', {
-    type: 'error',
-    ...(typeof requestId === 'string' && { requestId }),
-    code,
-    message: username ? 'No route matches this request.' : 'This connection is not registered.',
-  });
-  if (!username) await close(connectionId);
-
-  log({ route: '$default', result: 'error', code, durationMs: Date.now() - now });
-  return { statusCode: 200 };
-}
+  // An unregistered connection must close even when the error cannot be sent.
+  try {
+    const delivered = await sendError(connectionId, username, {
+      code,
+      message,
+      requestId: typeof requestId === 'string' ? requestId : undefined,
+    });
+    return { result: delivered ? 'error' : 'gone', code };
+  } finally {
+    if (!username) await close(connectionId);
+  }
+});

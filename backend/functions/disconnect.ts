@@ -1,9 +1,6 @@
-import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
-import { log, unbind } from './shared';
+import { unbind, withRequestLog } from './shared';
 
-export async function handler(event: APIGatewayProxyWebsocketEventV2) {
-  const started = Date.now();
+export const handler = withRequestLog(async (event) => {
   await unbind(event.requestContext.connectionId);
-  log({ route: '$disconnect', result: 'ok', durationMs: Date.now() - started });
-  return { statusCode: 200 };
-}
+  return { result: 'ok' };
+});

@@ -1,43 +1,48 @@
-import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
-import { ErrorCode, UUID, close, log, parseBody, send, touch } from './shared';
+import {
+  ErrorCode,
+  Outcome,
+  UUID,
+  close,
+  parseBody,
+  send,
+  sendError,
+  touch,
+  withRequestLog,
+} from './shared';
 
 /** Serves every application route, chosen by routeKey (D02). */
-export async function handler(event: APIGatewayProxyWebsocketEventV2) {
+export const handler = withRequestLog(async (event) => {
   const { connectionId, routeKey, requestTimeEpoch: now } = event.requestContext;
   const body = parseBody(event.body) ?? {};
   const requestId = typeof body.requestId === 'string' ? body.requestId : undefined;
-  const fail = async (owner: string, code: ErrorCode, message: string) => {
-    await send(connectionId, owner, {
-      type: 'error',
-      ...(requestId && { requestId }),
-      code,
-      message,
-    });
-    log({ route: routeKey, result: 'error', code, durationMs: Date.now() - now });
+  const fail = async (
+    username: string | undefined,
+    code: ErrorCode,
+    message: string,
+  ): Promise<Outcome> => {
+    const delivered = await sendError(connectionId, username, { code, message, requestId });
+    return { result: delivered ? 'error' : 'gone', code };
   };
 
   const username = await touch(connectionId, now);
   if (!username) {
-    // An error would drop a message from the client's queue; closing makes it reconnect and resend (RF12).
-    if (routeKey !== 'sendMessage')
-      await fail('', 'notRegistered', 'This connection is not registered.');
-    else log({ route: routeKey, result: 'closed', durationMs: Date.now() - now });
-    await close(connectionId);
-    return { statusCode: 200 };
+    // The connection must close even when the error cannot be sent, so the client reconnects and registers again.
+    try {
+      return await fail(undefined, 'notRegistered', 'This connection is not registered.');
+    } finally {
+      await close(connectionId);
+    }
   }
   if (!requestId || !UUID.test(requestId)) {
-    await fail(username, 'invalidRequest', 'requestId must be a UUID v4.');
-    return { statusCode: 200 };
+    return fail(username, 'invalidRequest', 'requestId must be a UUID v4.');
   }
 
   switch (routeKey) {
-    case 'heartbeat':
-      await send(connectionId, username, { type: 'pong', requestId });
-      break;
+    case 'heartbeat': {
+      const delivered = await send(connectionId, username, { type: 'pong', requestId });
+      return { result: delivered ? 'ok' : 'gone' };
+    }
     default:
       throw new Error(`Route ${routeKey} is wired to app but not implemented`);
   }
-
-  log({ route: routeKey, result: 'ok', durationMs: Date.now() - now });
-  return { statusCode: 200 };
-}
+});
