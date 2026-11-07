@@ -1,0 +1,9 @@
+<button type="button" [class.selected]="selected()" [attr.aria-pressed]="pressed()">
+  <app-avatar [kind]="avatarKind()" [name]="avatarName()" [presence]="presence()" />
+  <span class="item-text">
+    <span class="item-title">{{ title() }}</span>
+    @if (subtitle()) {
+      <span class="item-subtitle">{{ subtitle() }}</span>
+    }
+  </span>
+</button>

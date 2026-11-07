@@ -1,0 +1,14 @@
+<app-screen-header
+  title="Membros"
+  [detail]="groupName()"
+  [backLink]="['/c', conversationId()]"
+  backLabel="Voltar para a conversa"
+/>
+@if (!connected()) {
+  <app-connection-banner />
+}
+<app-members-panel
+  [conversationId]="conversationId()"
+  [sectionLevel]="2"
+  (addPeople)="groupDialogs.openAddPeople(conversationId())"
+/>

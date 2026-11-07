@@ -1,0 +1,60 @@
+<div class="list-header">
+  <h2 id="conversation-list-title">Chat</h2>
+  @if (!compact()) {
+    <button
+      matIconButton
+      [disabled]="!connected()"
+      [matMenuTriggerFor]="newMenu"
+      aria-label="Novo chat ou grupo"
+    >
+      <mat-icon>add</mat-icon>
+    </button>
+    <mat-menu #newMenu="matMenu" xPosition="before">
+      <button mat-menu-item (click)="newConversations.openNewChat()">Novo chat</button>
+      <button mat-menu-item (click)="newConversations.openNewGroup()">Novo grupo</button>
+    </mat-menu>
+  }
+</div>
+
+@if (loading()) {
+  <div class="loading">
+    <mat-progress-spinner mode="indeterminate" diameter="40" aria-label="Carregando conversas" />
+  </div>
+} @else if (rows().length === 0) {
+  @if (compact()) {
+    <div class="empty-screen">
+      <p class="empty-title">Nenhuma conversa ainda</p>
+      <p>Toque em Novo para iniciar um chat privado ou criar um grupo.</p>
+    </div>
+  } @else {
+    <p class="empty">Nenhuma conversa ainda</p>
+  }
+} @else {
+  <mat-nav-list aria-label="Conversas">
+    @for (row of rows(); track row.conversationId) {
+      <a
+        mat-list-item
+        [routerLink]="['/c', row.conversationId]"
+        [activated]="row.conversationId === selectedId()"
+        [attr.aria-current]="row.conversationId === selectedId() ? 'page' : null"
+        [disabled]="row.dimmed"
+        [class.new-activity]="row.newActivity"
+      >
+        <span class="row">
+          <app-avatar [kind]="row.avatarKind" [name]="row.avatarName" [presence]="row.presence" />
+          <span class="item-text">
+            <span class="item-title">{{ row.title }}</span>
+            @if (row.subtitle) {
+              <span class="item-subtitle">{{ row.subtitle }}</span>
+            }
+          </span>
+          @if (row.newActivity) {
+            <app-new-activity [time]="row.time ?? ''" />
+          } @else if (row.time) {
+            <span class="time">{{ row.time }}</span>
+          }
+        </span>
+      </a>
+    }
+  </mat-nav-list>
+}

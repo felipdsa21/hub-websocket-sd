@@ -1,0 +1,14 @@
+@if (backLink(); as link) {
+  <a matIconButton [routerLink]="link" [attr.aria-label]="backLabel()">
+    <mat-icon>arrow_back</mat-icon>
+  </a>
+} @else {
+  <ng-content select="[leading]" />
+}
+<div class="title">
+  <h1>{{ title() }}</h1>
+  @if (detail()) {
+    <span class="detail">{{ detail() }}</span>
+  }
+</div>
+<ng-content />

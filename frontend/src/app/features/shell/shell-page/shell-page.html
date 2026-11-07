@@ -1,0 +1,45 @@
+@if (showList()) {
+  <header class="top-bar">
+    <h1 class="app-title" [class.visually-hidden]="compact()">Hub Colaborativo</h1>
+    <app-search-box [compact]="compact()" />
+    <span class="spacer"></span>
+    <app-account-menu />
+  </header>
+  @if (!connected()) {
+    <app-connection-banner />
+  }
+}
+
+<div class="body">
+  @if (showList()) {
+    <app-conversation-list class="list" [selectedId]="selectedId()" [compact]="compact()" />
+  }
+  @if (showMain()) {
+    <main class="main">
+      <router-outlet />
+    </main>
+  }
+</div>
+
+@if (compact() && showList()) {
+  <div class="fab-menu">
+    @if (newMenuOpen()) {
+      <button matFab extended class="fab-item" (click)="newChat()">
+        <mat-icon>edit</mat-icon>
+        Novo chat
+      </button>
+      <button matFab extended class="fab-item" (click)="newGroup()">
+        <mat-icon>groups</mat-icon>
+        Novo grupo
+      </button>
+      <button matFab class="fab-close" aria-label="Fechar" (click)="newMenuOpen.set(false)">
+        <mat-icon>close</mat-icon>
+      </button>
+    } @else {
+      <button matFab extended [disabled]="!connected()" (click)="newMenuOpen.set(true)">
+        <mat-icon>edit</mat-icon>
+        Novo
+      </button>
+    }
+  </div>
+}

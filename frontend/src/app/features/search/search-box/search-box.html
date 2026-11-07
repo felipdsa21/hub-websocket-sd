@@ -1,0 +1,81 @@
+<div class="bar" [class.disabled]="!connected()">
+  @if (open()) {
+    <button matIconButton aria-label="Fechar pesquisa" (click)="close()">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+  } @else {
+    <mat-icon class="leading" aria-hidden="true">search</mat-icon>
+  }
+  <input
+    #input
+    type="search"
+    [placeholder]="compact() ? 'Pesquisar' : 'Pesquisar conversas e pessoas'"
+    aria-label="Pesquisar conversas e pessoas"
+    [attr.aria-controls]="open() && query() ? 'search-results' : null"
+    [value]="query()"
+    [disabled]="!connected()"
+    (input)="onInput($event)"
+    (focus)="open.set(true)"
+  />
+  @if (open() && query()) {
+    <button matIconButton aria-label="Limpar pesquisa" (click)="clear()">
+      <mat-icon>close</mat-icon>
+    </button>
+  }
+</div>
+
+@if (open() && query()) {
+  <div id="search-results" class="panel" role="region" aria-label="Resultados da pesquisa">
+    @switch (status()) {
+      @case ('loading') {
+        <div class="state">
+          <mat-progress-spinner mode="indeterminate" diameter="40" aria-label="Pesquisando" />
+        </div>
+      }
+      @case ('error') {
+        <div class="state error" role="alert">
+          <span>Não foi possível pesquisar.</span>
+          <button matButton (click)="retry()">Tentar de novo</button>
+        </div>
+      }
+      @default {
+        @if (empty()) {
+          <p class="state" role="status">Nenhuma conversa ou pessoa encontrada.</p>
+        }
+        @if (conversations().length > 0) {
+          <h2>Conversas</h2>
+          <ul class="plain-list" aria-label="Conversas">
+            @for (result of conversations(); track result.key) {
+              <li>
+                <app-result-row
+                  [avatarKind]="result.avatarKind"
+                  [avatarName]="result.avatarName"
+                  [presence]="result.presence"
+                  [title]="result.title"
+                  [subtitle]="result.subtitle"
+                  (click)="openConversation(result.key)"
+                ></app-result-row>
+              </li>
+            }
+          </ul>
+        }
+        @if (people().length > 0) {
+          <h2>Pessoas</h2>
+          <ul class="plain-list" aria-label="Pessoas">
+            @for (result of people(); track result.key) {
+              <li>
+                <app-result-row
+                  [avatarName]="result.avatarName"
+                  [presence]="result.presence"
+                  [title]="result.title"
+                  [subtitle]="result.subtitle"
+                  (click)="openPerson(result.key)"
+                ></app-result-row>
+              </li>
+            }
+          </ul>
+        }
+      }
+    }
+  </div>
+}

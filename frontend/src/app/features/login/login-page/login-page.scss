@@ -1,0 +1,86 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: 96px 24px 24px;
+  background: var(--mat-sys-surface);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+h1 {
+  margin: 0;
+  font: var(--mat-sys-headline-small);
+  color: var(--mat-sys-on-surface);
+}
+
+.intro {
+  margin: 0;
+  font: var(--mat-sys-body-medium);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.connection-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--mat-sys-error-container);
+  color: var(--mat-sys-on-error-container);
+  font: var(--mat-sys-body-medium);
+
+  mat-icon {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    font-size: 20px;
+  }
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  // Keeps the next field's floating label clear of the supporting text.
+  gap: 8px;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+mat-icon[matSuffix] {
+  color: var(--mat-sys-error);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+@media (min-width: 600px) {
+  :host {
+    justify-content: center;
+    padding: 24px;
+    background: var(--mat-sys-surface-container);
+  }
+
+  .card {
+    width: 440px;
+    padding: 32px 32px 24px;
+    border-radius: 28px;
+    background: var(--mat-sys-surface-container-lowest);
+    box-shadow: var(--mat-sys-level1);
+  }
+}

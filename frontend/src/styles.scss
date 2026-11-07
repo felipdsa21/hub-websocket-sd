@@ -1,39 +1,149 @@
-// Include theming for Angular Material with `mat.theme()`.
-// This Sass mixin will define CSS variables that are used for styling Angular Material
-// components according to the Material 3 design spec.
-// Learn more about theming and how to use it for your application's
-// custom components at https://material.angular.dev/guide/theming
 @use '@angular/material' as mat;
+@use 'theme-colors' as theme;
 
 html {
   height: 100%;
   @include mat.theme(
     (
       color: (
-        primary: mat.$azure-palette,
-        tertiary: mat.$blue-palette,
+        primary: theme.$primary-palette,
+        tertiary: theme.$tertiary-palette,
       ),
       typography: Roboto,
       density: 0,
     )
   );
+
+  // The generated palettes are close to the Material 3 kit's baseline scheme but not equal to it,
+  // so the tokens the design uses are pinned to the values of the Figma variables.
+  @include mat.theme-overrides(
+    (
+      primary: light-dark(#6750a4, #d0bcff),
+      primary-container: light-dark(#eaddff, #4f378b),
+      on-primary-container: light-dark(#4f378a, #eaddff),
+      secondary-container: light-dark(#e8def8, #4a4458),
+      on-secondary-container: light-dark(#4a4459, #e8def8),
+      tertiary-container: light-dark(#ffd8e4, #633b48),
+      on-tertiary-container: light-dark(#633b48, #ffd8e4),
+      surface: light-dark(#fef7ff, #141218),
+      surface-container-lowest: light-dark(#ffffff, #0f0d13),
+      surface-container-low: light-dark(#f7f2fa, #1d1b20),
+      surface-container: light-dark(#f3edf7, #211f26),
+      surface-container-high: light-dark(#ece6f0, #2b2930),
+      surface-container-highest: light-dark(#e6e0e9, #36343b),
+      on-surface: light-dark(#1d1b20, #e6e0e9),
+      on-surface-variant: light-dark(#49454f, #cac4d0),
+      outline: light-dark(#79747e, #938f99),
+      outline-variant: light-dark(#cac4d0, #49454f),
+      error: light-dark(#b3261e, #f2b8b5),
+      error-container: light-dark(#f9dedc, #8c1d18),
+      on-error-container: light-dark(#852221, #f9dedc),
+      inverse-surface: light-dark(#322f35, #e6e0e9),
+      inverse-on-surface: light-dark(#f5eff7, #322f35),
+    )
+  );
+
+  // Material draws dialogs on surface; the kit uses surface-container-high, as Material 3 does.
+  @include mat.dialog-overrides(
+    (
+      container-color: var(--mat-sys-surface-container-high),
+    )
+  );
+
+  --hub-presence-online: light-dark(#2e7d32, #7fd88f);
+}
+
+// The kit draws supporting text in on-surface-variant; Material's hint inherits on-surface.
+mat-hint {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.filled-icon {
+  font-variation-settings: 'FILL' 1;
+}
+
+// Modal side sheet (members at intermediate widths), with the design's rounded leading corners.
+.side-sheet-panel {
+  --mat-dialog-container-color: var(--mat-sys-surface-container-low);
+
+  .mat-mdc-dialog-surface {
+    border-radius: 16px 0 0 16px;
+  }
+}
+
+.full-screen-dialog-panel {
+  --mat-dialog-container-color: var(--mat-sys-surface);
+
+  .mat-mdc-dialog-surface {
+    border-radius: 0;
+  }
+
+  .mat-mdc-dialog-content {
+    flex: 1;
+    max-height: none;
+  }
+
+  // The main action moves to the header (DialogHeader), and closing is the header's X.
+  .mat-mdc-dialog-actions {
+    display: none;
+  }
+}
+
+.dialog-intro {
+  margin: 0 0 16px;
+  font: var(--mat-sys-body-medium);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+// A list without bullets, with the 2 px gap of the design's lists.
+.plain-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// Two-line text of a list item: a title and a subtitle, each cut with an ellipsis.
+.item-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.item-title,
+.item-subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-title {
+  font: var(--mat-sys-body-large);
+  color: var(--mat-sys-on-surface);
+}
+
+.item-subtitle {
+  font: var(--mat-sys-body-medium);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 body {
-  // Default the application to a light color theme. This can be changed to
-  // `dark` to enable the dark color theme, or to `light dark` to defer to the
-  // user's system settings.
-  color-scheme: light;
-
-  // Set a default background, font and text colors for the application using
-  // Angular Material's system-level CSS variables. Learn more about these
-  // variables at https://material.angular.dev/guide/system-variables
+  color-scheme: light dark;
   background-color: var(--mat-sys-surface);
   color: var(--mat-sys-on-surface);
   font: var(--mat-sys-body-medium);
-
-  // Reset the user agent margin.
   margin: 0;
   height: 100%;
 }
-/* You can add global styles to this file, and also import other style files */

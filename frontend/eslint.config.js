@@ -15,6 +15,17 @@ module.exports = defineConfig([
     ],
     processor: angular.processInlineTemplates,
     rules: {
+      '@typescript-eslint/explicit-member-accessibility': [
+        'error',
+        { accessibility: 'explicit', overrides: { constructors: 'no-public' } },
+      ],
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'Date',
+          message: "Use Temporal from 'temporal-polyfill'.",
+        },
+      ],
       '@angular-eslint/directive-selector': [
         'error',
         {

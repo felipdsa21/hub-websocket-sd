@@ -1,0 +1,5 @@
+<app-members-header (dismiss)="dialogRef.close()" />
+<app-members-panel
+  [conversationId]="conversationId()"
+  (addPeople)="groupDialogs.openAddPeople(conversationId())"
+/>
