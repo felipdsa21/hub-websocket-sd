@@ -46,7 +46,7 @@ const logged = () => logSpy.mock.calls.map((c) => JSON.parse(String(c[0])));
 beforeEach(() => {
   db.reset();
   api.reset();
-  logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+  logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
   logSpy.mockClear();
 });
 

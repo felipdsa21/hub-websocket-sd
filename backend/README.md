@@ -11,6 +11,7 @@ Por enquanto, estão implementadas as rotas `$connect`, `$disconnect`, `$default
 ```sh
 npm ci
 npm run build   # verificação de tipos
+npm run lint
 npm test
 npx cdk synth HubWebSocket-dev
 ```
