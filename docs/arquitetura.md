@@ -6,7 +6,9 @@
 
 Este documento define a arquitetura distribuída do Hub Colaborativo WebSocket e o esquema de nomeação e endereçamento: como um usuário ou uma conversa é resolvido nas conexões WebSocket abertas e como uma requisição chega ao backend e volta aos clientes. Os requisitos citados (RF, RNF, R e L) estão na [especificação](especificacao.md).
 
-O ciclo de vida da sessão, com os diagramas de sequência de `$connect` e `$disconnect`, está em [sessao.md](sessao.md).
+O ciclo de vida da sessão, com os diagramas de sequência de `$connect` e `$disconnect`, está em [sessao.md](sessao.md).  
+
+Os detalhes de ordenação temporal, deduplicação, consistência no DynamoDB e ciclo de vida das conversas estão em [sincronização e consistência](sincronizacao.md).
 
 Os IDs das decisões (D) são estáveis, e o número de um item removido não é reaproveitado.
 
