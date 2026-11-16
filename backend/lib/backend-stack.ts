@@ -11,8 +11,18 @@ export interface BackendStackProps extends cdk.StackProps {
   stage: 'dev' | 'prod';
 }
 
-// Application routes served by the app Lambda; the others fall into $default until implemented.
-const APP_ROUTES = ['heartbeat'];
+// Application routes served by the app Lambda (architecture, section 4.1).
+const APP_ROUTES = [
+  'heartbeat',
+  'sync',
+  'sendMessage',
+  'openDirect',
+  'createGroup',
+  'addMember',
+  'leaveGroup',
+  'getHistory',
+  'search',
+];
 
 export class BackendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: BackendStackProps) {
