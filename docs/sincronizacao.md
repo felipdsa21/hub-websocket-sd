@@ -4,7 +4,7 @@
 
 ## 1. Introdução
 
-Este documento especifica os mecanismos distribuídos que garantem a ordenação global de mensagens, a idempotência contra reenvios, o modelo de consistência de leitura e escrita no DynamoDB e o ciclo de vida das conversas privadas, grupos e histórico paginado. Os requisitos citados (`RF`, `RNF`, `R`, `L` e `T`) estão definidos na [especificação](especificacao.md), e o esquema de tabelas, rotas e decisões arquiteturais (`D01`–`D11`) está detalhado na [arquitetura](arquitetura.md).
+Este documento explica os mecanismos distribuídos que garantem a ordenação global de mensagens, a idempotência contra reenvios, o modelo de consistência de leitura e escrita no DynamoDB e o ciclo de vida das conversas privadas, grupos e histórico paginado. Os requisitos citados (`RF`, `RNF`, `R`, `L` e `T`) estão definidos na [especificação](especificacao.md), e este texto ilustra e aprofunda os mecanismos detalhados na [arquitetura](arquitetura.md), que continua sendo a referência.
 
 ---
 
@@ -41,8 +41,8 @@ Em um ambiente *serverless* (AWS Lambda), uma requisição recebida pelo API Gat
 
 Se um cliente reconectado solicitasse apenas mensagens posteriores ao instante exato da sua última mensagem conhecida ($t_{\text{último}}$), uma mensagem recebida antes da queda ($t_1 < t_{\text{último}}$), mas persistida depois, poderia ser omitida. Para mitigar esse cenário (`RF08`):
 
-* O cliente aplica um **recuo de segurança de 30 segundos** ao informar o parâmetro `since` na ação `sync` (e `after` no `getHistory` de conversas já abertas).
-* As mensagens já conhecidas dentro dessa janela de sobreposição são deduplicadas localmente pelo `sk`, enquanto eventuais mensagens gravadas com atraso são incorporadas na posição cronológica correta.
+* O cliente aplica um **recuo de segurança de 30 segundos** ao informar o parâmetro `since` (instante em ms) na ação `sync` e o limite de `sk` correspondente em `after` no `getHistory` de conversas já abertas.
+* As mensagens já conhecidas dentro dessa janela de sobreposição são deduplicadas localmente pelo `sk` (mesmo `sender` e `messageId`), enquanto eventuais mensagens gravadas com atraso são incorporadas na posição cronológica correta.
 
 ---
 
@@ -80,19 +80,24 @@ sequenceDiagram
 
     alt Sucesso primeira entrega
         DB-->>L: Transacao confirmada
-        L->>DB: UpdateItem lastMessageAt condicional
+        L->>DB: Atualiza lastMessageAt/lastMessageBy e revela ocultas
         L-->>C: Evento message confirmacao
         L-->>M: Evento message fan-out
     else ConditionalCheckFailed reenvio
         DB-->>L: Marcador id ja existe
         L->>DB: GetItem marcador id e mensagem m
-        L-->>C: Reenvia evento message ao remetente
+        L->>DB: Refaz lastMessageAt/lastMessageBy e revela ocultas
+        L-->>C: Reenvia evento message apenas ao remetente
     else TransactionConflict concorrencia
         DB-->>L: Conflito de transacao
         L->>L: Retry com backoff curto ate 3x
+        alt Conflito persiste
+            L->>DB: GetItem marcador id
+            Note over L,C: Se id existe, segue como reenvio; senao, nao responde e cliente reenvia
+        end
     end
 ```
-**Controle de Fila no Cliente:** Quando offline ou aguardando confirmação, o cliente enfileira as mensagens localmente e as reenvia **uma por vez** (a cada 15 segundos após reconectar). O envio sequencial evita que duas mensagens pendentes cheguem ao API Gateway no mesmo milissegundo durante uma rajada de reconexão e tenham sua ordem relativa alterada pelo desempate do `messageId`.
+**Controle de Fila no Cliente:** Quando offline ou aguardando confirmação, o cliente enfileira as mensagens localmente por conversa e as envia **uma por vez** — iniciando imediatamente ao reconectar e disparando a próxima logo após a confirmação da anterior (com timeout de 15 segundos sem confirmação para reenvio enquanto conectado). O envio sequencial evita que duas mensagens pendentes da mesma conversa cheguem ao API Gateway no mesmo milissegundo durante uma rajada de reconexão e tenham sua ordem relativa alterada pelo desempate do `messageId`.
 
 ---
 
@@ -104,7 +109,7 @@ Em sistemas de tempo real, uma leitura eventualmente consistente pode retornar d
 
 Por esse motivo, o projeto adota duas diretrizes rigorosas:
 
-1. **Consistência forte em todas as leituras:** Toda chamada `GetItem`, `BatchGetItem` e `Query` nas tabelas `Connections`, `Users`, `Conversations`, `Memberships` e `Messages` é executada com `ConsistentRead: true`.
+1. **Consistência forte em todas as leituras:** Toda chamada `GetItem`, `BatchGetItem`, `Query` e `Scan` nas tabelas `Connections`, `Users`, `Conversations`, `Memberships` e `Messages` é executada com `ConsistentRead: true`.
 2. **Proibição de Índices Secundários Globais (GSIs — `D04`):** O DynamoDB não suporta `ConsistentRead: true` em GSIs. Em vez de criar índices secundários, o modelo utiliza tabelas de projeção explícita mantidas por transações (`Memberships` indexada por `username` e `Conversations` indexada por `conversationId`), garantindo leitura fortemente consistente em todos os caminhos de acesso.
 
 ### 4.2 Transações Atômicas vs. Atualizações Condicionais
@@ -112,12 +117,12 @@ Por esse motivo, o projeto adota duas diretrizes rigorosas:
 | Operação / Rota | Mecanismo no DynamoDB | Tabelas Envolvidas | Justificativa de Consistência |
 | :--- | :--- | :--- | :--- |
 | `sendMessage` (persistência) | `TransactWriteItems` (`Put` + `Put`) | `Messages` | Garante que nunca exista uma mensagem sem marcador de deduplicação, nem marcador órfão sem mensagem. |
-| `sendMessage` (`lastMessageAt`) | `UpdateItem` condicional (`lastMessageAt < :sentAt`) | `Conversations` | Mantido **fora** da transação principal (`R06`, `T8`) para evitar contenção (`TransactionConflict`) no item da conversa sob alta concorrência de envios. |
+| `sendMessage` (`lastMessageAt` e `lastMessageBy`) | `UpdateItem` condicional (`attribute_not_exists(lastMessageAt) OR lastMessageAt < :sentAt OR (lastMessageAt = :sentAt AND lastMessageBy < :sender)`) | `Conversations` | Mantido **fora** da transação principal (`R06`, `T8`) para evitar contenção (`TransactionConflict`) no item da conversa sob alta concorrência de envios. |
 | `openDirect` e `createGroup` | `TransactWriteItems` (`Put` conversa + `Put` membros) | `Conversations`, `Memberships` | Impede criação parcial de sala sem que todos os membros enxerguem a conversa imediatamente no `sync`. |
-| `addMember` e `leaveGroup` | `TransactWriteItems` (`Update` lista + `Put`/`Delete` vínculo) | `Conversations`, `Memberships` | Mantém a lista `Conversations.members` e os registros individuais em `Memberships` estritamente sincronizados. |
-| `$connect` e `$disconnect` | `UpdateItem` atômico (`ADD` / `DELETE` em `StringSet`) | `Users`, `Connections` | Permite que múltiplas abas do mesmo usuário conectem e desconectem simultaneamente sem perda de estado (`D09`). |
+| `addMember` e `leaveGroup` | `TransactWriteItems` (`Update` conjunto `StringSet` + `Put`/`Delete` vínculo) | `Conversations`, `Memberships` | Mantém o conjunto `Conversations.members` e os registros individuais em `Memberships` estritamente sincronizados. |
+| `$connect` e `$disconnect` | `PutItem` / `DeleteItem` em `Connections`; `UpdateItem` atômico (`ADD` / `DELETE` em `StringSet`) em `Users` | `Connections`, `Users` | Permite que múltiplas abas do mesmo usuário conectem e desconectem simultaneamente sem perda de estado (`D09`). |
 
-Em caso de `TransactionConflict` causado por concorrência simultânea no mesmo item, a Lambda `app` realiza até **3 retentativas** com *backoff* exponencial curto e *jitter*; caso o conflito persista, retorna o erro tipado `conflict` (`RF09`) para tratamento pelo cliente.
+Em caso de `TransactionConflict` causado por concorrência simultânea no mesmo item, a Lambda `app` realiza até **3 retentativas** com *backoff* exponencial curto e *jitter*; caso o conflito persista, retorna o erro tipado `conflict` (`RF09`), **exceto** em `sendMessage`: nessa rota, a Lambda verifica o marcador `id#` e, se ele existir, segue como reenvio; se não existir, não envia resposta ao cliente para que a mensagem continue pendente na fila e seja reenviada (`RF12`).
 
 ---
 
@@ -129,19 +134,19 @@ Em caso de `TransactionConflict` causado por concorrência simultânea no mesmo 
 * **Participação Oculta (`D11`):** Ao executar `openDirect`, o item da conversa nasce com `started = false`. O iniciador recebe o registro normal em `Memberships`, enquanto o destinatário recebe o registro com `hidden = true`:
   * **Efeito na presença (`RF07`):** O destinatário já passa a compor a interseção de contatos para difusão de status online/offline.
   * **Efeito na listagem (`RF10`):** O `sync` omite conversas com `hidden = true` para o destinatário, evitando poluir sua caixa de entrada com chats vazios.
-  * **Ativação na primeira mensagem:** Quando a primeira mensagem é enviada, a transação remove `hidden` da participação do destinatário, marca `started = true` e emite o evento `conversationAdded` ao destinatário imediatamente antes do evento `message`.
+  * **Ativação na primeira mensagem:** Quando a primeira mensagem é enviada, **fora** da transação da mensagem, se `started` ainda é falso, a Lambda remove `hidden` e grava `joinedAt` em cada participação ainda oculta (com condição `attribute_exists(hidden)`), marca `started = true` em `Conversations` e emite `conversationAdded` ao dono de cada participação revelada imediatamente antes do evento `message`.
 
 ### 5.2 Grupos e Gestão de Membros (`createGroup`, `addMember`, `leaveGroup` — `RF04`)
 
 * **Identificador Único:** Grupos recebem `conversationId` no formato `g:<UUID v4>` e suportam até **99 membros** na criação (respeitando o limite rígido de 100 operações por `TransactWriteItems` do DynamoDB: 1 item em `Conversations` + até 99 itens em `Memberships`).
-* **Proteção contra Abandono Simultâneo (`lastMember`):** Na rota `leaveGroup`, a transação aplica a condição `size(members) > 1` no item da conversa. Se os dois últimos membros de um grupo clicarem em sair ao mesmo tempo, a primeira transação conclui a remoção e a segunda falha na condição, retornando o erro `lastMember` para que o último integrante confirme explicitamente o encerramento do grupo.
+* **Proteção contra Abandono Simultâneo (`lastMember`):** Na rota `leaveGroup`, a transação exige `contains(members, :username)` e, quando `confirm` não é verdadeiro, aplica também a condição `size(members) > 1` no item da conversa. Se os dois últimos membros de um grupo clicarem em sair ao mesmo tempo sem confirmar, a primeira transação conclui a remoção e a segunda falha na condição, retornando o erro `lastMember` para que o último integrante confirme explicitamente o encerramento do grupo (`confirm: true`).
 * **Eventos de Ciclo de Vida:** Toda alteração de topologia do grupo notifica os membros conectados por meio de eventos dedicados (`conversationAdded`, `conversationRemoved`, `memberJoined` e `memberLeft`).
 
 ### 5.3 Histórico Paginado (`getHistory` — `RF06`)
 
-A consulta de histórico opera diretamente sobre a partição `conversationId` da tabela `Messages` utilizando `Query` com `ConsistentRead: true` e filtro de chave `begins_with(sk, "m#")`, ignorando automaticamente os marcadores de deduplicação (`id#`).
+A consulta de histórico opera diretamente sobre a partição `conversationId` da tabela `Messages` utilizando `Query` com `ConsistentRead: true`, restringindo as chaves ao prefixo `m#` sem trazer os marcadores de deduplicação (`id#`, que ordenam antes de `m#` porque `'i' < 'm'`). Como o DynamoDB aceita apenas uma condição sobre a *Sort Key* por `Query`, a expressão varia conforme o cursor:
 
-* **Paginação Bidirecional:**
-  * **Rolagem para cima (`before`):** Busca mensagens com `sk < before` em ordem decrescente (`ScanIndexForward: false`), revertendo o lote antes de responder ao cliente.
-  * **Recuperação pós-queda (`after`):** Busca mensagens com `sk > after` em ordem crescente (`ScanIndexForward: true`), permitindo preencher lacunas específicas de uma conversa aberta.
+* **Página mais recente (sem cursor):** Usa `begins_with(sk, "m#")` em ordem decrescente (`ScanIndexForward: false`), revertendo o lote antes de responder ao cliente.
+* **Rolagem para cima (`before`):** Busca mensagens com `sk BETWEEN "m#" AND :before` em ordem decrescente (`ScanIndexForward: false`, descartando eventual item com `sk === before`) e reverte o lote antes de responder.
+* **Recuperação pós-queda (`after`):** Busca mensagens com `sk BETWEEN :after AND "m$"` em ordem crescente (`ScanIndexForward: true`, descartando eventual item com `sk === after`), permitindo preencher lacunas específicas de uma conversa aberta.
 * **Controle de Tamanho de Frame (`L03`):** Como o API Gateway WebSocket impõe o limite máximo de 32 KB por frame de mensagem, a Lambda `app` limita cada página de `getHistory` a no máximo **50 mensagens** ou **28 KB** acumulados (garantindo o retorno de pelo menos 1 mensagem por página) e sinaliza `hasMore = true` quando existem itens adicionais.
