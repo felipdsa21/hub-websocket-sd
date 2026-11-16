@@ -129,8 +129,9 @@ async function revealHiddenMemberships(conv: ConversationRecord, joinedAt: numbe
           new UpdateCommand({
             TableName: table('MEMBERSHIPS_TABLE'),
             Key: { username: membership.username, conversationId: conv.conversationId },
-            UpdateExpression: 'REMOVE hidden SET joinedAt = :joinedAt',
-            ConditionExpression: 'attribute_exists(hidden)',
+            UpdateExpression: 'REMOVE #hidden SET joinedAt = :joinedAt',
+            ConditionExpression: 'attribute_exists(#hidden)',
+            ExpressionAttributeNames: { '#hidden': 'hidden' },
             ExpressionAttributeValues: { ':joinedAt': joinedAt },
           }),
         ),
@@ -145,8 +146,9 @@ async function revealHiddenMemberships(conv: ConversationRecord, joinedAt: numbe
       new UpdateCommand({
         TableName: table('CONVERSATIONS_TABLE'),
         Key: { conversationId: conv.conversationId },
-        UpdateExpression: 'SET started = :true',
+        UpdateExpression: 'SET #started = :true',
         ConditionExpression: 'attribute_exists(conversationId)',
+        ExpressionAttributeNames: { '#started': 'started' },
         ExpressionAttributeValues: { ':true': true },
       }),
     ),

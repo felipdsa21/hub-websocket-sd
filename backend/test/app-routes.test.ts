@@ -375,6 +375,11 @@ describe('sendMessage', () => {
     const biaDeliveries = sentTo().filter((d) => d.connectionId === 'c2');
     expect(biaDeliveries.map((d) => d.payload.type)).toEqual(['conversationAdded', 'message']);
     expect(biaDeliveries[0]!.payload.conversation.joinedAt).toBe(NOW);
+
+    // Ensure DynamoDB reserved words `hidden` and `started` use ExpressionAttributeNames.
+    const updates = db.commandCalls(UpdateCommand).map((c) => c.args[0].input);
+    expect(updates[2]!.ExpressionAttributeNames).toEqual({ '#hidden': 'hidden' });
+    expect(updates[3]!.ExpressionAttributeNames).toEqual({ '#started': 'started' });
   });
 
   test('unbinds 410 Gone connection and continues delivering to remaining connections', async () => {
@@ -613,6 +618,9 @@ describe('openDirect & createGroup', () => {
     await app.handler(event('openDirect', { requestId: REQ_ID, username: 'bia' }));
 
     expect(sentTo()[0]!.payload.data.conversation.joinedAt).toBe(NOW);
+    expect(db.commandCalls(UpdateCommand)[1]!.args[0].input.ExpressionAttributeNames).toEqual({
+      '#hidden': 'hidden',
+    });
   });
 
   test('createGroup returns notFound with details.usernames when any user is missing', async () => {

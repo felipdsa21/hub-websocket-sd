@@ -108,8 +108,9 @@ async function revealCallerMembership(
         new UpdateCommand({
           TableName: table('MEMBERSHIPS_TABLE'),
           Key: { username: me, conversationId },
-          UpdateExpression: 'REMOVE hidden SET joinedAt = :now',
-          ConditionExpression: 'attribute_exists(hidden)',
+          UpdateExpression: 'REMOVE #hidden SET joinedAt = :now',
+          ConditionExpression: 'attribute_exists(#hidden)',
+          ExpressionAttributeNames: { '#hidden': 'hidden' },
           ExpressionAttributeValues: { ':now': now },
           ReturnValues: 'ALL_NEW',
         }),
