@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { HubFixtures } from '@/core/fixtures/hub-fixtures';
 import { Scenario } from '@/core/fixtures/scenarios';
 import { provideTestFixtures } from '@/core/fixtures/testing';
+import { FakeWebSocket, provideFakeSockets, useTestBackend } from '@/core/hub/testing';
 import { ConversationsStore } from './conversations-store';
 import { SessionStore } from './session-store';
 import { UsersStore } from './users-store';
@@ -93,5 +94,106 @@ describe('SessionStore', () => {
 
     expect(session.user()?.displayName).toBe('Marina A.');
     expect(users.get('marina')).toMatchObject({ displayName: 'Marina A.', version: before + 1 });
+  });
+});
+
+describe('SessionStore with the backend', () => {
+  function setUpLive() {
+    const sockets: FakeWebSocket[] = [];
+    TestBed.configureTestingModule({
+      providers: [...provideTestFixtures(), ...provideFakeSockets(sockets)],
+    });
+    useTestBackend();
+    return { session: TestBed.inject(SessionStore), sockets };
+  }
+
+  const alice = { username: 'alice', displayName: 'Alice', online: true, version: 3 };
+  const bruno = { username: 'bruno', displayName: 'Bruno', online: false, version: 7 };
+
+  it('connects, loads the list with sync and only then enters', async () => {
+    const { session, sockets } = setUpLive();
+    const entering = session.enter('Alice', ' Alice ');
+    expect(session.enterStatus()).toBe('connecting');
+
+    const socket = sockets[0]!;
+    socket.open();
+    await Promise.resolve();
+    expect(socket.last()).toMatchObject({ action: 'sync' });
+    expect(session.user()).toBeNull();
+    socket.receive({
+      type: 'response',
+      requestId: socket.last().requestId,
+      data: {
+        serverTime: 1000,
+        updated: [],
+        conversations: [
+          {
+            conversationId: 'd:alice:bruno',
+            type: 'direct',
+            members: [alice, bruno],
+            lastMessageAt: 900,
+            lastMessageBy: 'bruno',
+            joinedAt: 100,
+          },
+          { conversationId: 'g:1', type: 'group', name: 'SD', members: [alice], joinedAt: 200 },
+        ],
+      },
+    });
+    await entering;
+
+    expect(session.user()).toEqual({ username: 'alice', displayName: 'Alice' });
+    expect(session.enterStatus()).toBe('idle');
+    const conversations = TestBed.inject(ConversationsStore);
+    expect(conversations.sorted().map((c) => c.conversationId)).toEqual(['g:1', 'd:alice:bruno']);
+    expect(conversations.get('d:alice:bruno')?.members).toEqual(['alice', 'bruno']);
+    expect(TestBed.inject(UsersStore).get('bruno')).toEqual(bruno);
+    expect(TestBed.inject(HubFixtures).data()).toBeNull();
+  });
+
+  it('keeps the own state when there is no conversation', async () => {
+    const { session, sockets } = setUpLive();
+    const entering = session.enter('alice', '');
+    const socket = sockets[0]!;
+    socket.open();
+    await Promise.resolve();
+    socket.receive({
+      type: 'response',
+      requestId: socket.last().requestId,
+      data: { serverTime: 1000, updated: [], conversations: [] },
+    });
+    await entering;
+
+    expect(new URL(socket.url).searchParams.has('displayName')).toBe(false);
+    expect(TestBed.inject(UsersStore).get('alice')).toMatchObject({ displayName: 'alice' });
+  });
+
+  it('shows a failure to enter when the connection is refused', async () => {
+    const { session, sockets } = setUpLive();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const entering = session.enter('alice', '');
+    sockets[0]!.drop();
+    await entering;
+
+    expect(session.enterStatus()).toBe('failed');
+    expect(session.user()).toBeNull();
+  });
+
+  it('closes the connection when leaving', async () => {
+    const { session, sockets } = setUpLive();
+    const entering = session.enter('alice', '');
+    const socket = sockets[0]!;
+    socket.open();
+    await Promise.resolve();
+    socket.receive({
+      type: 'response',
+      requestId: socket.last().requestId,
+      data: { serverTime: 1000, updated: [], conversations: [] },
+    });
+    await entering;
+
+    session.leave();
+
+    expect(socket.closed).toBe(true);
+    expect(session.user()).toBeNull();
   });
 });

@@ -25,7 +25,7 @@ O cliente web, em Angular, abre uma conexão WebSocket persistente com o API Gat
 
 O backend implementa as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search` com persistência no DynamoDB e entrega via `@connections`; ainda faltam os anúncios de presença no `$connect`/`$disconnect`, a rotina `presenceSweeper` e a anonimização HMAC dos logs.
 
-O frontend tem todas as telas, mas ainda não se comunica com o backend: roda sobre dados fixos, e os estados que só o backend produziria, como a queda da conexão ou uma mensagem recusada, são simulados por cenários.
+O frontend tem todas as telas. Com o endereço do backend configurado, ele entra pela conexão WebSocket, mantém o heartbeat e carrega a lista de conversas com o `sync`; o envio e o recebimento de mensagens, o histórico, a pesquisa e as ações sobre conversas ainda não estão ligados ao backend. Sem o endereço, tudo roda sobre dados fixos, e os estados que só o backend produziria, como a queda da conexão ou uma mensagem recusada, são simulados por cenários.
 
 ## Como rodar
 
@@ -38,6 +38,8 @@ cd frontend
 npm ci
 npm start
 ```
+
+Para usar o backend, copie `frontend/public/config.example.json` para `frontend/public/config.json` e coloque nele o endereço do estágio `dev` (a saída `WebSocketUrl` do `cdk deploy`). O `config.json` fica fora do Git. Sem ele, ou com um cenário escolhido na URL, a interface usa os dados fixos.
 
 A interface abre em http://localhost:4200. Em desenvolvimento, os cenários são escolhidos com `?cenario=`, como em http://localhost:4200/?cenario=sem-conexao,pendentes; a lista completa está em `frontend/src/app/core/fixtures/scenarios.ts`. Para conferir o código: `npm test`, `npm run lint` e `npx prettier --check src`.
 
