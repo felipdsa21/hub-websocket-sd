@@ -18,7 +18,20 @@ test('routes by action to the four Lambdas', () => {
     ProtocolType: 'WEBSOCKET',
     RouteSelectionExpression: '$request.body.action',
   });
-  for (const RouteKey of ['$connect', '$disconnect', '$default', 'heartbeat']) {
+  for (const RouteKey of [
+    '$connect',
+    '$disconnect',
+    '$default',
+    'heartbeat',
+    'sync',
+    'sendMessage',
+    'openDirect',
+    'createGroup',
+    'addMember',
+    'leaveGroup',
+    'getHistory',
+    'search',
+  ]) {
     template.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey });
   }
   template.allResourcesProperties('AWS::Lambda::Function', { Timeout: 10 });

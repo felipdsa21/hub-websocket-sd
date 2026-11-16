@@ -1,17 +1,15 @@
 import { PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { db, withRequestLog } from './shared';
+import { db, isValidNameLength, parseUsername, withRequestLog } from './shared';
 
-const USERNAME = /^[a-z0-9._-]{3,32}$/;
 // Only a cleanup for records the presence sweeper missed (D05).
 const RECORD_TTL_S = 3 * 60 * 60;
 
 /** Validates the query string (RF01); undefined means the handshake must fail. */
 export function parseIdentity(query: Record<string, string | undefined> | undefined) {
-  const username = query?.username?.toLowerCase();
-  if (!username || !USERNAME.test(username)) return undefined;
+  const username = parseUsername(query?.username);
+  if (!username) return undefined;
   const displayName = query?.displayName ?? username;
-  const length = [...displayName].length;
-  if (length < 1 || length > 50 || displayName !== displayName.trim()) return undefined;
+  if (!isValidNameLength(displayName) || displayName !== displayName.trim()) return undefined;
   return { username, displayName };
 }
 

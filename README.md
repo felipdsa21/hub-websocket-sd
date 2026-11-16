@@ -23,7 +23,7 @@ O cliente web, em Angular, abre uma conexão WebSocket persistente com o API Gat
 
 ## Estado atual
 
-O backend implementa as rotas `$connect`, `$disconnect`, `$default` e `heartbeat`, com o vínculo entre usuário e `connectionId` no DynamoDB, e está implantado no estágio `dev`. As demais rotas de aplicação, como o envio de mensagens, ainda caem na `$default`.
+O backend implementa as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search` com persistência no DynamoDB e entrega via `@connections`; ainda faltam os anúncios de presença no `$connect`/`$disconnect`, a rotina `presenceSweeper` e a anonimização HMAC dos logs.
 
 O frontend tem todas as telas, mas ainda não se comunica com o backend: roda sobre dados fixos, e os estados que só o backend produziria, como a queda da conexão ou uma mensagem recusada, são simulados por cenários.
 
