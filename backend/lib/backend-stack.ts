@@ -3,6 +3,8 @@ import { WebSocketLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integra
 import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { Schedule, ScheduleExpression } from 'aws-cdk-lib/aws-scheduler';
+import { LambdaInvoke } from 'aws-cdk-lib/aws-scheduler-targets';
 import * as cdk from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
 import * as path from 'node:path';
@@ -46,11 +48,11 @@ export class BackendStack extends cdk.Stack {
       MESSAGES_TABLE: table('Messages', 'conversationId', 'sk'),
     };
 
-    const fn = (name: string) => {
+    const fn = (name: string, timeoutSeconds = 10) => {
       const f = new NodejsFunction(this, name, {
         entry: path.join(__dirname, '..', 'functions', `${name}.ts`),
         runtime: Runtime.NODEJS_22_X,
-        timeout: cdk.Duration.seconds(10),
+        timeout: cdk.Duration.seconds(timeoutSeconds),
         environment: Object.fromEntries(
           Object.entries(tables).map(([key, t]) => [key, t.tableName]),
         ),
@@ -62,6 +64,18 @@ export class BackendStack extends cdk.Stack {
     const disconnect = fn('disconnect');
     const fallback = fn('default');
     const app = fn('app');
+    // Two scans of Connections 30 s apart plus the Users scan fit in 50 s (architecture, section 3.4).
+    const sweeper = fn('presenceSweeper', 50);
+
+    // No retries and the shortest event age: the next run, a minute later, redoes the same work (D05).
+    sweeper.configureAsyncInvoke({ retryAttempts: 0, maxEventAge: cdk.Duration.seconds(60) });
+    new Schedule(this, 'PresenceSweeperSchedule', {
+      schedule: ScheduleExpression.rate(cdk.Duration.minutes(1)),
+      target: new LambdaInvoke(sweeper, {
+        retryAttempts: 0,
+        maxEventAge: cdk.Duration.seconds(60),
+      }),
+    });
 
     const api = new WebSocketApi(this, 'Api', {
       routeSelectionExpression: '$request.body.action',
@@ -83,7 +97,7 @@ export class BackendStack extends cdk.Stack {
       stageName: props.stage,
       autoDeploy: true,
     });
-    for (const f of [connect, disconnect, fallback, app]) {
+    for (const f of [connect, disconnect, fallback, app, sweeper]) {
       f.addEnvironment('CALLBACK_URL', stage.callbackUrl);
       stage.grantManagementApiAccess(f);
     }

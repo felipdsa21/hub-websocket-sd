@@ -13,17 +13,18 @@ O cliente web, em Angular, abre uma conexão WebSocket persistente com o API Gat
 - [Especificação](docs/especificacao.md): requisitos, riscos, limitações e plano de testes.
 - [Arquitetura](docs/arquitetura.md): serviços da AWS, esquema de nomeação, dados, rotas e eventos, comportamento do cliente, logs e métricas.
 - [Sessão](docs/sessao.md): ciclo de vida da sessão, com o handshake, os frames e o diretório de conexões.
+- [Tolerância a falhas](docs/tolerancia-falhas.md): conexões órfãs (`410 Gone`), expiração por inatividade e recuperação de estado no backend.
 - [Design no Figma](https://www.figma.com/design/ThG8NUReHI5c9tYzXdaU6z/Hub-Colaborativo-WebSocket): telas e componentes da interface.
 
 ## Estrutura
 
 - `backend/`: stack do CDK (`lib/`) e código das Lambdas (`functions/`). Detalhes de desenvolvimento e implantação estão no [README do backend](backend/README.md).
 - `frontend/`: cliente web em Angular, com Angular Material.
-- `docs/`: especificação, arquitetura e sessão.
+- `docs/`: especificação, arquitetura, sessão e tolerância a falhas.
 
 ## Estado atual
 
-O backend implementa as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search` com persistência no DynamoDB e entrega via `@connections`; ainda faltam os anúncios de presença no `$connect`/`$disconnect`, a rotina `presenceSweeper` e a anonimização HMAC dos logs.
+O backend implementa as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search` com persistência no DynamoDB e entrega via `@connections`, além da rotina `presenceSweeper`, que expira as conexões inativas a cada minuto; ainda faltam os anúncios de presença e a anonimização HMAC dos logs.
 
 O frontend tem todas as telas, mas ainda não se comunica com o backend: roda sobre dados fixos, e os estados que só o backend produziria, como a queda da conexão ou uma mensagem recusada, são simulados por cenários.
 

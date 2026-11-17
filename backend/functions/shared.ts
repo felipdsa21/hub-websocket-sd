@@ -174,6 +174,15 @@ export async function touch(connectionId: string, now: number): Promise<string |
   }
 }
 
+/**
+ * Waits for every task and only then rethrows the first failure, so one failed delivery neither stops
+ * the others nor lets the Lambda return while they are still in flight.
+ */
+export async function settle(tasks: Promise<unknown>[]) {
+  const failed = (await Promise.allSettled(tasks)).find((r) => r.status === 'rejected');
+  if (failed) throw failed.reason;
+}
+
 const isGone = (err: unknown) => (err as Error).name === 'GoneException';
 
 /**

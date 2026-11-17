@@ -34,7 +34,21 @@ test('routes by action to the four Lambdas', () => {
   ]) {
     template.hasResourceProperties('AWS::ApiGatewayV2::Route', { RouteKey });
   }
-  template.allResourcesProperties('AWS::Lambda::Function', { Timeout: 10 });
+});
+
+test('runs the presence sweeper every minute without retries (D05)', () => {
+  template.hasResourceProperties('AWS::Scheduler::Schedule', {
+    ScheduleExpression: 'rate(1 minute)',
+    Target: Match.objectLike({
+      RetryPolicy: { MaximumRetryAttempts: 0, MaximumEventAgeInSeconds: 60 },
+    }),
+  });
+  template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', {
+    MaximumRetryAttempts: 0,
+    MaximumEventAgeInSeconds: 60,
+  });
+  template.hasResourceProperties('AWS::Lambda::Function', { Timeout: 50 });
+  template.resourcePropertiesCountIs('AWS::Lambda::Function', { Timeout: 10 }, 4);
 });
 
 test('lets the Lambdas post to connections (R04)', () => {
