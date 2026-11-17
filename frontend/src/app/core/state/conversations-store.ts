@@ -18,6 +18,8 @@ export class ConversationsStore {
   private readonly seen = signal<ReadonlyMap<string, number>>(new Map());
   /** Conversations opened in this session; the others are dimmed while offline. */
   private readonly opened = signal<ReadonlySet<string>>(new Set());
+  /** The conversation on screen, whose new messages are seen as they arrive. */
+  private readonly viewing = signal<string | null>(null);
 
   public readonly sorted = computed(() => [...this.conversations()].sort(compareConversations));
 
@@ -32,6 +34,7 @@ export class ConversationsStore {
   });
 
   public readonly openedIds = this.opened.asReadonly();
+  public readonly viewingId = this.viewing.asReadonly();
   /** True until the list arrives after entering. */
   public readonly loading = signal(false);
 
@@ -43,6 +46,7 @@ export class ConversationsStore {
     this.conversations.set(conversations);
     this.seen.set(seen);
     this.opened.set(new Set());
+    this.viewing.set(null);
   }
 
   public add(conversation: Conversation): void {
@@ -57,6 +61,16 @@ export class ConversationsStore {
       list.map((c) =>
         c.conversationId === conversationId && !c.members.includes(username)
           ? { ...c, members: [...c.members, username] }
+          : c,
+      ),
+    );
+  }
+
+  public removeMember(conversationId: string, username: string): void {
+    this.conversations.update((list) =>
+      list.map((c) =>
+        c.conversationId === conversationId
+          ? { ...c, members: c.members.filter((m) => m !== username) }
           : c,
       ),
     );
@@ -83,7 +97,15 @@ export class ConversationsStore {
   /** Marks the conversation as opened and its last message as seen. */
   public open(conversationId: string): void {
     this.opened.update((ids) => new Set(ids).add(conversationId));
+    this.viewing.set(conversationId);
     this.markSeen(conversationId);
+  }
+
+  /** The conversation left the screen. */
+  public close(conversationId: string): void {
+    if (this.viewing() === conversationId) {
+      this.viewing.set(null);
+    }
   }
 
   public markSeen(conversationId: string): void {

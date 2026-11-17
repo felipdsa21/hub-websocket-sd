@@ -34,6 +34,12 @@ export interface SyncData {
   readonly updated: readonly string[];
 }
 
+/** A page of `getHistory`, in `sk` order (section 4.5). */
+export interface HistoryPage {
+  readonly messages: readonly Message[];
+  readonly hasMore: boolean;
+}
+
 /** Events that aren't the answer to a request. */
 export type HubEvent =
   | ({ readonly type: 'message' } & Message)

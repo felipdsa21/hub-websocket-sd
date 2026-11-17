@@ -63,3 +63,41 @@ export function provideFakeSockets(sockets: FakeWebSocket[]): Provider[] {
 export function useTestBackend(): void {
   TestBed.inject(HubConfig).use({ websocketUrl: TEST_WEBSOCKET_URL });
 }
+
+export const ALICE = { username: 'alice', displayName: 'Alice', online: true, version: 3 };
+export const BRUNO = { username: 'bruno', displayName: 'Bruno', online: true, version: 7 };
+export const ALICE_BRUNO = 'd:alice:bruno';
+
+/** The direct chat between alice and bruno, as `sync` and `conversationAdded` send it. */
+export function aliceBrunoChat(fields: Record<string, unknown> = {}) {
+  return {
+    conversationId: ALICE_BRUNO,
+    type: 'direct',
+    members: [ALICE, BRUNO],
+    joinedAt: 100,
+    ...fields,
+  };
+}
+
+/** Answers the last request the client sent with `data`. */
+export function answer(socket: FakeWebSocket, data: unknown): void {
+  socket.receive({ type: 'response', requestId: socket.last().requestId, data });
+}
+
+/**
+ * Enters as alice against a fake backend whose `sync` lists the given conversations, and returns
+ * the open socket.
+ */
+export async function enterAsAlice(
+  enter: (username: string, displayName: string) => Promise<void>,
+  sockets: FakeWebSocket[],
+  conversations: unknown[] = [aliceBrunoChat()],
+): Promise<FakeWebSocket> {
+  const entering = enter('alice', 'Alice');
+  const socket = sockets.at(-1)!;
+  socket.open();
+  await Promise.resolve();
+  answer(socket, { serverTime: 1000, updated: [], conversations });
+  await entering;
+  return socket;
+}
