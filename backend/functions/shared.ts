@@ -3,7 +3,7 @@ import {
   DeleteConnectionCommand,
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
@@ -28,8 +28,46 @@ export type ErrorCode =
   | 'notRegistered'
   | 'lastMember';
 
+export interface ErrorDetails {
+  field?: string;
+  usernames?: string[];
+}
+
 export const isConditionFailure = (err: unknown) =>
   (err as Error).name === 'ConditionalCheckFailedException';
+
+export function getCancellationReasons(err: unknown) {
+  if ((err as Error).name !== 'TransactionCanceledException') return undefined;
+  return (err as TransactionCanceledException).CancellationReasons;
+}
+
+export function isTransactionConditionFailure(err: unknown): boolean {
+  const reasons = getCancellationReasons(err);
+  return Boolean(reasons?.some((r) => r.Code === 'ConditionalCheckFailed'));
+}
+
+export function isTransactionConflict(err: unknown): boolean {
+  if ((err as Error).name === 'TransactionConflictException') return true;
+  const reasons = getCancellationReasons(err);
+  return Boolean(
+    reasons?.some((r) => r.Code === 'TransactionConflict') &&
+    !reasons.some((r) => r.Code === 'ConditionalCheckFailed'),
+  );
+}
+
+/** Retries DynamoDB transaction conflicts up to 3 times with short jittered backoff (architecture, section 3.3). */
+export async function withConflictRetry<T>(operation: () => Promise<T>): Promise<T> {
+  const maxRetries = 3;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await operation();
+    } catch (err) {
+      if (!isTransactionConflict(err) || attempt >= maxRetries) throw err;
+      const delayMs = Math.floor((15 + Math.random() * 20) * 2 ** attempt);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
 
 /** `gone`: the reply was not delivered because the connection answered 410. */
 export type LogResult = 'ok' | 'error' | 'rejected' | 'gone';
@@ -159,18 +197,36 @@ export async function send(
   }
 }
 
-/** Sends an error event (RF09). `requestId` goes only when the request carried a non-empty one. */
+/** Sends a response event to a single client request (D06). */
+export function sendResponse(
+  connectionId: string,
+  username: string,
+  requestId: string,
+  data: object,
+) {
+  return send(connectionId, username, { type: 'response', requestId, data });
+}
+
+/** Sends an error event (RF09). `requestId` and `messageId` go only when present as non-empty strings. */
 export function sendError(
   connectionId: string,
   username: string | undefined,
-  error: { code: ErrorCode; message: string; requestId?: string },
+  error: {
+    code: ErrorCode;
+    message: string;
+    requestId?: string;
+    messageId?: string;
+    details?: ErrorDetails;
+  },
 ) {
-  const { code, message, requestId } = error;
+  const { code, message, requestId, messageId, details } = error;
   return send(connectionId, username, {
     type: 'error',
     ...(requestId && { requestId }),
+    ...(messageId && { messageId }),
     code,
     message,
+    ...(details && { details }),
   });
 }
 
@@ -194,3 +250,15 @@ export function parseBody(body: string | undefined): Record<string, unknown> | u
 }
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export const USERNAME = /^[a-z0-9._-]{3,32}$/;
+
+export function parseUsername(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.toLowerCase();
+  return USERNAME.test(normalized) ? normalized : undefined;
+}
+
+export function isValidNameLength(name: string): boolean {
+  const length = [...name].length;
+  return length >= 1 && length <= 50;
+}

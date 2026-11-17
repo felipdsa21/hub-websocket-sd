@@ -200,10 +200,14 @@ describe('app', () => {
 });
 
 describe('default', () => {
-  test('answers unknownAction with the requestId', async () => {
+  test('answers unknownAction with the requestId and messageId when present', async () => {
     db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
-    await fallback.handler(event('$default', { body: JSON.stringify({ requestId: 'r1' }) }));
-    expect(posted()).toEqual([expect.objectContaining({ requestId: 'r1', code: 'unknownAction' })]);
+    await fallback.handler(
+      event('$default', { body: JSON.stringify({ requestId: 'r1', messageId: 'm1' }) }),
+    );
+    expect(posted()).toEqual([
+      expect.objectContaining({ requestId: 'r1', messageId: 'm1', code: 'unknownAction' }),
+    ]);
   });
 
   test('answers a non-JSON request', async () => {

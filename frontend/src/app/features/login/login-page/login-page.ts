@@ -55,13 +55,13 @@ export class LoginPage {
     );
   });
 
-  protected submit(event: Event): void {
+  protected async submit(event: Event): Promise<void> {
     event.preventDefault();
     if (this.loginForm().invalid() || this.connecting()) {
       return;
     }
     const { username, displayName } = this.model();
-    this.session.enter(username, displayName);
+    await this.session.enter(username, displayName);
     if (this.session.user()) {
       void this.router.navigateByUrl('/');
     }

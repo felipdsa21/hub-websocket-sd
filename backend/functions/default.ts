@@ -3,7 +3,9 @@ import { ErrorCode, close, parseBody, sendError, touch, withRequestLog } from '.
 /** Answers requests with no matching route, including non-JSON ones (RF09). */
 export const handler = withRequestLog(async (event) => {
   const { connectionId, requestTimeEpoch: now } = event.requestContext;
-  const requestId = parseBody(event.body)?.requestId;
+  const body = parseBody(event.body);
+  const requestId = body?.requestId;
+  const messageId = body?.messageId;
   const username = await touch(connectionId, now);
   const code: ErrorCode = username ? 'unknownAction' : 'notRegistered';
   const message = username
@@ -16,6 +18,7 @@ export const handler = withRequestLog(async (event) => {
       code,
       message,
       requestId: typeof requestId === 'string' ? requestId : undefined,
+      messageId: typeof messageId === 'string' ? messageId : undefined,
     });
     return { result: delivered ? 'error' : 'gone', code };
   } finally {
