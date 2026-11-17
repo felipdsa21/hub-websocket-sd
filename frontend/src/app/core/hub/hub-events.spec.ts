@@ -72,11 +72,54 @@ describe('HubEvents', () => {
     ]);
   });
 
-  it('applies presence only when it is newer', async () => {
+  it('applies presence only when it is newer, and logs each announcement', async () => {
     const { socket, users } = await setUp();
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     socket.receive({ type: 'presence', ...BRUNO, online: false, version: 8 });
     socket.receive({ type: 'presence', ...BRUNO, online: true, version: 6 });
     expect(users.get('bruno')).toMatchObject({ online: false, version: 8 });
+    expect(info.mock.calls.map((c) => c[0])).toEqual([
+      'Presence: bruno offline, version 8.',
+      'Presence: bruno online, version 6.',
+    ]);
+  });
+
+  it('applies the events that arrive before the answer of the entry sync', async () => {
+    localStorage.clear();
+    const sockets: FakeWebSocket[] = [];
+    TestBed.configureTestingModule({
+      providers: [...provideTestFixtures(), ...provideFakeSockets(sockets)],
+    });
+    useTestBackend();
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const entering = TestBed.inject(SessionStore).enter('alice', 'Alice');
+    const socket = sockets[0]!;
+    socket.open();
+    await Promise.resolve();
+    const sync = socket.last();
+
+    socket.receive({
+      type: 'message',
+      conversationId: ALICE_BRUNO,
+      sk: 'm#0000000002000#bruno#b2',
+      messageId: 'b2',
+      sender: 'bruno',
+      text: 'oi',
+      sentAt: 2000,
+    });
+    socket.receive({ type: 'presence', ...BRUNO, online: false, version: 8 });
+    socket.receive({
+      type: 'response',
+      requestId: sync.requestId,
+      data: { serverTime: 1000, updated: [], conversations: [aliceBrunoChat()] },
+    });
+    await entering;
+
+    expect(TestBed.inject(ConversationsStore).get(ALICE_BRUNO)).toMatchObject({
+      lastMessageAt: 2000,
+      lastMessageBy: 'bruno',
+    });
+    expect(TestBed.inject(UsersStore).get('bruno')).toMatchObject({ online: false, version: 8 });
   });
 
   it('asks sync for a message of a conversation it does not know yet', async () => {

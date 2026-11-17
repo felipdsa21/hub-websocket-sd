@@ -96,12 +96,17 @@ export class SessionStore {
 
   private async enterLive(user: SessionUser, displayName: string): Promise<void> {
     this.enterStatus.set('connecting');
+    // Listening starts before `sync`: an event that arrives before its answer is held and applied
+    // after the lists are loaded, so it isn't lost.
+    this.events.start();
     try {
       await this.socket.connect(user.username, displayName || undefined);
       const data = await this.socket.request<SyncData>('sync');
       this.loadSynced(user, data);
+      this.events.release();
     } catch (error) {
       console.warn('Failed to enter:', error);
+      this.events.stop();
       this.socket.close();
       this.enterStatus.set('failed');
     }
@@ -128,7 +133,6 @@ export class SessionStore {
     this.messages.reset(null);
     this.currentUser.user.set(user);
     this.enterStatus.set('idle');
-    this.events.start();
   }
 
   private load(user: SessionUser): void {

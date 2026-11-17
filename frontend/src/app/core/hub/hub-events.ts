@@ -15,16 +15,34 @@ export class HubEvents {
   private readonly users = inject(UsersStore);
 
   private subscription?: Subscription;
+  /** Events held until the lists of the entry are loaded; `null` once they are applied. */
+  private held: HubEvent[] | null = null;
   private syncing = false;
 
+  /** Starts listening and holds the events until `release()`. */
   public start(): void {
     this.stop();
-    this.subscription = this.socket.events.subscribe((event) => this.apply(event));
+    this.held = [];
+    this.subscription = this.socket.events.subscribe((event) => {
+      if (this.held) {
+        this.held.push(event);
+      } else {
+        this.apply(event);
+      }
+    });
+  }
+
+  /** Applies the held events, in arrival order, and the next ones as they arrive. */
+  public release(): void {
+    const held = this.held ?? [];
+    this.held = null;
+    held.forEach((event) => this.apply(event));
   }
 
   public stop(): void {
     this.subscription?.unsubscribe();
     this.subscription = undefined;
+    this.held = null;
   }
 
   private apply(event: HubEvent): void {
@@ -41,6 +59,8 @@ export class HubEvents {
       }
       case 'presence': {
         const { username, displayName, online, version } = event;
+        // A client log used in the tests (architecture, section 4.6).
+        console.info(`Presence: ${username} ${online ? 'online' : 'offline'}, version ${version}.`);
         this.users.apply({ username, displayName, online, version });
         break;
       }
