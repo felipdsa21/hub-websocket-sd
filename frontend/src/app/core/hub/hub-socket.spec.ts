@@ -160,4 +160,24 @@ describe('HubSocket', () => {
     expect(socket.closed).toBe(true);
     expect((await failure(hub.request('sync'))).reason).toBe('noResponse');
   });
+
+  it('fails a connect() that another one replaces before it opens', async () => {
+    const { hub, sockets } = setUp();
+    const first = hub.connect('marina');
+    const second = hub.connect('marina', 'Marina A.');
+
+    await expect(first).rejects.toThrow();
+    expect(sockets[0]!.closed).toBe(true);
+    sockets[1]!.open();
+    await expect(second).resolves.toBeUndefined();
+    expect(hub.status()).toBe('open');
+  });
+
+  it('fails a connect() closed on request before it opens', async () => {
+    const { hub } = setUp();
+    const opening = hub.connect('marina');
+    hub.close();
+    await expect(opening).rejects.toThrow();
+    expect(hub.status()).toBe('closed');
+  });
 });

@@ -2,9 +2,11 @@ import { TestBed } from '@angular/core/testing';
 import { HubFixtures } from '@/core/fixtures/hub-fixtures';
 import { Scenario } from '@/core/fixtures/scenarios';
 import { provideTestFixtures } from '@/core/fixtures/testing';
+import { DEV_MODE, HubConfig } from '@/core/hub/hub-config';
 import { FakeWebSocket, provideFakeSockets, useTestBackend } from '@/core/hub/testing';
 import { ConversationsStore } from './conversations-store';
 import { SessionStore } from './session-store';
+import { userStorageKey } from './user-storage';
 import { UsersStore } from './users-store';
 
 function setUp(scenarios: readonly Scenario[] = []) {
@@ -98,6 +100,8 @@ describe('SessionStore', () => {
 });
 
 describe('SessionStore with the backend', () => {
+  beforeEach(() => localStorage.clear());
+
   function setUpLive() {
     const sockets: FakeWebSocket[] = [];
     TestBed.configureTestingModule({
@@ -195,5 +199,72 @@ describe('SessionStore with the backend', () => {
 
     expect(socket.closed).toBe(true);
     expect(session.user()).toBeNull();
+  });
+
+  async function enterWith(conversations: unknown[]) {
+    const { session, sockets } = setUpLive();
+    const entering = session.enter('alice', 'Alice');
+    const socket = sockets[0]!;
+    socket.open();
+    await Promise.resolve();
+    socket.receive({
+      type: 'response',
+      requestId: socket.last().requestId,
+      data: { serverTime: 1000, updated: [], conversations },
+    });
+    await entering;
+    return session;
+  }
+
+  const fromBruno = {
+    conversationId: 'd:alice:bruno',
+    type: 'direct',
+    members: [alice, bruno],
+    lastMessageAt: 900,
+    lastMessageBy: 'bruno',
+    joinedAt: 100,
+  };
+
+  it('keeps the last message seen in each conversation across entries (RF10)', async () => {
+    await enterWith([fromBruno]);
+    const conversations = TestBed.inject(ConversationsStore);
+    expect(conversations.withNewActivity().has('d:alice:bruno')).toBe(true);
+
+    conversations.open('d:alice:bruno');
+    expect(JSON.parse(localStorage.getItem(userStorageKey('alice'))!)).toEqual({
+      seen: { 'd:alice:bruno': 900 },
+    });
+
+    TestBed.resetTestingModule();
+    await enterWith([fromBruno]);
+    expect(TestBed.inject(ConversationsStore).withNewActivity().size).toBe(0);
+  });
+
+  it('marks the conversation again when a newer message arrived since', async () => {
+    localStorage.setItem(
+      userStorageKey('alice'),
+      JSON.stringify({ seen: { 'd:alice:bruno': 800 } }),
+    );
+    await enterWith([fromBruno]);
+    expect(TestBed.inject(ConversationsStore).withNewActivity().has('d:alice:bruno')).toBe(true);
+  });
+
+  it('fails to enter, without connecting, when the published build has no valid address', async () => {
+    const sockets: FakeWebSocket[] = [];
+    TestBed.configureTestingModule({
+      providers: [
+        ...provideTestFixtures(),
+        ...provideFakeSockets(sockets),
+        { provide: DEV_MODE, useValue: false },
+      ],
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    TestBed.inject(HubConfig).use({ websocketUrl: 'ws://hub.example/dev' });
+    const session = TestBed.inject(SessionStore);
+
+    await session.enter('alice', '');
+
+    expect(session.enterStatus()).toBe('failed');
+    expect(sockets).toEqual([]);
   });
 });

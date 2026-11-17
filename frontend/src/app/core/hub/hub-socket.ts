@@ -13,6 +13,9 @@ export const REQUEST_TIMEOUT_MS = 15_000;
 /** `lost`: the connection that was open closed without the client asking. */
 export type SocketStatus = 'closed' | 'connecting' | 'open' | 'lost';
 
+/** Events that answer a request, matched to it by the `requestId`. */
+const REPLY_TYPES: ReadonlySet<string> = new Set(['response', 'pong', 'error']);
+
 export const WEB_SOCKET_FACTORY = new InjectionToken<(url: string) => WebSocket>(
   'WEB_SOCKET_FACTORY',
   { factory: () => (url) => new WebSocket(url) },
@@ -44,6 +47,8 @@ export class HubSocket {
   private socket: WebSocket | null = null;
   private readonly pending = new Map<string, Pending>();
   private heartbeatTimer?: ReturnType<typeof setInterval>;
+  /** Fails the `connect()` still waiting for the socket to open. */
+  private abortConnect?: (error: Error) => void;
   private readonly eventsSubject = new Subject<HubEvent>();
 
   public readonly status = signal<SocketStatus>('closed');
@@ -55,7 +60,8 @@ export class HubSocket {
 
   /**
    * Opens a connection, closing the current one. Resolves when it opens; rejects if it closes first,
-   * since the browser doesn't expose why a handshake was refused (architecture, section 4.6).
+   * since the browser doesn't expose why a handshake was refused (architecture, section 4.6), or if
+   * another `connect()` or a `close()` replaces it.
    */
   public connect(username: string, displayName?: string): Promise<void> {
     const base = this.config.websocketUrl();
@@ -73,7 +79,9 @@ export class HubSocket {
     this.status.set('connecting');
 
     return new Promise((resolve, reject) => {
+      this.abortConnect = reject;
       socket.onopen = () => {
+        this.abortConnect = undefined;
         this.status.set('open');
         this.startHeartbeat();
         resolve();
@@ -81,11 +89,8 @@ export class HubSocket {
       socket.onmessage = (event: MessageEvent) => this.receive(event.data);
       socket.onclose = () => {
         const wasOpen = this.status() === 'open';
-        this.detach();
+        this.detach(new Error('The connection closed before opening.'));
         this.status.set(wasOpen ? 'lost' : 'closed');
-        if (!wasOpen) {
-          reject(new Error('The connection closed before opening.'));
-        }
       };
     });
   }
@@ -139,7 +144,7 @@ export class HubSocket {
     }
     const pending =
       typeof event.requestId === 'string' ? this.pending.get(event.requestId) : undefined;
-    if (pending && ['response', 'pong', 'error'].includes(event.type)) {
+    if (pending && REPLY_TYPES.has(event.type)) {
       const reply = event as ReplyEvent;
       this.pending.delete(reply.requestId!);
       clearTimeout(pending.timer);
@@ -151,7 +156,7 @@ export class HubSocket {
       }
       return;
     }
-    if (['response', 'pong', 'error'].includes(event.type)) {
+    if (REPLY_TYPES.has(event.type)) {
       // The answer to a request that already timed out is ignored (architecture, section 4.6).
       return;
     }
@@ -171,9 +176,11 @@ export class HubSocket {
     }, HEARTBEAT_INTERVAL_MS);
   }
 
-  /** Stops listening to the socket and fails the requests still waiting. */
-  private detach(): void {
+  /** Stops listening to the socket and fails the `connect()` and the requests still waiting. */
+  private detach(reason = new Error('The connection was replaced or closed.')): void {
     clearInterval(this.heartbeatTimer);
+    this.abortConnect?.(reason);
+    this.abortConnect = undefined;
     if (this.socket) {
       this.socket.onopen = this.socket.onmessage = this.socket.onclose = null;
       this.socket = null;

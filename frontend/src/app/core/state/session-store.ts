@@ -11,6 +11,7 @@ import { Clock } from '@/core/time/clock';
 import { ConversationsStore } from './conversations-store';
 import { CurrentUser, SessionUser } from './current-user';
 import { MessagesStore } from './messages-store';
+import { UserStorage } from './user-storage';
 import { UsersStore } from './users-store';
 
 export type EnterStatus = 'idle' | 'connecting' | 'failed';
@@ -26,6 +27,7 @@ export class SessionStore {
   private readonly clock = inject(Clock);
   private readonly config = inject(HubConfig);
   private readonly socket = inject(HubSocket);
+  private readonly storage = inject(UserStorage);
 
   public readonly user = this.currentUser.user.asReadonly();
   public readonly enterStatus = signal<EnterStatus>('idle');
@@ -41,7 +43,9 @@ export class SessionStore {
       username: normalizeUsername(username),
       displayName: name || normalizeUsername(username),
     };
-    if (this.config.live()) {
+    if (this.config.invalid()) {
+      this.enterStatus.set('failed');
+    } else if (this.config.live()) {
       await this.enterLive(user, name);
     } else if (this.scenarios.has('entrar-falha')) {
       this.enterStatus.set('failed');
@@ -113,7 +117,10 @@ export class SessionStore {
     this.users.reset([...states.values()]);
     // Without any conversation, the user's own state isn't in the answer; version 0 yields to any.
     this.users.apply({ ...user, online: true, version: 0 });
-    this.conversations.reset(data.conversations.map(toConversation), new Map());
+    this.conversations.reset(
+      data.conversations.map(toConversation),
+      this.storage.readSeen(user.username),
+    );
     this.conversations.loading.set(false);
     this.messages.reset(null);
     this.currentUser.user.set(user);
