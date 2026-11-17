@@ -92,7 +92,7 @@ export class ConversationsStore {
       this.seen.update((seen) => new Map(seen).set(conversationId, lastMessageAt));
       const me = this.currentUser.user()?.username;
       if (me && this.config.live()) {
-        this.storage.writeSeen(me, this.seen());
+        this.storage.writeSeen(me, conversationId, lastMessageAt);
       }
     }
   }

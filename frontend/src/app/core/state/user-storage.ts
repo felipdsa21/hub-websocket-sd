@@ -26,8 +26,15 @@ export class UserStorage {
     );
   }
 
-  public writeSeen(username: string, seen: ReadonlyMap<string, number>): void {
-    this.write(username, { ...this.read(username), seen: Object.fromEntries(seen) });
+  /**
+   * Records the last message seen in one conversation. Other tabs of the same user write to the same
+   * key, so it merges into what is stored and never moves a mark back (section 4.6).
+   */
+  public writeSeen(username: string, conversationId: string, sentAt: number): void {
+    const stored = this.read(username);
+    const seen = Object.fromEntries(this.readSeen(username));
+    seen[conversationId] = Math.max(seen[conversationId] ?? sentAt, sentAt);
+    this.write(username, { ...stored, seen });
   }
 
   private read(username: string): StoredUser {
