@@ -13,13 +13,14 @@ O cliente web, em Angular, abre uma conexão WebSocket persistente com o API Gat
 - [Especificação](docs/especificacao.md): requisitos, riscos, limitações e plano de testes.
 - [Arquitetura](docs/arquitetura.md): serviços da AWS, esquema de nomeação, dados, rotas e eventos, comportamento do cliente, logs e métricas.
 - [Sessão](docs/sessao.md): ciclo de vida da sessão, com o handshake, os frames e o diretório de conexões.
+- [Sincronização e consistência](docs/sincronizacao.md): ordenação de mensagens, deduplicação, consistência no DynamoDB e ciclo de vida das conversas.
 - [Design no Figma](https://www.figma.com/design/ThG8NUReHI5c9tYzXdaU6z/Hub-Colaborativo-WebSocket): telas e componentes da interface.
 
 ## Estrutura
 
 - `backend/`: stack do CDK (`lib/`) e código das Lambdas (`functions/`). Detalhes de desenvolvimento e implantação estão no [README do backend](backend/README.md).
 - `frontend/`: cliente web em Angular, com Angular Material.
-- `docs/`: especificação, arquitetura e sessão.
+- `docs/`: especificação, arquitetura, sessão e sincronização.
 
 ## Estado atual
 

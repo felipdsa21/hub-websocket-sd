@@ -8,6 +8,8 @@ Este documento define a arquitetura distribuída do Hub Colaborativo WebSocket e
 
 O ciclo de vida da sessão, com os diagramas de sequência de `$connect` e `$disconnect`, está em [sessao.md](sessao.md).
 
+Os detalhes de ordenação temporal, deduplicação, consistência no DynamoDB e ciclo de vida das conversas estão em [sincronização e consistência](sincronizacao.md).
+
 Os IDs das decisões (D) são estáveis, e o número de um item removido não é reaproveitado.
 
 ## 2. Arquitetura
@@ -164,7 +166,7 @@ As consultas ao histórico se restringem ao prefixo `m#`, para não trazer os ma
 
 Os membros de uma conversa ficam em `Conversations.members`, lido em uma única leitura consistente; a tabela `Memberships` existe para listar as conversas de um usuário. As duas são alteradas juntas, em uma transação, quando um membro entra ou sai (seção 4.5).
 
-As transações envolvem só `Conversations`, `Memberships` e `Messages`. Uma gravação nessas tabelas que encontra uma transação em andamento sobre o mesmo item falha com `TransactionConflict`, e uma transação que encontra outra falha da mesma forma. O backend repete a gravação após uma espera curta, até 3 vezes. Se o conflito persistir, a requisição recebe o erro `conflict` (RF09), exceto o envio de mensagem, que tem tratamento próprio (seção 4.3).
+As transações envolvem só `Conversations`, `Memberships` e `Messages`. Uma gravação nessas tabelas que encontra uma transação em andamento sobre o mesmo item falha com `TransactionConflict`, e uma transação que encontra outra falha da mesma forma. O backend repete a gravação com *backoff* exponencial curto e *jitter*, até 3 vezes. Se o conflito persistir, a requisição recebe o erro `conflict` (RF09), exceto o envio de mensagem, que tem tratamento próprio (seção 4.3).
 
 ### 3.4 Vínculo e desvínculo de conexões
 
@@ -327,7 +329,7 @@ O histórico é enviado em páginas de até 50 mensagens e até 28 KB, com pelo 
 - **`createGroup`:** o nome segue a regra do nome de exibição. A Lambda retira de `members` o criador e as repetições, exige pelo menos um usuário (RF04) e recusa usuários inexistentes (`notFound`, com os nomes em `details.usernames`). Em uma transação, grava a conversa `g:<UUID v4>` e a participação de cada membro, com `joinedAt`, o que limita a criação a 99 membros, incluindo o criador. Envia `conversationAdded` a todas as conexões dos membros, inclusive às do criador, e responde (`data.conversation`) com a conversa, com os mesmos campos de cada conversa do `sync`.
 - **`addMember`:** só vale em grupo (`invalidOperation` no chat privado) e recusa um usuário inexistente (`notFound`) ou que já é membro (`invalidOperation`). Em uma transação, inclui o usuário em `Conversations.members`, com a condição de que quem adiciona ainda seja membro e o novo ainda não seja, e grava a participação dele, com `joinedAt`. Na falha da condição, a Lambda pede o item (`ReturnValuesOnConditionCheckFailure`) e responde `forbidden`, se quem adiciona já não é membro, ou `invalidOperation`, se o novo já é. Envia `memberJoined` às conexões dos membros anteriores e `conversationAdded` às do novo membro, que passa a ler todo o histórico (RF04).
 - **`leaveGroup`:** só vale em grupo (`invalidOperation` no chat privado). Em uma transação, retira o usuário de `Conversations.members`, com a condição de que ele seja membro e, se a requisição vem sem `confirm`, de que não seja o único (`size(members) > 1`), e apaga a participação. A Lambda pede o item na falha da condição (`ReturnValuesOnConditionCheckFailure`) para distinguir os casos: se o usuário já não está em `members`, responde `forbidden`; senão, `lastMember`. Como a condição faz parte da transação, dois membros que saem ao mesmo tempo não deixam o grupo vazio sem aviso: o segundo recebe o erro `lastMember`, o cliente mostra o aviso do RF04 e, se o usuário confirma, repete a requisição com `confirm` verdadeiro. Envia `conversationRemoved` a todas as conexões de quem saiu e `memberLeft` às dos que ficaram. Um grupo de que todos saíram fica sem membros e inacessível.
-- **`getHistory`:** sem `before` nem `after`, responde com a página mais recente; com `before`, com a página anterior a esse limite; com `after`, com a seguinte. Os dois juntos são recusados (`invalidRequest`). A resposta traz `messages` em ordem de `sk` e `hasMore` indicando se há mais.
+- **`getHistory`:** sem `before` nem `after`, consulta `begins_with(sk, "m#")` em ordem decrescente e responde com a página mais recente; com `before`, consulta `sk BETWEEN "m#" AND :before` em ordem decrescente, sem o próprio `before`, e responde com a página anterior; com `after`, consulta `sk BETWEEN :after AND "m$"` em ordem crescente, sem o próprio `after`, e responde com a seguinte. Os dois juntos são recusados (`invalidRequest`). A resposta traz `messages` em ordem de `sk` e `hasMore` indicando se há mais (seção 4.4).
 - **`search`:** compara a `query`, sem diferenciar maiúsculas, com o nome das conversas em que o usuário tem participação visível (o nome do grupo ou o nome de exibição do outro usuário) e com o nome de usuário e o nome de exibição dos demais usuários. A comparação é feita na Lambda, sobre a leitura completa de `Users` (seção 7), e a resposta traz `conversations` e `people` (cada usuário encontrado com o seu estado, RF05, RF07).
 
 ### 4.6 Comportamento do cliente
