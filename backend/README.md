@@ -4,7 +4,7 @@ Infraestrutura e Lambdas do Hub Colaborativo WebSocket, declaradas com o AWS CDK
 
 Há um stack por estágio, `HubWebSocket-dev` e `HubWebSocket-prod`, na região `sa-east-1`. O código das Lambdas fica em `functions/`, e o stack, em `lib/`.
 
-Estão implementadas as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search`. Ainda faltam os anúncios de presença no `$connect`/`$disconnect`, a Lambda `presenceSweeper` e a anonimização HMAC nos logs.
+Estão implementadas as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search`, além da Lambda `presenceSweeper`, que expira as conexões inativas a cada minuto e remove ids órfãos. Ainda faltam os anúncios de presença (no `$connect`, no desvínculo e a refeitura no `presenceSweeper`), a métrica de conexões abertas no CloudWatch e a anonimização HMAC nos logs.
 
 ## Desenvolvimento
 

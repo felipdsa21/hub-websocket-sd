@@ -14,7 +14,7 @@ O cliente web, em Angular, abre uma conexão WebSocket persistente com o API Gat
 - [Arquitetura](docs/arquitetura.md): serviços da AWS, esquema de nomeação, dados, rotas e eventos, comportamento do cliente, logs e métricas.
 - [Sessão](docs/sessao.md): ciclo de vida da sessão, com o handshake, os frames e o diretório de conexões.
 - [Sincronização e consistência](docs/sincronizacao.md): ordenação de mensagens, deduplicação, consistência no DynamoDB e ciclo de vida das conversas.
-- [Tolerância a falhas](docs/tolerancia-falhas.md): conexões órfãs (`410 Gone`), expiração por inatividade e recuperação de estado no backend.
+- [Tolerância a falhas](docs/tolerancia-falhas.md): conexões órfãs (`410 Gone`), isolamento de falhas na difusão, expiração por inatividade e recuperação de estado.
 - [Design no Figma](https://www.figma.com/design/ThG8NUReHI5c9tYzXdaU6z/Hub-Colaborativo-WebSocket): telas e componentes da interface.
 
 ## Estrutura
@@ -25,7 +25,7 @@ O cliente web, em Angular, abre uma conexão WebSocket persistente com o API Gat
 
 ## Estado atual
 
-O backend implementa as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search` com persistência no DynamoDB e entrega via `@connections`, além da rotina `presenceSweeper`, que expira as conexões inativas a cada minuto; ainda faltam os anúncios de presença e a anonimização HMAC dos logs.
+O backend implementa as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search` com persistência no DynamoDB e entrega via `@connections`, além da rotina `presenceSweeper`, que expira as conexões inativas a cada minuto; ainda faltam os anúncios de presença, a métrica de conexões abertas e a anonimização HMAC dos logs.
 
 O frontend tem todas as telas. Com o endereço do backend configurado, ele entra pela conexão WebSocket, mantém o heartbeat, carrega a lista de conversas com o `sync`, carrega o histórico, envia e recebe mensagens em tempo real e aplica os eventos de conversas, membros e presença; a pesquisa e as ações sobre conversas (iniciar chat, criar grupo, adicionar pessoas e sair) ainda não estão ligadas ao backend. Sem o endereço, tudo roda sobre dados fixos, e os estados que só o backend produziria, como a queda da conexão ou uma mensagem recusada, são simulados por cenários.
 
