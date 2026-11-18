@@ -3,6 +3,7 @@ import { Fixtures, createFixtures } from '@/core/fixtures/fixtures';
 import { HubFixtures } from '@/core/fixtures/hub-fixtures';
 import { Scenarios } from '@/core/fixtures/scenarios';
 import { HubConfig } from '@/core/hub/hub-config';
+import { HubEvents } from '@/core/hub/hub-events';
 import { HubSocket } from '@/core/hub/hub-socket';
 import { SyncData, toConversation } from '@/core/hub/protocol';
 import { normalizeDisplayName, normalizeUsername } from '@/core/model/names';
@@ -28,6 +29,7 @@ export class SessionStore {
   private readonly config = inject(HubConfig);
   private readonly socket = inject(HubSocket);
   private readonly storage = inject(UserStorage);
+  private readonly events = inject(HubEvents);
 
   public readonly user = this.currentUser.user.asReadonly();
   public readonly enterStatus = signal<EnterStatus>('idle');
@@ -82,6 +84,7 @@ export class SessionStore {
   }
 
   public leave(): void {
+    this.events.stop();
     this.socket.close();
     this.fixtures.data.set(null);
     this.users.reset([]);
@@ -93,12 +96,17 @@ export class SessionStore {
 
   private async enterLive(user: SessionUser, displayName: string): Promise<void> {
     this.enterStatus.set('connecting');
+    // Listening starts before `sync`: an event that arrives before its answer is held and applied
+    // after the lists are loaded, so it isn't lost.
+    this.events.start();
     try {
       await this.socket.connect(user.username, displayName || undefined);
       const data = await this.socket.request<SyncData>('sync');
       this.loadSynced(user, data);
+      this.events.release();
     } catch (error) {
       console.warn('Failed to enter:', error);
+      this.events.stop();
       this.socket.close();
       this.enterStatus.set('failed');
     }
