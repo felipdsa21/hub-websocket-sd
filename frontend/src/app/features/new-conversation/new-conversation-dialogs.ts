@@ -28,14 +28,14 @@ export class NewConversationDialogs {
       .afterClosed()
       .subscribe((username) => {
         if (username) {
-          this.finish('chat', this.actions.openDirect(username));
+          void this.actions.openDirect(username).then((result) => this.finish('chat', result));
         }
       });
   }
 
   /** Opens a direct chat from a search result or a person, without the dialog. */
   public openDirect(username: string): void {
-    this.finish('chat', this.actions.openDirect(username));
+    void this.actions.openDirect(username).then((result) => this.finish('chat', result));
   }
 
   public openNewGroup(): void {
@@ -47,7 +47,9 @@ export class NewConversationDialogs {
       .afterClosed()
       .subscribe((group) => {
         if (group) {
-          this.finish('group', this.actions.createGroup(group.name, group.usernames));
+          void this.actions
+            .createGroup(group.name, group.usernames)
+            .then((result) => this.finish('group', result));
         }
       });
   }

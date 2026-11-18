@@ -17,9 +17,9 @@ function setUp(scenarios: readonly Scenario[] = []) {
 }
 
 describe('GroupActions', () => {
-  it('adds people as members, makes them known and records the notices', () => {
+  it('adds people as members, makes them known and records the notices', async () => {
     const actions = setUp();
-    const result = actions.addMembers(TEAM, ['gabriel.nunes', 'juliana']);
+    const result = await actions.addMembers(TEAM, ['gabriel.nunes', 'juliana']);
 
     expect(result).toEqual({ added: ['gabriel.nunes', 'juliana'], failed: [] });
     expect(TestBed.inject(ConversationsStore).get(TEAM)?.members).toContain('juliana');
@@ -31,20 +31,22 @@ describe('GroupActions', () => {
     ).toEqual(['diego', 'gabriel.nunes', 'juliana']);
   });
 
-  it('reports people who already are members or do not exist', () => {
-    const result = setUp().addMembers(TEAM, ['bruno', 'ninguem']);
+  it('reports people who already are members or do not exist', async () => {
+    const result = await setUp().addMembers(TEAM, ['bruno', 'ninguem']);
     expect(result.added).toEqual([]);
     expect(
       result.failed.map((f) => (f.reason === 'noResponse' ? f.reason : f.reason.code)),
     ).toEqual(['invalidOperation', 'notFound']);
   });
 
-  it('leaves the group, or keeps it when the scenario rejects the request', () => {
-    expect(setUp().leave(TEAM)).toBe('left');
+  it('leaves the group, or keeps it when the scenario rejects the request', async () => {
+    expect(await setUp().leave(TEAM)).toBe('left');
     expect(TestBed.inject(ConversationsStore).get(TEAM)).toBeUndefined();
 
     TestBed.resetTestingModule();
-    expect(setUp(['erro-acao']).leave(TEAM)).toEqual(expect.objectContaining({ code: 'conflict' }));
+    expect(await setUp(['erro-acao']).leave(TEAM)).toEqual(
+      expect.objectContaining({ code: 'conflict' }),
+    );
     expect(TestBed.inject(ConversationsStore).get(TEAM)).toBeDefined();
   });
 });

@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, model, output, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, model, output, signal } from '@angular/core';
 import { MatIconButton } from '@angular/material/button';
 import { MatChip, MatChipRemove, MatChipSet } from '@angular/material/chips';
 import { MatFormField, MatLabel, MatSuffix } from '@angular/material/form-field';
@@ -6,7 +6,7 @@ import { MatIcon } from '@angular/material/icon';
 import { MatInput } from '@angular/material/input';
 import { Presence, UserState } from '@/core/model/user';
 import { ConnectionStore } from '@/core/state/connection-store';
-import { DirectoryStore } from '@/core/state/directory-store';
+import { DirectoryStore, SEARCH_DELAY_MS } from '@/core/state/directory-store';
 import {
   joinParts,
   nameWithUsername,
@@ -49,9 +49,33 @@ export class PeoplePicker {
   public readonly picked = output<UserState>();
 
   protected readonly query = signal('');
+  /** With the backend, the people of the last search; refreshed after a pause in typing. */
+  private readonly found = signal<readonly UserState[]>([]);
   protected readonly results = computed(() =>
-    this.directory.searchPeople(this.query(), this.exclude()),
+    this.directory.live()
+      ? this.found().filter((u) => !this.exclude().has(u.username))
+      : this.directory.searchPeople(this.query(), this.exclude()),
   );
+
+  constructor() {
+    effect((onCleanup) => {
+      const query = this.query();
+      if (!this.directory.live()) {
+        return;
+      }
+      let current = true;
+      const timer = setTimeout(() => {
+        this.directory.findPeople(query).then(
+          (people) => current && this.found.set(people),
+          () => current && this.found.set([]),
+        );
+      }, SEARCH_DELAY_MS);
+      onCleanup(() => {
+        current = false;
+        clearTimeout(timer);
+      });
+    });
+  }
 
   /** Names shared by several people in sight show the username too (specification, section 2). */
   private readonly repeated = computed(() =>

@@ -47,11 +47,11 @@ export class GroupDialogs {
         inputBinding('conversationId', () => conversationId),
       ]),
     );
-    ref.afterClosed().subscribe((usernames) => {
+    ref.afterClosed().subscribe(async (usernames) => {
       if (!usernames?.length) {
         return;
       }
-      const result = this.actions.addMembers(conversationId, usernames);
+      const result = await this.actions.addMembers(conversationId, usernames);
       const people = new Map(
         usernames
           .map((u) => this.users.get(u) ?? this.directory.get(u))
@@ -69,13 +69,17 @@ export class GroupDialogs {
     });
   }
 
-  public confirmLeave(conversationId: string): void {
+  /**
+   * Asks before leaving. When the backend answers `lastMember`, because the others left meanwhile,
+   * it asks again with the warning of leaving the group empty (RF04).
+   */
+  public confirmLeave(conversationId: string, lastMemberKnown = false): void {
     const conversation = this.conversations.get(conversationId);
     if (!conversation) {
       return;
     }
     const groupName = conversation.name ?? '';
-    const lastMember = conversation.members.length === 1;
+    const lastMember = lastMemberKnown || conversation.members.length === 1;
     const ref = this.dialog.open<LeaveGroupDialog, unknown, boolean>(LeaveGroupDialog, {
       bindings: [
         inputBinding('groupName', () => groupName),
@@ -83,12 +87,14 @@ export class GroupDialogs {
       ],
       width: '400px',
     });
-    ref.afterClosed().subscribe((confirmed) => {
+    ref.afterClosed().subscribe(async (confirmed) => {
       if (!confirmed) {
         return;
       }
-      const result = this.actions.leave(conversationId);
-      if (result === 'left') {
+      const result = await this.actions.leave(conversationId, lastMember);
+      if (typeof result === 'object' && result.code === 'lastMember') {
+        this.confirmLeave(conversationId, true);
+      } else if (result === 'left') {
         this.dialog.closeAll();
         void this.router.navigateByUrl('/');
         this.snackBar.open(`Você saiu de ${groupName}.`, undefined, { duration: 4000 });
