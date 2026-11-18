@@ -283,7 +283,7 @@ export async function fanOut(
       deliveries.push(send(connId, username, event).then((delivered) => ({ connId, delivered })));
     }
   }
-  await settle(deliveries);
+  const results = await settle(deliveries);
   if (!trackConnectionId) return true;
-  return (await Promise.all(deliveries)).some((r) => r.connId === trackConnectionId && r.delivered);
+  return results.some((r) => r.connId === trackConnectionId && r.delivered);
 }

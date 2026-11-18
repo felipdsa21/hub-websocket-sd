@@ -90,6 +90,20 @@ export function log(entry: {
   console.log(JSON.stringify(entry));
 }
 
+/** Formats an exception name, listing distinct inner names for an AggregateError. */
+export function errorName(err: unknown): string {
+  if (err instanceof AggregateError) {
+    return [...new Set(err.errors.map(errorName))].join(', ') || err.name;
+  }
+  return err instanceof Error ? err.name : 'unknown';
+}
+
+/** Rethrows a single failure directly, or wraps multiple failures in an AggregateError. */
+export function rethrowFailures(failures: unknown[]): never {
+  if (failures.length === 1) throw failures[0];
+  throw new AggregateError(failures, `${failures.length} operations failed`);
+}
+
 /**
  * Wraps a handler so that every request writes exactly one log line, including a request that throws (RNF03).
  * Durations count from requestTimeEpoch, when API Gateway received the request, so every route measures the same span.
@@ -107,7 +121,7 @@ export function withRequestLog(
       log({
         route,
         result: 'error',
-        error: err instanceof Error ? err.name : 'unknown',
+        error: errorName(err),
         durationMs: Date.now() - requestTimeEpoch,
       });
       throw err;
@@ -175,12 +189,24 @@ export async function touch(connectionId: string, now: number): Promise<string |
 }
 
 /**
- * Waits for every task and only then rethrows the first failure, so one failed delivery neither stops
+ * Waits for every task and returns all resolved values, or rethrows any failure(s)
+ * (wrapping multiple rejections in an AggregateError), so one failed delivery neither stops
  * the others nor lets the Lambda return while they are still in flight.
  */
-export async function settle(tasks: Promise<unknown>[]) {
-  const failed = (await Promise.allSettled(tasks)).find((r) => r.status === 'rejected');
-  if (failed) throw failed.reason;
+export async function settle<T>(tasks: Promise<T>[]): Promise<T[]> {
+  const results = await Promise.allSettled(tasks);
+  const failures: unknown[] = [];
+  const values: T[] = [];
+  for (const r of results) {
+    if (r.status === 'rejected') {
+      if (r.reason instanceof AggregateError) failures.push(...r.reason.errors);
+      else failures.push(r.reason);
+    } else {
+      values.push(r.value);
+    }
+  }
+  if (failures.length > 0) rethrowFailures(failures);
+  return values;
 }
 
 const isGone = (err: unknown) => (err as Error).name === 'GoneException';
