@@ -37,12 +37,13 @@ describe('LoginPage', () => {
   });
 
   it('enters with the username in lowercase and goes to the list', async () => {
-    const { button, type } = await render();
+    const { button, type, fixture } = await render();
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
 
     await type(0, 'Marina');
     await type(1, 'Marina Alves');
     button.click();
+    await fixture.whenStable();
 
     expect(TestBed.inject(SessionStore).user()).toEqual({
       username: 'marina',

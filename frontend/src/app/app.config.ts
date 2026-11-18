@@ -6,6 +6,7 @@ import {
 } from '@angular/core';
 import { MatIconRegistry } from '@angular/material/icon';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { HubConfig } from '@/core/hub/hub-config';
 import { routes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
@@ -15,5 +16,6 @@ export const appConfig: ApplicationConfig = {
     provideAppInitializer(() => {
       inject(MatIconRegistry).setDefaultFontSetClass('material-symbols-outlined');
     }),
+    provideAppInitializer(() => inject(HubConfig).load()),
   ],
 };

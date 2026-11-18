@@ -204,6 +204,7 @@ export class ConversationPage {
       }
     });
     this.destroyRef.onDestroy(() => {
+      this.conversations.close(this.conversationId());
       observer.disconnect();
       resizeObserver.disconnect();
     });
