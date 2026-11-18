@@ -31,7 +31,7 @@ Essa estrutura estabelece uma **ordem total estrita** entre todas as mensagens d
 2. **`sender`:** Caso dois usuários distintos enviem mensagens que cheguem exatamente no mesmo milissegundo (`sentAt` idêntico), o nome de usuário normalizado desempata a posição de forma determinística.
 3. **`messageId` (UUID v4):** Caso o mesmo usuário dispare duas mensagens distintas no mesmo milissegundo, o identificador único gerado pelo cliente elimina qualquer ambiguidade residual.
 
-**Convergência no Cliente (RNF04):** Devido a variações de latência de rede ou *fan-out* paralelo entre múltiplas conexões, diferentes clientes podem receber os eventos `message` fora da ordem cronológica. Ao receber qualquer evento `message`, o cliente insere o item na lista local ordenando estritamente pela chave `sk` e descartando a mensagem que já tem, pelo mesmo `sender` e `messageId` o que também casa a confirmação com a mensagem pendente, que ainda não tem `sk`. Dessa forma, sem necessidade de coordenação entre clientes, todas as abas e participantes convergem para a mesma sequência de mensagens.
+**Convergência no Cliente (RNF04):** Devido a variações de latência de rede ou *fan-out* paralelo entre múltiplas conexões, diferentes clientes podem receber os eventos `message` fora da ordem cronológica. Ao receber qualquer evento `message`, o cliente insere o item na lista local ordenando estritamente pela chave `sk` e descartando a mensagem que já tem, pelo mesmo `sender` e `messageId`, o que também casa a confirmação com a mensagem pendente, que ainda não tem `sk`. Dessa forma, sem necessidade de coordenação entre clientes, todas as abas e participantes convergem para a mesma sequência de mensagens.
 
 ### 2.3 Janela de sobreposição na reconexão (sync e getHistory)
 
@@ -108,7 +108,7 @@ Por esse motivo, o projeto adota duas diretrizes rigorosas:
 * **Alteração de membros (`addMember` e `leaveGroup`):** Uma transação atualiza o conjunto de membros em `Conversations` e o vínculo correspondente em `Memberships` ao mesmo tempo, mantendo ambas as estruturas sincronizadas.
 * **Ciclo de conexão (`$connect` e `$disconnect`):** O registro em `Connections` e a atualização atômica no conjunto de conexões do usuário em `Users` permitem que múltiplas abas conectem e desconectem simultaneamente sem perda de estado (D09).
 
-Em caso de `TransactionConflict` causado por concorrência simultânea no mesmo item, a Lambda `app` realiza até **3 retentativas** com *backoff* exponencial curto e *jitter*; caso o conflito persista, retorna o erro tipado `conflict` (RF09), **exceto** em `sendMessage`: nessa rota, a Lambda verifica o marcador `id#` e, se ele existir, segue como reenvio; se não existir, não envia resposta ao cliente para que a mensagem continue pendente na fila e seja reenviada (RF12).
+Os conflitos de transação seguem a seção 3.3 da arquitetura, e os do `sendMessage`, a seção 4.3.
 
 ## 5. Ciclo de vida de conversas privadas, grupos e histórico
 
@@ -128,9 +128,6 @@ Em caso de `TransactionConflict` causado por concorrência simultânea no mesmo 
 
 ### 5.3 Histórico paginado (getHistory — RF06)
 
-A consulta de histórico opera diretamente sobre a partição `conversationId` da tabela `Messages` utilizando `Query` com `ConsistentRead: true`, restringindo as chaves ao prefixo `m#` sem trazer os marcadores de deduplicação (`id#`, que ordenam antes de `m#` porque `'i' < 'm'`). Como o DynamoDB aceita apenas uma condição sobre a *Sort Key* por `Query`, a expressão varia conforme o cursor:
+A consulta de histórico opera diretamente sobre a partição `conversationId` da tabela `Messages` utilizando `Query` com `ConsistentRead: true`, restringindo as chaves ao prefixo `m#` sem trazer os marcadores de deduplicação (`id#`, que ordenam antes de `m#` porque `'i' < 'm'`). Como o DynamoDB aceita apenas uma condição sobre a *Sort Key* por `Query`, a expressão varia conforme o cursor; a seção 4.5 da arquitetura traz as expressões de cada caso.
 
-* **Página mais recente (sem cursor):** Usa `begins_with(sk, "m#")` em ordem decrescente (`ScanIndexForward: false`), revertendo o lote antes de responder ao cliente.
-* **Rolagem para cima (`before`):** Busca mensagens com `sk BETWEEN "m#" AND :before` em ordem decrescente (`ScanIndexForward: false`, descartando eventual item com `sk === before`) e reverte o lote antes de responder.
-* **Recuperação pós-queda (`after`):** Busca mensagens com `sk BETWEEN :after AND "m$"` em ordem crescente (`ScanIndexForward: true`, descartando eventual item com `sk === after`), permitindo preencher lacunas específicas de uma conversa aberta.
-* **Controle de Tamanho de Frame (L03):** Como o API Gateway WebSocket impõe o limite máximo de 32 KB por frame de mensagem, a Lambda `app` limita cada página de `getHistory` a no máximo **50 mensagens** ou **28 KB** acumulados (garantindo o retorno de pelo menos 1 mensagem por página) e sinaliza `hasMore = true` quando existem itens adicionais.
+**Tamanho das páginas:** cada página tem até 50 mensagens e até 28 KB, com pelo menos uma; a seção 4.4 da arquitetura explica o limite e o que o T5 verifica.
