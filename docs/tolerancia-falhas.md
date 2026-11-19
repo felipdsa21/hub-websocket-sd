@@ -28,7 +28,7 @@ Como o id entra em `Users.connections` antes de o handshake terminar, um `postTo
 Na difusão de eventos de uma conversa (`fanOut`, em `backend/functions/data.ts`), cada entrega ocorre em paralelo e de forma independente:
 
 - Um `410 Gone` desvincula só aquela conexão, e as demais recebem o evento normalmente (RF08).
-- Qualquer outra falha também não interrompe os demais envios: `settle` (`backend/functions/shared.ts`) espera todas as entregas terminarem antes de relançar o erro, ou um `AggregateError` com todas as falhas quando mais de uma entrega falha, registrando os nomes distintos das exceções no log da execução. Sem isso, a primeira falha poderia encerrar a Lambda com envios ainda em andamento.
+- Qualquer outra falha também não interrompe os demais envios: `settle` (`backend/functions/shared.ts`) espera todas as entregas terminarem antes de relançar o erro, ou um `AggregateError` com todas as falhas quando mais de uma entrega falha, registrando os nomes distintos das exceções no log da execução — inclusive quando uma rota dispara duas difusões em paralelo, como `addMember` e `leaveGroup`. Sem isso, a primeira falha poderia encerrar a Lambda com envios ainda em andamento.
 
 No `sendMessage`, a mensagem já foi gravada antes da difusão (seção 4.3 da arquitetura), então uma falha de entrega nunca a perde: quem não a recebeu em tempo real a recupera por `sync` e `getHistory` ao se reconectar.
 
