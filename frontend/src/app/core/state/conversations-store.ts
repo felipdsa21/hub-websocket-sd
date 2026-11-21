@@ -49,6 +49,15 @@ export class ConversationsStore {
     this.viewing.set(null);
   }
 
+  /** Replaces the list after a reconnection `sync`, keeping opened, viewing and seen marks. */
+  public sync(conversations: readonly Conversation[]): void {
+    this.conversations.set(conversations);
+    const viewing = this.viewing();
+    if (viewing && conversations.some((c) => c.conversationId === viewing)) {
+      this.markSeen(viewing);
+    }
+  }
+
   public add(conversation: Conversation): void {
     this.conversations.update((list) => [
       ...list.filter((c) => c.conversationId !== conversation.conversationId),

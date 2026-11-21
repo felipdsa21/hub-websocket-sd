@@ -43,7 +43,7 @@ import { ResultRow } from '../result-row/result-row';
 })
 export class PeoplePicker {
   private readonly directory = inject(DirectoryStore);
-  protected readonly connected = inject(ConnectionStore).connected;
+  private readonly presenceVisible = inject(ConnectionStore).presenceVisible;
 
   public readonly label = input('Pessoa');
   public readonly multiple = input(false);
@@ -108,7 +108,7 @@ export class PeoplePicker {
   }
 
   protected presenceOf(user: UserState): Presence | null {
-    return presenceOf(user, this.connected());
+    return presenceOf(user, this.presenceVisible());
   }
 
   protected subtitleOf(user: UserState): string {

@@ -43,7 +43,9 @@ export class ConversationList {
   private readonly users = inject(UsersStore);
   private readonly currentUser = inject(CurrentUser);
   private readonly clock = inject(Clock);
-  protected readonly connected = inject(ConnectionStore).connected;
+  private readonly connection = inject(ConnectionStore);
+  protected readonly connected = this.connection.connected;
+  private readonly presenceVisible = this.connection.presenceVisible;
   protected readonly newConversations = inject(NewConversationDialogs);
 
   public readonly selectedId = input<string | null>(null);
@@ -59,6 +61,7 @@ export class ConversationList {
       withNewActivity: this.conversations.withNewActivity(),
       opened: this.conversations.openedIds(),
       connected: this.connected(),
+      presenceVisible: this.presenceVisible(),
       time: this.clock.context(),
     }),
   );

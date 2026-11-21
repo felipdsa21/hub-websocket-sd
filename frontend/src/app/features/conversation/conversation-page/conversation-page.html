@@ -33,7 +33,7 @@
       }
     </app-screen-header>
   }
-  @if (compact() && !connected()) {
+  @if (compact() && lossIndicated()) {
     <app-connection-banner />
   }
 
