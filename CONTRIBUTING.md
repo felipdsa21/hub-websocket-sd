@@ -53,4 +53,5 @@ Uma mudança de comportamento atualiza a documentação no mesmo pull request.
 - **Sessão:** ciclo de vida da sessão (handshake, frames, `$connect` e `$disconnect`). Ilustra os nomes e procedimentos da arquitetura, que continua sendo a referência.
 - **Sincronização e consistência:** ordenação temporal, deduplicação, consistência no DynamoDB e ciclo de vida das conversas. Ilustra e aprofunda os mecanismos da arquitetura, que continua sendo a referência.
 - **Tolerância a falhas:** conexões órfãs (`410 Gone`), isolamento de falhas na difusão, expiração por inatividade (`presenceSweeper`), recuperação após falhas parciais e reenvio sem duplicação. Ilustra os mecanismos da arquitetura, que continua sendo a referência.
+- **Observabilidade e implantação:** logs estruturados anonimizados (HMAC/SSM), métricas e painel no CloudWatch, recomendações de alarmes e processo de empacotamento e implantação via CDK (S3 + CloudFront). Ilustra a seção 5 e a D08 da arquitetura.
 - **README:** visão geral do projeto e links para os documentos.
