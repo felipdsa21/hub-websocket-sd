@@ -13,6 +13,7 @@ import { ConnectionStore } from './connection-store';
 import { ConversationsStore } from './conversations-store';
 import { CurrentUser, SessionUser } from './current-user';
 import { MessagesStore, SYNC_OVERLAP_MS } from './messages-store';
+import { TelemetryStore } from './telemetry-store';
 import { UserStorage } from './user-storage';
 import { UsersStore } from './users-store';
 
@@ -36,6 +37,7 @@ export class SessionStore {
   private readonly connection = inject(ConnectionStore);
   private readonly storage = inject(UserStorage);
   private readonly events = inject(HubEvents);
+  private readonly telemetry = inject(TelemetryStore);
 
   public readonly user = this.currentUser.user.asReadonly();
   public readonly enterStatus = signal<EnterStatus>('idle');
@@ -175,6 +177,10 @@ export class SessionStore {
         attempt++;
         // Client log used in the tests (architecture, section 4.6, T7).
         console.info(`Reconnecting (attempt ${attempt}, delay ${delayMs} ms).`);
+        this.telemetry.record(
+          'connection',
+          `Tentativa de reconexão #${attempt} (espera ${delayMs} ms)`,
+        );
         if (delayMs > 0) {
           const ok = await this.waitDelay(delayMs, generation);
           if (!ok) {
@@ -200,6 +206,7 @@ export class SessionStore {
           this.messages.syncAfterReconnect(data.updated);
           this.events.release();
           this.connection.markRecovered();
+          this.telemetry.record('connection', 'Conexão restabelecida após sincronização');
           this.messages.resendPending();
           return;
         } catch (error) {

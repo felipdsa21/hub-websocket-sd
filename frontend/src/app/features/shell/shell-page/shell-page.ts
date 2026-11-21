@@ -8,6 +8,7 @@ import { Scenarios } from '@/core/fixtures/scenarios';
 import { Breakpoints } from '@/core/layout/breakpoints';
 import { urlSignal } from '@/core/signals/observed-signals';
 import { ConnectionStore } from '@/core/state/connection-store';
+import { TelemetryStore } from '@/core/state/telemetry-store';
 import { NewConversationDialogs } from '@/features/new-conversation/new-conversation-dialogs';
 import { SearchBox } from '@/features/search/search-box/search-box';
 import { ConnectionBanner } from '@/shared/ui/connection-banner/connection-banner';
@@ -39,6 +40,7 @@ export class ShellPage {
   private readonly connection = inject(ConnectionStore);
   protected readonly connected = this.connection.connected;
   protected readonly lossIndicated = this.connection.lossIndicated;
+  protected readonly telemetry = inject(TelemetryStore);
   private readonly newConversations = inject(NewConversationDialogs);
   private readonly scenarios = inject(Scenarios);
   private readonly snackBar = inject(MatSnackBar);
