@@ -1,5 +1,12 @@
 import { PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { db, isValidNameLength, parseUsername, withRequestLog } from './shared';
+import {
+  PresenceUserRecord,
+  announcePresence,
+  db,
+  isValidNameLength,
+  parseUsername,
+  withRequestLog,
+} from './shared';
 
 // Only a cleanup for records the presence sweeper missed (D05).
 const RECORD_TTL_S = 3 * 60 * 60;
@@ -31,7 +38,7 @@ export const handler = withRequestLog(async (event) => {
       },
     }),
   );
-  await db.send(
+  const res = await db.send(
     new UpdateCommand({
       TableName: process.env.USERS_TABLE,
       Key: { username: identity.username },
@@ -47,7 +54,9 @@ export const handler = withRequestLog(async (event) => {
       ReturnValues: 'ALL_NEW',
     }),
   );
-  // shortcut: presence is not announced to contacts yet (section 3.5); the sweeper or week 5 catches up.
+  if (res?.Attributes && typeof res.Attributes.version === 'number') {
+    await announcePresence(res.Attributes as PresenceUserRecord);
+  }
 
   return { result: 'ok', username: identity.username };
 });
