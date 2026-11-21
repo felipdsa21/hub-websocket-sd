@@ -20,7 +20,7 @@ export class MembersPage {
   private readonly router = inject(Router);
   private readonly breakpoints = inject(Breakpoints);
   protected readonly groupDialogs = inject(GroupDialogs);
-  protected readonly connected = inject(ConnectionStore).connected;
+  protected readonly lossIndicated = inject(ConnectionStore).lossIndicated;
 
   public readonly conversationId = input.required<string>();
 

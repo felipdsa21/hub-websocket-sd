@@ -22,6 +22,11 @@ export function messageSk(sentAt: number, sender: string, messageId: string): st
   return `${skInstant(sentAt)}#${sender}#${messageId}`;
 }
 
+/** An `sk` before every message sent at or after the instant, for `getHistory` `after`. */
+export function skBeforeInstant(sentAt: number): string {
+  return `${skInstant(sentAt)}#`;
+}
+
 /** An `sk` after every message sent at the instant, to place something right after them. */
 export function skAfterInstant(sentAt: number): string {
   // The highest character sorts after any sender and id.

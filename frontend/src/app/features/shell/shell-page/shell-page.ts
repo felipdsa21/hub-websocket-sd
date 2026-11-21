@@ -1,4 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatFabButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -35,7 +36,9 @@ import { ConversationList } from '../conversation-list/conversation-list';
 export class ShellPage {
   private readonly router = inject(Router);
   protected readonly breakpoints = inject(Breakpoints);
-  protected readonly connected = inject(ConnectionStore).connected;
+  private readonly connection = inject(ConnectionStore);
+  protected readonly connected = this.connection.connected;
+  protected readonly lossIndicated = this.connection.lossIndicated;
   private readonly newConversations = inject(NewConversationDialogs);
   private readonly scenarios = inject(Scenarios);
   private readonly snackBar = inject(MatSnackBar);
@@ -61,6 +64,9 @@ export class ShellPage {
     if (this.scenarios.has('reconectado')) {
       this.snackBar.open('Conectado novamente.', undefined, { duration: 4000 });
     }
+    this.connection.reconnected.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.snackBar.open('Conectado novamente.', undefined, { duration: 4000 });
+    });
   }
 
   protected newChat(): void {

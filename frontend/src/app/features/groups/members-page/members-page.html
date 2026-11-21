@@ -4,7 +4,7 @@
   [backLink]="['/c', conversationId()]"
   backLabel="Voltar para a conversa"
 />
-@if (!connected()) {
+@if (lossIndicated()) {
   <app-connection-banner />
 }
 <app-members-panel

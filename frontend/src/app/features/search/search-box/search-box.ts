@@ -51,7 +51,9 @@ export class SearchBox {
   private readonly router = inject(Router);
   private readonly newConversations = inject(NewConversationDialogs);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-  protected readonly connected = inject(ConnectionStore).connected;
+  private readonly connection = inject(ConnectionStore);
+  protected readonly connected = this.connection.connected;
+  private readonly presenceVisible = this.connection.presenceVisible;
 
   public readonly compact = input(false);
 
@@ -126,7 +128,7 @@ export class SearchBox {
     const identity = conversationIdentity(conversation, {
       me: this.me(),
       users: this.users.all(),
-      connected: this.connected(),
+      connected: this.presenceVisible(),
       repeated: this.repeated(),
     });
     return {
@@ -140,7 +142,7 @@ export class SearchBox {
   }
 
   private personView(user: UserState): ResultView {
-    const presence = presenceOf(user, this.connected());
+    const presence = presenceOf(user, this.presenceVisible());
     return {
       key: user.username,
       title: user.displayName,

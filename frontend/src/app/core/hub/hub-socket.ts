@@ -50,9 +50,12 @@ export class HubSocket {
   /** Fails the `connect()` still waiting for the socket to open. */
   private abortConnect?: (error: Error) => void;
   private readonly eventsSubject = new Subject<HubEvent>();
+  private readonly droppedSubject = new Subject<void>();
 
   public readonly status = signal<SocketStatus>('closed');
   public readonly events: Observable<HubEvent> = this.eventsSubject.asObservable();
+  /** Fires immediately when an open connection closes unexpectedly or misses a heartbeat (RF08). */
+  public readonly dropped: Observable<void> = this.droppedSubject.asObservable();
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.close());
@@ -91,6 +94,9 @@ export class HubSocket {
         const wasOpen = this.status() === 'open';
         this.detach(new Error('The connection closed before opening.'));
         this.status.set(wasOpen ? 'lost' : 'closed');
+        if (wasOpen) {
+          this.droppedSubject.next();
+        }
       };
     });
   }
@@ -98,11 +104,10 @@ export class HubSocket {
   /** Closes the connection on the user's request; it doesn't count as lost. */
   public close(): void {
     const socket = this.socket;
-    if (!socket) {
-      return;
+    if (socket) {
+      this.detach();
+      socket.close();
     }
-    this.detach();
-    socket.close();
     this.status.set('closed');
   }
 
@@ -126,7 +131,13 @@ export class HubSocket {
         reject(new RequestFailure('noResponse'));
       }, timeoutMs);
       this.pending.set(requestId, { resolve: (data) => resolve(data as T), reject, timer });
-      socket.send(JSON.stringify({ ...fields, action, requestId }));
+      try {
+        socket.send(JSON.stringify({ ...fields, action, requestId }));
+      } catch {
+        this.pending.delete(requestId);
+        clearTimeout(timer);
+        reject(new RequestFailure('noResponse'));
+      }
     });
   }
 
@@ -168,9 +179,11 @@ export class HubSocket {
       this.request('heartbeat', {}, PONG_TIMEOUT_MS).catch(() => {
         // No `pong` in time: the connection is taken as lost (RF08).
         if (this.status() === 'open') {
-          this.socket?.close();
+          const socket = this.socket;
           this.detach();
+          socket?.close();
           this.status.set('lost');
+          this.droppedSubject.next();
         }
       });
     }, HEARTBEAT_INTERVAL_MS);
