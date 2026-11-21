@@ -215,7 +215,7 @@ async function handleResend(
     return { result: 'error', code: 'conflict' };
   }
   const delivered = await send(ctx.connectionId, ctx.username, toMessageEvent(msg));
-  return { result: delivered ? 'ok' : 'gone' };
+  return { result: delivered ? 'duplicate' : 'gone', conversationId: conv.conversationId };
 }
 
 async function persistMessage(

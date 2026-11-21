@@ -1,15 +1,22 @@
+import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch';
 import { GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { scanAllUsers, toStringSet } from './data';
 import { close, db, errorName, log, rethrowFailures, settle, unbind } from './shared';
+
+export const cloudwatch = new CloudWatchClient({});
 
 // A connection with no request for this long is expired (RF07, architecture section 3.4).
 export const IDLE_MS = 10 * 60 * 1000;
 // The schedule has 1-minute resolution and may run late, so each run scans Connections twice.
 export const SECOND_SCAN_DELAY_MS = 30_000;
+export const OPEN_CONNECTIONS_METRIC = 'OpenConnections';
 
-/** Scans Connections, closing and unbinding the idle ones; populates `seen` with every id found. */
-async function sweepConnections(seen = new Set<string>()): Promise<Set<string>> {
+/** Scans Connections, closing and unbinding the idle ones; returns the seen ids and remaining active count. */
+async function sweepConnections(
+  seen = new Set<string>(),
+): Promise<{ seen: Set<string>; active: number }> {
   const expired: string[] = [];
+  let active = 0;
   const cutoff = Date.now() - IDLE_MS;
   let ExclusiveStartKey: Record<string, unknown> | undefined;
   do {
@@ -24,6 +31,7 @@ async function sweepConnections(seen = new Set<string>()): Promise<Set<string>> 
     for (const item of Items ?? []) {
       seen.add(item.connectionId);
       if (item.lastSeenAt < cutoff) expired.push(item.connectionId);
+      else active++;
     }
     ExclusiveStartKey = LastEvaluatedKey;
   } while (ExclusiveStartKey);
@@ -35,7 +43,7 @@ async function sweepConnections(seen = new Set<string>()): Promise<Set<string>> 
       await unbind(id);
     }),
   );
-  return seen;
+  return { seen, active };
 }
 
 /**
@@ -65,28 +73,45 @@ async function sweepOrphans(seen: Set<string>) {
   await settle(orphans);
 }
 
+/** Publishes the open-connections count to CloudWatch (architecture, section 5; RNF06). */
+async function publishOpenConnections(count: number) {
+  const namespace = process.env.METRICS_NAMESPACE;
+  if (!namespace) return;
+  await cloudwatch.send(
+    new PutMetricDataCommand({
+      Namespace: namespace,
+      MetricData: [{ MetricName: OPEN_CONNECTIONS_METRIC, Value: count, Unit: 'Count' }],
+    }),
+  );
+}
+
 /** Runs every minute from EventBridge Scheduler (D05); the TTL on Connections is only a cleanup. */
 export async function handler() {
   const start = Date.now();
   const errors: unknown[] = [];
-  const run = async (step: () => Promise<unknown>) => {
+  const run = async <T>(step: () => Promise<T>): Promise<T | undefined> => {
     try {
-      await step();
+      return await step();
     } catch (err) {
       if (err instanceof AggregateError) errors.push(...err.errors);
       else errors.push(err);
+      return undefined;
     }
   };
 
   try {
     const seen = new Set<string>();
-    await run(() => sweepConnections(seen));
+    const first = await run(() => sweepConnections(seen));
     await run(() => sweepOrphans(seen));
     const delay = start + SECOND_SCAN_DELAY_MS - Date.now();
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-    await run(() => sweepConnections());
+    const second = await run(() => sweepConnections());
+    const active = second?.active ?? first?.active;
+    if (active !== undefined) {
+      await run(() => publishOpenConnections(active));
+    }
     if (errors.length > 0) rethrowFailures(errors);
-    // shortcut: no re-announcement of presence (section 3.5) nor open-connections metric (section 5) yet; add with the presence events.
+    // shortcut: presence re-announcement (section 3.5) is added with the presence events PR.
     log({ route: 'presenceSweeper', result: 'ok', durationMs: Date.now() - start });
   } catch (err) {
     log({
