@@ -2,52 +2,55 @@
 
 **Projeto:** Hub Colaborativo WebSocket  
 **Estágio / Região:** `HubWebSocket-dev` / `sa-east-1`  
-**Janela coletada:** `2026-11-21T03:53:00Z` a `2026-11-21T04:02:00Z` (cobrindo os testes de integração e as cargas de 2, 5 e 10 usuários simultâneos)  
+**Janela coletada:** `2026-11-21T16:44:00Z` a `2026-11-21T16:46:00Z` (janela completa de 2 minutos cobrindo integralmente as cargas T8 de 2, 5 e 10 usuários simultâneos, coletada após o atraso de ingestão do CloudWatch)  
 **Dados brutos:** [docs/dados/cloudwatch-metrics-dev.json](dados/cloudwatch-metrics-dev.json)
 
 ## 1. API Gateway WebSocket e conexões
 
-| Métrica | Soma na janela | Média/min | Pico (máx/min) | Observação |
-| --- | ---: | ---: | ---: | --- |
-| `ConnectCount` | 41 | 10,25 | 20 | Conexões dos testes de integração e benchmarks (2, 5 e 10 usuários) |
-| `MessageCount` | 1.915 | 383,00 | 1.278 | Soma de requisições de entrada + fan-out via `@connections` |
-| `OpenConnections` (custom) | — | 5,80 | 9 | Publicada pelo `presenceSweeper` (`HubWebSocket/dev`) |
-| `IntegrationLatency` (avg) | — | 759,66 ms | 2.362,40 ms | Inclui cold starts iniciais (`Init Duration` ~300–380 ms) |
-| `IntegrationLatency` (p95) | — | 1.379,46 ms | 3.637,42 ms | Pico durante rajada inicial fria de 10 usuários |
-| `IntegrationError` | 0 | 0 | 0 | Nenhum erro de integração com a Lambda |
-| `ClientError` | 41 | 8,20 | 17 | Recusas intencionais dos testes de segurança (`$connect` 400 e `$default`) |
-| `ExecutionError` | 8 | 1,60 | 8 | Throttling por cota `ConcurrentExecutions = 10` da conta nova, recuperado por RF12 |
+Os valores de `IntegrationLatency` abaixo correspondem à estatística agregada sobre toda a janela de 2 minutos (`Period = 120 s`), evitando distorções de média de percentis por minuto.
 
-> **Nota sobre médias de janela:** para métricas de contagem (`ConnectCount`, `MessageCount`, `ClientError`, `ExecutionError`), `Média/min` representa a média entre os minutos com datapoints no CloudWatch (`4` ou `5` minutos ativos dentro da janela de 9 minutos). Para `IntegrationLatency` e `OpenConnections`, a coluna mostra a média simples das janelas de 1 minuto (ponderada por `MessageCount`, a `IntegrationLatency` média global nas `1.915` entregas foi de `455,81 ms`, já que o minuto de cold start `00:53` teve apenas `27` mensagens a `2.362,40 ms` e o minuto de pico `00:56` teve `1.278` mensagens a `475,38 ms`).
+| Métrica | Soma na janela | Agregado da janela (`120 s`) | Pico (máx/min) | Observação |
+| --- | ---: | ---: | ---: | --- |
+| `ConnectCount` | 17 | — | 17 | Exatamente 2 + 5 + 10 conexões dos benchmarks T8 |
+| `MessageCount` | 1.707 | — | 1.707 | Requisições de entrada + entregas em fan-out via `@connections` |
+| `OpenConnections` (custom) | — | — | 1 | Publicada pelo `presenceSweeper` (`HubWebSocket/dev`) no tick da janela |
+| `IntegrationLatency` (avg) | — | **146,17 ms** | 146,17 ms | Inclui as rodadas de aquecimento e cold starts iniciais |
+| `IntegrationLatency` (p95) | — | **559,04 ms** | 559,04 ms | Inclui rajadas iniciais frias (`warmup`) e 1 retry de concorrência |
+| `IntegrationError` | 0 | — | 0 | Nenhum erro de integração com a Lambda |
+| `ClientError` | 42 | — | 42 | Respostas `410 Gone` de `postToConnection` durante encerramento simultâneo dos clientes ao fim do teste |
+| `ExecutionError` | 2 | — | 2 | 1 throttle em `app` + 1 em `disconnect` pela cota `ConcurrentExecutions = 10` (absorvido sem perda por RF12) |
 
 ## 2. Funções Lambda
 
-Todas as funções rodaram com memória padrão de `128 MB` (`Node.js 22.x`) e **zero erros de execução** (`Errors = 0`).
+Todas as funções rodaram em **ARM64 (Graviton2)** (`Node.js 22.x`), com **`512 MB`** (`app`, `connect`, `disconnect`, `default`) e **`256 MB`** (`presenceSweeper`, passagem única por minuto sem espera em `setTimeout`), apresentando **zero erros de execução** (`Errors = 0`). As colunas de duração reportam a média e o **p95 agregados diretamente sobre a janela inteira** (`Period = 120 s`) e o pico máximo observado.
 
-| Função | Invocações | Erros | Duração média (ms) | Duração p95 (ms) | Duração máx (ms) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `app` | 183 | 0 | 326,15 | 687,16 | 2.130,56 |
-| `connect` | 37 | 0 | 392,07 | 618,07 | 918,06 |
-| `disconnect` | 20 | 0 | 655,36 | 1.158,16 | 2.193,81 |
-| `default` | 4 | 0 | 386,81 | 674,32 | 1.236,22 |
-| `presenceSweeper` | 5 | 0 | 30.141,72 | 30.141,72 | 30.159,04 |
+| Função | Invocações | Erros | Throttles | Duração média (janela, ms) | Duração p95 (janela, ms) | Duração máx (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `app` | 190 | 0 | 1 | **105,01** | **163,87** | 574,19 |
+| `connect` | 17 | 0 | 0 | **91,66** | **252,29** | 256,01 |
+| `disconnect` | 16 | 0 | 1 | **281,10** | **405,88** | 408,35 |
+| `default` | 0 | 0 | 0 | — | — | — |
+| `presenceSweeper` | 2 | 0 | 0 | **104,77** | **122,61** | 123,20 |
 
-Os valores de `Duração média` e `Duração p95` na tabela correspondem à média simples das séries de 1 minuto exportadas pelo CloudWatch (sem ponderação pelo volume de invocações por minuto; ponderada por invocações, a duração média de `app` foi de `393,82 ms`, com pico de p95 em 1 minuto de `1.011,83 ms`). A duração estável de ~`30,14 s` do `presenceSweeper` corresponde exatamente à espera configurada de `30 s` entre a primeira e a segunda varredura de `Connections` (seção 3.4 da arquitetura).
+Em comparação à configuração inicial (`128 MB` x86_64 e `presenceSweeper` com espera de `30 s`), o ganho foi expressivo:
+
+- **`app`:** duração média caiu de `326,15 ms` para **`105,01 ms`** (−67,8%) e o p95 da janela caiu para **`163,87 ms`**.
+- **`presenceSweeper`:** duração média caiu de `30.141,72 ms` para **`104,77 ms`** (redução de ~288× no tempo de execução e ocupação de slot de concorrência).
 
 ## 3. DynamoDB (modo on-demand)
 
-Nenhuma tabela apresentou limitação de taxa (`ThrottledRequests = 0`).
+Nenhuma tabela apresentou limitação de taxa (`ThrottledRequests = 0`). Os totais abaixo contabilizam 100% das 187 mensagens gravadas (`187 × 4 WCUs transacionais = 748 WCUs` em `Messages`).
 
 | Tabela | RCU consumidas (total) | Pico RCU/min | WCU consumidas (total) | Pico WCU/min | Throttled |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| `Users` | 1.403 | 1.213 | 105 | 49 | 0 |
-| `Conversations` | 345 | 231 | 176 | 113 | 0 |
-| `Connections` | 69 | 28 | 240 | 141 | 0 |
-| `Memberships` | 62 | 20 | 70 | 29 | 0 |
-| `Messages` | 12 | 5 | 576 | 444 | 0 |
+| `Users` | 1.561 | 1.289 | 72 | 54 | 0 |
+| `Conversations` | 390 | 258 | 193 | 124 | 0 |
+| `Connections` | 66 | 59 | 229 | 151 | 0 |
+| `Memberships` | 33 | 24 | 34 | 20 | 0 |
+| `Messages` | 0 | 0 | 748 | 484 | 0 |
 
-O maior consumo de leitura recai sobre `Users` (resolução de conexões no fan-out e varredura do `presenceSweeper`, conforme previsto na seção 7 da arquitetura) e o maior consumo de escrita sobre `Messages` (gravação transacional do marcador de idempotência + mensagem em cada `sendMessage`, gerando 4 WCUs por mensagem).
+O maior consumo de leitura recai sobre `Users` (resolução de conexões no fan-out e varredura do `presenceSweeper`, seção 7 da arquitetura) e o maior consumo de escrita sobre `Messages` (gravação transacional do marcador de idempotência `id#…` com TTL + mensagem `m#…` em cada `sendMessage`).
 
-## 4. Gargalo observado na conta de testes
+## 4. Cota de concorrência da conta de desenvolvimento
 
-A consulta `aws lambda get-account-settings` confirmou que a conta AWS de desenvolvimento possui cota inicial de **`ConcurrentExecutions = 10`**. Como o `presenceSweeper` ocupa 1 execução durante ~30 s de cada minuto, sobram 9 slots simultâneos durante metade do tempo, explicando os 8 eventos de `ExecutionError` sob rajada simultânea de 10 usuários (todos absorvidos pela fila de reenvio idempotente sem perda nem duplicação). Para o ambiente produtivo, recomenda-se solicitar aumento da cota de concorrência Lambda (ex.: 100+) e avaliar elevar a memória da Lambda `app` de `128 MB` para `256–512 MB` para reduzir o tempo de CPU no fan-out e no cold start.
+A consulta `aws lambda get-account-settings` confirma que a conta AWS de desenvolvimento ainda possui a cota inicial de conta nova (`ConcurrentExecutions = 10`). Com a remoção do `setTimeout(30 s)` do `presenceSweeper` e o corte de 3× na duração da Lambda `app` (`512 MB` ARM64), a contenção caiu de `8` para apenas **`2` eventos** (`1` throttle em `app` e `1` em `disconnect`), permitindo que o experimento T8 com 10 usuários simultâneos cumprisse com folga o requisito **RNF02** (`p95 = 166,05 ms < 500 ms`). Para o estágio `prod`, continua recomendado solicitar o desbloqueio da cota padrão da conta (`1.000` execuções simultâneas) via console AWS Support / Service Quotas.

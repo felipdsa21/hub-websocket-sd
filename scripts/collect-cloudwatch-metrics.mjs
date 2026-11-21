@@ -128,6 +128,8 @@ const tables = resources
   .filter((r) => r.ResourceType === 'AWS::DynamoDB::Table')
   .map((r) => ({ logical: r.LogicalResourceId, physical: r.PhysicalResourceId }));
 
+const windowPeriod = Math.max(60, Math.ceil((endMs - startMs) / 60_000) * 60);
+
 const queries = [];
 const add = (id, label, namespace, metricName, dimensions, stat, period = 60) => {
   queries.push({
@@ -150,6 +152,24 @@ if (apiId) {
   add('apigw_messages', 'APIGW MessageCount', 'AWS/ApiGateway', 'MessageCount', apiDims, 'Sum');
   add('apigw_lat_avg', 'APIGW IntegrationLatency avg', 'AWS/ApiGateway', 'IntegrationLatency', apiDims, 'Average');
   add('apigw_lat_p95', 'APIGW IntegrationLatency p95', 'AWS/ApiGateway', 'IntegrationLatency', apiDims, 'p95');
+  add(
+    'apigw_lat_avg_win',
+    'APIGW IntegrationLatency avg (window)',
+    'AWS/ApiGateway',
+    'IntegrationLatency',
+    apiDims,
+    'Average',
+    windowPeriod,
+  );
+  add(
+    'apigw_lat_p95_win',
+    'APIGW IntegrationLatency p95 (window)',
+    'AWS/ApiGateway',
+    'IntegrationLatency',
+    apiDims,
+    'p95',
+    windowPeriod,
+  );
   add('apigw_err_int', 'APIGW IntegrationError', 'AWS/ApiGateway', 'IntegrationError', apiDims, 'Sum');
   add('apigw_err_cli', 'APIGW ClientError', 'AWS/ApiGateway', 'ClientError', apiDims, 'Sum');
   add('apigw_err_exe', 'APIGW ExecutionError', 'AWS/ApiGateway', 'ExecutionError', apiDims, 'Sum');
@@ -162,9 +182,28 @@ lambdas.forEach((fn, idx) => {
   const short = fn.logical.replace(/[A-F0-9]{8}$/, '');
   add(`fn_${idx}_inv`, `Lambda ${short} Invocations`, 'AWS/Lambda', 'Invocations', dims, 'Sum');
   add(`fn_${idx}_err`, `Lambda ${short} Errors`, 'AWS/Lambda', 'Errors', dims, 'Sum');
+  add(`fn_${idx}_thr`, `Lambda ${short} Throttles`, 'AWS/Lambda', 'Throttles', dims, 'Sum');
   add(`fn_${idx}_dur_avg`, `Lambda ${short} Duration avg`, 'AWS/Lambda', 'Duration', dims, 'Average');
   add(`fn_${idx}_dur_p95`, `Lambda ${short} Duration p95`, 'AWS/Lambda', 'Duration', dims, 'p95');
   add(`fn_${idx}_dur_max`, `Lambda ${short} Duration max`, 'AWS/Lambda', 'Duration', dims, 'Maximum');
+  add(
+    `fn_${idx}_dur_avg_win`,
+    `Lambda ${short} Duration avg (window)`,
+    'AWS/Lambda',
+    'Duration',
+    dims,
+    'Average',
+    windowPeriod,
+  );
+  add(
+    `fn_${idx}_dur_p95_win`,
+    `Lambda ${short} Duration p95 (window)`,
+    'AWS/Lambda',
+    'Duration',
+    dims,
+    'p95',
+    windowPeriod,
+  );
 });
 
 tables.forEach((tbl, idx) => {
