@@ -26,6 +26,8 @@ export interface ConversationRowsInput {
   readonly withNewActivity: ReadonlySet<string>;
   readonly opened: ReadonlySet<string>;
   readonly connected: boolean;
+  /** Others' presence stays visible during a short drop (<= 3 s); defaults to `connected`. */
+  readonly presenceVisible?: boolean;
   readonly time: TimeContext;
 }
 
@@ -35,7 +37,11 @@ export function conversationRows(input: ConversationRowsInput): ConversationRow[
     .filter((c) => c.type === 'direct')
     .map((c) => input.users.get(partnerOf(c, input.me)))
     .filter((u) => u !== undefined);
-  const context = { ...input, repeated: repeatedDisplayNames(partners) };
+  const context = {
+    ...input,
+    connected: input.presenceVisible ?? input.connected,
+    repeated: repeatedDisplayNames(partners),
+  };
 
   return input.conversations.map((c) => {
     const identity = conversationIdentity(c, context);

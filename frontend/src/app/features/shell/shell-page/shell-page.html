@@ -5,7 +5,7 @@
     <span class="spacer"></span>
     <app-account-menu />
   </header>
-  @if (!connected()) {
+  @if (lossIndicated()) {
     <app-connection-banner />
   }
 }
