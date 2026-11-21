@@ -143,13 +143,12 @@ test('grants least-privilege DynamoDB permissions per Lambda (M5)', () => {
     };
   };
 
-  for (const name of ['connect', 'disconnect', 'presenceSweeper']) {
+  for (const name of ['connect', 'disconnect', 'default', 'presenceSweeper']) {
     expect(tableAccess(name)).toEqual({
       rw: ['Connections', 'Users'],
       ro: ['Conversations', 'Memberships'],
     });
   }
-  expect(tableAccess('default')).toEqual({ rw: ['Connections'], ro: [] });
   expect(tableAccess('app')).toEqual({
     rw: ['Connections', 'Conversations', 'Memberships', 'Messages', 'Users'],
     ro: [],

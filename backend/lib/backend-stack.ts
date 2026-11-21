@@ -110,7 +110,7 @@ export class BackendStack extends cdk.Stack {
     };
     const connect = fn('connect', { memorySize: 512, ...presenceTables });
     const disconnect = fn('disconnect', { memorySize: 512, ...presenceTables });
-    const fallback = fn('default', { memorySize: 512, readWrite: ['CONNECTIONS_TABLE'] });
+    const fallback = fn('default', { memorySize: 512, ...presenceTables });
     const app = fn('app', {
       memorySize: 512,
       readWrite: [
