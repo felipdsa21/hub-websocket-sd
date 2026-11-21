@@ -35,7 +35,7 @@
       @case ('error') {
         <div class="state error" role="alert">
           <span>Não foi possível pesquisar.</span>
-          <button matButton (click)="retry()">Tentar de novo</button>
+          <button matButton [disabled]="!connected()" (click)="retry()">Tentar de novo</button>
         </div>
       }
       @default {

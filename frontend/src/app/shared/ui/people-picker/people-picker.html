@@ -1,8 +1,20 @@
 <mat-form-field appearance="outline" subscriptSizing="dynamic">
   <mat-label>{{ label() }}</mat-label>
-  <input matInput autocomplete="off" [value]="query()" (input)="onQuery($event)" />
+  <input
+    matInput
+    autocomplete="off"
+    [value]="query()"
+    [disabled]="!connected()"
+    (input)="onQuery($event)"
+  />
   @if (query()) {
-    <button matIconButton matSuffix aria-label="Limpar" (click)="query.set('')">
+    <button
+      matIconButton
+      matSuffix
+      aria-label="Limpar"
+      [disabled]="!connected()"
+      (click)="query.set('')"
+    >
       <mat-icon>cancel</mat-icon>
     </button>
   }
@@ -30,9 +42,13 @@
   @case ('error') {
     <div class="state error" role="alert">
       <span>Não foi possível pesquisar.</span>
-      <button matButton (click)="retry()">Tentar de novo</button>
+      <button matButton [disabled]="!connected()" (click)="retry()">Tentar de novo</button>
     </div>
   }
+}
+
+@if (empty()) {
+  <p class="state empty" role="status">Nenhuma pessoa encontrada.</p>
 }
 
 <ul class="plain-list" aria-label="Pessoas encontradas">
@@ -45,6 +61,7 @@
         [subtitle]="subtitleOf(user)"
         [selected]="multiple() && isSelected(user)"
         [pressed]="multiple() ? isSelected(user) : null"
+        [disabled]="!connected()"
         (click)="choose(user)"
       ></app-result-row>
     </li>

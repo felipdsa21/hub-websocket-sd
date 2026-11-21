@@ -1,4 +1,5 @@
-import { DestroyRef, Service, inject, signal } from '@angular/core';
+import { DOCUMENT, DestroyRef, Service, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
 import { Fixtures, createFixtures } from '@/core/fixtures/fixtures';
 import { HubFixtures } from '@/core/fixtures/hub-fixtures';
 import { Scenarios } from '@/core/fixtures/scenarios';
@@ -6,7 +7,7 @@ import { HubConfig } from '@/core/hub/hub-config';
 import { HubEvents } from '@/core/hub/hub-events';
 import { HubSocket, RequestFailure } from '@/core/hub/hub-socket';
 import { SyncData, toConversation } from '@/core/hub/protocol';
-import { normalizeDisplayName, normalizeUsername } from '@/core/model/names';
+import { isValidDisplayName, normalizeDisplayName, normalizeUsername } from '@/core/model/names';
 import { UserState } from '@/core/model/user';
 import { Clock } from '@/core/time/clock';
 import { ConnectionStore } from './connection-store';
@@ -14,7 +15,7 @@ import { ConversationsStore } from './conversations-store';
 import { CurrentUser, SessionUser } from './current-user';
 import { MessagesStore, SYNC_OVERLAP_MS } from './messages-store';
 import { TelemetryStore } from './telemetry-store';
-import { UserStorage } from './user-storage';
+import { CURRENT_USER_STORAGE_KEY, UserStorage, userStorageKey } from './user-storage';
 import { UsersStore } from './users-store';
 
 export type EnterStatus = 'idle' | 'connecting' | 'failed';
@@ -38,6 +39,8 @@ export class SessionStore {
   private readonly storage = inject(UserStorage);
   private readonly events = inject(HubEvents);
   private readonly telemetry = inject(TelemetryStore);
+  private readonly router = inject(Router, { optional: true });
+  private readonly window = inject(DOCUMENT).defaultView;
 
   public readonly user = this.currentUser.user.asReadonly();
   public readonly enterStatus = signal<EnterStatus>('idle');
@@ -50,17 +53,34 @@ export class SessionStore {
   private sessionGeneration = 0;
   private reconnecting = false;
   private cancelReconnectWait?: () => void;
+  private wakeReconnectWait?: () => void;
 
   constructor() {
+    const destroyRef = inject(DestroyRef);
     const subscription = this.socket.dropped.subscribe(() => {
       if (this.config.live() && this.currentUser.user()) {
         this.startReconnect();
       }
     });
-    inject(DestroyRef).onDestroy(() => {
+    destroyRef.onDestroy(() => {
       subscription.unsubscribe();
       this.cancelReconnect();
     });
+
+    const win = this.window;
+    if (win) {
+      const onStorage = (event: StorageEvent) => this.handleStorage(event);
+      const onOffline = () => this.handleOffline();
+      const onOnline = () => this.handleOnline();
+      win.addEventListener('storage', onStorage);
+      win.addEventListener('offline', onOffline);
+      win.addEventListener('online', onOnline);
+      destroyRef.onDestroy(() => {
+        win.removeEventListener('storage', onStorage);
+        win.removeEventListener('offline', onOffline);
+        win.removeEventListener('online', onOnline);
+      });
+    }
   }
 
   /**
@@ -87,33 +107,74 @@ export class SessionStore {
     }
   }
 
+  /**
+   * Restores the browser's persisted session on reload or in a new tab (RF01, section 4.6).
+   * Connection failures during restoration are treated as drops with exponential reconnect (RF08).
+   */
+  public restore(): boolean {
+    if (!this.config.live() || this.currentUser.user()) {
+      return false;
+    }
+    const username = this.storage.readCurrentUser();
+    if (!username) {
+      return false;
+    }
+    const savedDisplayName = this.storage.readDisplayName(username) ?? '';
+    this.enterStored(username, savedDisplayName);
+    return true;
+  }
+
   /** Enters as Marina, the user of the fixed data, so a scenario URL opens straight on it. */
   public enterForScenario(): void {
     this.load({ username: 'marina', displayName: 'Marina Alves' });
   }
 
   /**
-   * Changes the display name. The client reconnects with it, without going offline (RF01); with
-   * the fixed data, the user's own state just takes the new name, with a newer version.
+   * Changes the display name (RF01, section 4.6). With the backend, opens a parallel WebSocket
+   * with the new name and drains the previous one without going offline; if opening fails, keeps
+   * the current connection active and returns `false`.
    */
-  public changeDisplayName(displayName: string): void {
+  public async changeDisplayName(displayName: string): Promise<boolean> {
     const user = this.currentUser.user();
-    if (!user) {
-      return;
+    if (!user || !isValidDisplayName(displayName)) {
+      return false;
     }
     const name = normalizeDisplayName(displayName);
-    this.activeDisplayName = name;
-    this.currentUser.user.set({ ...user, displayName: name });
-    const state = this.users.get(user.username);
-    this.users.apply({
-      username: user.username,
-      displayName: name,
-      online: true,
-      version: (state?.version ?? 0) + 1,
-    });
+    if (!this.config.live()) {
+      this.activeDisplayName = name;
+      this.currentUser.user.set({ ...user, displayName: name });
+      this.users.setDisplayName(user.username, name);
+      return true;
+    }
+    if (!this.connection.connected()) {
+      return false;
+    }
+    const generation = this.sessionGeneration;
+    try {
+      await this.socket.reconnectInParallel(user.username, name);
+      if (generation !== this.sessionGeneration) {
+        return false;
+      }
+      this.activeDisplayName = name;
+      this.storage.writeDisplayName(user.username, name);
+      this.currentUser.user.set({ ...user, displayName: name });
+      // Do not increment `version` locally so server `presence` announcements still apply.
+      this.users.setDisplayName(user.username, name);
+      return true;
+    } catch (error) {
+      console.warn('Failed to change display name:', error);
+      return false;
+    }
   }
 
   public leave(): void {
+    if (this.config.live()) {
+      this.storage.clearCurrentUser();
+    }
+    this.resetSessionState();
+  }
+
+  private resetSessionState(): void {
     this.cancelReconnect();
     this.connection.reset();
     this.events.stop();
@@ -123,6 +184,7 @@ export class SessionStore {
     this.fixtures.data.set(null);
     this.users.reset([]);
     this.conversations.reset([], new Map());
+    this.conversations.loading.set(false);
     this.messages.reset(null);
     this.telemetry.reset();
     this.currentUser.user.set(null);
@@ -131,6 +193,7 @@ export class SessionStore {
 
   private async enterLive(user: SessionUser, displayName: string): Promise<void> {
     this.cancelReconnect();
+    const generation = this.sessionGeneration;
     this.connection.reset();
     this.telemetry.clear();
     this.enterStatus.set('connecting');
@@ -139,16 +202,108 @@ export class SessionStore {
     this.events.start();
     try {
       await this.socket.connect(user.username, displayName || undefined);
+      if (generation !== this.sessionGeneration) {
+        return;
+      }
+      // Persist the browser's active user and display name only after the first connection opens.
+      this.storage.writeCurrentUser(user.username);
+      if (displayName) {
+        this.storage.writeDisplayName(user.username, displayName);
+      } else {
+        this.storage.clearDisplayName(user.username);
+      }
       const data = await this.socket.request<SyncData>('sync');
+      if (generation !== this.sessionGeneration) {
+        return;
+      }
       this.activeDisplayName = displayName;
       this.lastSyncServerTime = data.serverTime;
       this.loadSynced(user, data);
       this.events.release();
     } catch (error) {
+      if (generation !== this.sessionGeneration) {
+        return;
+      }
       console.warn('Failed to enter:', error);
       this.events.stop();
       this.socket.close();
       this.enterStatus.set('failed');
+    }
+  }
+
+  /**
+   * Enters straight into the session using a stored user (reload, new tab or cross-tab switch),
+   * treating connection errors as network drops with automatic reconnection (RF01, RF08).
+   */
+  private enterStored(username: string, displayName: string): void {
+    this.resetSessionState();
+    const user: SessionUser = { username, displayName: displayName || username };
+    this.activeDisplayName = displayName;
+    this.users.reset([{ ...user, online: true, version: 0 }]);
+    this.conversations.reset([], this.storage.readSeen(username));
+    this.conversations.loading.set(true);
+    this.currentUser.user.set(user);
+    this.startReconnect();
+  }
+
+  private handleStorage(event: StorageEvent): void {
+    if (!this.config.live()) {
+      return;
+    }
+    if (event.storageArea && event.storageArea !== this.localStorageOrNull()) {
+      return;
+    }
+    const current = this.currentUser.user();
+    if (event.key === CURRENT_USER_STORAGE_KEY || event.key === null) {
+      const storedUser = this.storage.readCurrentUser();
+      if (!storedUser) {
+        if (current || this.enterStatus() === 'connecting') {
+          this.resetSessionState();
+          void this.router?.navigateByUrl('/entrar');
+        }
+        return;
+      }
+      if (storedUser !== current?.username) {
+        const savedDisplayName = this.storage.readDisplayName(storedUser) ?? '';
+        this.enterStored(storedUser, savedDisplayName);
+        void this.router?.navigateByUrl('/');
+        return;
+      }
+    }
+    if (current && (event.key === userStorageKey(current.username) || event.key === null)) {
+      this.conversations.mergeSeen(this.storage.readSeen(current.username));
+      const savedDisplayName = this.storage.readDisplayName(current.username) ?? '';
+      this.activeDisplayName = savedDisplayName;
+      const effectiveName = savedDisplayName || current.username;
+      if (current.displayName !== effectiveName) {
+        this.currentUser.user.set({ ...current, displayName: effectiveName });
+        this.users.setDisplayName(current.username, effectiveName);
+      }
+    }
+  }
+
+  private handleOffline(): void {
+    if (this.config.live() && this.currentUser.user()) {
+      this.socket.checkConnection();
+    }
+  }
+
+  private handleOnline(): void {
+    if (!this.config.live() || !this.currentUser.user()) {
+      return;
+    }
+    if (this.wakeReconnectWait) {
+      this.wakeReconnectWait();
+    } else if (!this.reconnecting && this.socket.status() === 'lost') {
+      this.startReconnect();
+    }
+  }
+
+  private localStorageOrNull(): Storage | null {
+    try {
+      return this.window?.localStorage ?? null;
+    } catch {
+      return null;
     }
   }
 
@@ -166,6 +321,7 @@ export class SessionStore {
     this.reconnecting = false;
     this.cancelReconnectWait?.();
     this.cancelReconnectWait = undefined;
+    this.wakeReconnectWait = undefined;
   }
 
   private async reconnectLoop(generation: number): Promise<void> {
@@ -184,9 +340,12 @@ export class SessionStore {
           `Tentativa de reconexão #${attempt} (espera ${delayMs} ms)`,
         );
         if (delayMs > 0) {
-          const ok = await this.waitDelay(delayMs, generation);
-          if (!ok) {
+          const outcome = await this.waitDelay(delayMs, generation);
+          if (outcome === 'cancelled') {
             return;
+          }
+          if (outcome === 'woken') {
+            attempt = 0;
           }
         }
         const user = this.currentUser.user();
@@ -259,17 +418,30 @@ export class SessionStore {
       this.users.apply(member);
     }
     this.conversations.sync(data.conversations.map(toConversation));
+    this.conversations.loading.set(false);
   }
 
-  private waitDelay(delayMs: number, generation: number): Promise<boolean> {
+  private waitDelay(
+    delayMs: number,
+    generation: number,
+  ): Promise<'elapsed' | 'woken' | 'cancelled'> {
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
+      const clear = () => {
+        clearTimeout(timer);
         this.cancelReconnectWait = undefined;
-        resolve(generation === this.sessionGeneration);
+        this.wakeReconnectWait = undefined;
+      };
+      const timer = setTimeout(() => {
+        clear();
+        resolve(generation === this.sessionGeneration ? 'elapsed' : 'cancelled');
       }, delayMs);
       this.cancelReconnectWait = () => {
-        clearTimeout(timer);
-        resolve(false);
+        clear();
+        resolve('cancelled');
+      };
+      this.wakeReconnectWait = () => {
+        clear();
+        resolve(generation === this.sessionGeneration ? 'woken' : 'cancelled');
       };
     });
   }

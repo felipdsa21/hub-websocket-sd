@@ -3,6 +3,7 @@ import { Router, provideRouter } from '@angular/router';
 import { Scenario } from '@/core/fixtures/scenarios';
 import { provideTestFixtures } from '@/core/fixtures/testing';
 import { SessionStore } from '@/core/state/session-store';
+import { userStorageKey } from '@/core/state/user-storage';
 import { LoginPage } from './login-page';
 
 async function render(scenarios: readonly Scenario[] = []) {
@@ -81,5 +82,41 @@ describe('LoginPage', () => {
     expect(document.documentElement.classList.contains('theme-dark')).toBe(true);
     document.documentElement.classList.remove('theme-dark', 'theme-light');
     localStorage.clear();
+  });
+
+  it('proposes the saved display name for a username without overwriting manual edits (C3)', async () => {
+    localStorage.clear();
+    localStorage.setItem(userStorageKey('alice'), JSON.stringify({ displayName: 'Alice Silva' }));
+    localStorage.setItem(userStorageKey('bruno'), JSON.stringify({ displayName: 'Bruno Lima' }));
+    const { element, type } = await render();
+    const displayInput = element.querySelectorAll('input')[1]!;
+
+    await type(0, 'alice');
+    expect(displayInput.value).toBe('Alice Silva');
+
+    await type(0, 'bruno');
+    expect(displayInput.value).toBe('Bruno Lima');
+
+    // Switching to an unknown user clears the auto-suggested value.
+    await type(0, 'carla');
+    expect(displayInput.value).toBe('');
+
+    // Manual edit is preserved even if username changes back to a user with a saved name.
+    await type(0, 'alice');
+    expect(displayInput.value).toBe('Alice Silva');
+    await type(1, 'Meu Nome');
+    await type(0, 'bruno');
+    expect(displayInput.value).toBe('Meu Nome');
+    localStorage.clear();
+  });
+
+  it('rejects control and bidi characters in displayName (B6)', async () => {
+    const { element, button, type } = await render();
+
+    await type(0, 'marina');
+    await type(1, 'Marina\u202eAlves');
+
+    expect(button.disabled).toBe(true);
+    expect(element.querySelector('mat-error')?.textContent).toContain('caracteres de controle');
   });
 });

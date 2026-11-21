@@ -10,8 +10,12 @@
       <mat-icon>add</mat-icon>
     </button>
     <mat-menu #newMenu="matMenu" xPosition="before">
-      <button mat-menu-item (click)="newConversations.openNewChat()">Novo chat</button>
-      <button mat-menu-item (click)="newConversations.openNewGroup()">Novo grupo</button>
+      <button mat-menu-item [disabled]="!connected()" (click)="newConversations.openNewChat()">
+        Novo chat
+      </button>
+      <button mat-menu-item [disabled]="!connected()" (click)="newConversations.openNewGroup()">
+        Novo grupo
+      </button>
     </mat-menu>
   }
 </div>
@@ -34,11 +38,14 @@
     @for (row of rows(); track row.conversationId) {
       <a
         mat-list-item
-        [routerLink]="['/c', row.conversationId]"
+        [routerLink]="row.dimmed ? null : ['/c', row.conversationId]"
         [activated]="row.conversationId === selectedId()"
         [attr.aria-current]="row.conversationId === selectedId() ? 'page' : null"
+        [attr.tabindex]="row.dimmed ? -1 : null"
+        [attr.aria-disabled]="row.dimmed ? 'true' : null"
         [disabled]="row.dimmed"
         [class.new-activity]="row.newActivity"
+        (click)="preventIfDimmed($event, row.dimmed)"
       >
         <span class="row">
           <app-avatar [kind]="row.avatarKind" [name]="row.avatarName" [presence]="row.presence" />

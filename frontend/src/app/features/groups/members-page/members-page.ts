@@ -24,14 +24,16 @@ export class MembersPage {
 
   public readonly conversationId = input.required<string>();
 
-  protected readonly groupName = computed(
-    () => this.conversations.get(this.conversationId())?.name ?? '',
-  );
+  protected readonly conversation = computed(() => this.conversations.get(this.conversationId()));
+  protected readonly groupName = computed(() => this.conversation()?.name ?? '');
 
   constructor() {
-    // Wider screens show the members next to the conversation instead.
+    // A group the user left or was removed from goes back to the list; wider screens show members
+    // next to the conversation instead.
     effect(() => {
-      if (!this.breakpoints.compact()) {
+      if (!this.conversation() && !this.conversations.loading()) {
+        void this.router.navigateByUrl('/');
+      } else if (!this.breakpoints.compact()) {
         void this.router.navigate(['/c', this.conversationId()]);
       }
     });

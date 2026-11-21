@@ -38,11 +38,11 @@
 @if (compact() && showList()) {
   <div class="fab-menu">
     @if (newMenuOpen()) {
-      <button matFab extended class="fab-item" (click)="newChat()">
+      <button matFab extended class="fab-item" [disabled]="!connected()" (click)="newChat()">
         <mat-icon>edit</mat-icon>
         Novo chat
       </button>
-      <button matFab extended class="fab-item" (click)="newGroup()">
+      <button matFab extended class="fab-item" [disabled]="!connected()" (click)="newGroup()">
         <mat-icon>groups</mat-icon>
         Novo grupo
       </button>

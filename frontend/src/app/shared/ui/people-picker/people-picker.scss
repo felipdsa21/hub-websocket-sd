@@ -19,11 +19,16 @@ ul {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin: 0;
   padding: 16px 0 0;
   font: var(--mat-sys-body-medium);
   color: var(--mat-sys-on-surface-variant);
 
   &.error {
     justify-content: space-between;
+  }
+
+  &.empty {
+    justify-content: flex-start;
   }
 }

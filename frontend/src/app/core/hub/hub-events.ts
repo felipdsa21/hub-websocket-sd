@@ -78,13 +78,25 @@ export class HubEvents {
         break;
       case 'memberJoined':
         this.users.apply(event.member);
-        this.conversations.addMember(event.conversationId, event.member.username);
-        this.messages.addNotice(event.conversationId, 'joined', event.member.username);
+        // Only record a notice when membership changes, deduplicating parallel-socket overlap.
+        if (this.conversations.addMember(event.conversationId, event.member.username)) {
+          this.messages.addNotice(event.conversationId, 'joined', event.member.username);
+        }
         break;
       case 'memberLeft':
-        this.conversations.removeMember(event.conversationId, event.username);
-        this.messages.addNotice(event.conversationId, 'left', event.username);
+        if (this.conversations.removeMember(event.conversationId, event.username)) {
+          this.messages.addNotice(event.conversationId, 'left', event.username);
+        }
         break;
+      case 'error': {
+        const { code, message, details } = event;
+        this.messages.failOutgoing(event.messageId, {
+          code,
+          message,
+          ...(details && { details }),
+        });
+        break;
+      }
     }
   }
 

@@ -46,14 +46,19 @@ export interface SearchData {
   readonly people: readonly UserState[];
 }
 
-/** Events that aren't the answer to a request. */
+/** Events that aren't the answer to a request (including message errors without a matched request). */
 export type HubEvent =
   | ({ readonly type: 'message' } & Message)
   | ({ readonly type: 'presence' } & UserState)
   | { readonly type: 'conversationAdded'; readonly conversation: ServerConversation }
   | { readonly type: 'conversationRemoved'; readonly conversationId: string }
   | { readonly type: 'memberJoined'; readonly conversationId: string; readonly member: UserState }
-  | { readonly type: 'memberLeft'; readonly conversationId: string; readonly username: string };
+  | { readonly type: 'memberLeft'; readonly conversationId: string; readonly username: string }
+  | ({
+      readonly type: 'error';
+      readonly requestId?: string;
+      readonly messageId: string;
+    } & HubError);
 
 /** Answers matched to a request by its `requestId`. */
 export type ReplyEvent =

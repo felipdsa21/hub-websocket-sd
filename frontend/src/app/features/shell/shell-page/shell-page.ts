@@ -75,11 +75,17 @@ export class ShellPage {
   }
 
   protected newChat(): void {
+    if (!this.connected()) {
+      return;
+    }
     this.newMenuOpen.set(false);
     this.newConversations.openNewChat();
   }
 
   protected newGroup(): void {
+    if (!this.connected()) {
+      return;
+    }
     this.newMenuOpen.set(false);
     this.newConversations.openNewGroup();
   }

@@ -3,6 +3,7 @@ import { MatIconButton } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatDivider } from '@angular/material/divider';
 import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router } from '@angular/router';
 import { ThemeStore } from '@/core/layout/theme-store';
 import { ConnectionStore } from '@/core/state/connection-store';
@@ -26,6 +27,7 @@ export class AccountMenu {
   private readonly session = inject(SessionStore);
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
+  private readonly snackBar = inject(MatSnackBar);
   private readonly messages = inject(MessagesStore);
   protected readonly connected = inject(ConnectionStore).connected;
   protected readonly theme = inject(ThemeStore);
@@ -42,7 +44,15 @@ export class AccountMenu {
       .afterClosed()
       .subscribe((name) => {
         if (name) {
-          this.session.changeDisplayName(name);
+          void this.session.changeDisplayName(name).then((ok) => {
+            if (!ok) {
+              this.snackBar.open(
+                'Não foi possível alterar o nome de exibição. Tente de novo.',
+                undefined,
+                { duration: 6000 },
+              );
+            }
+          });
         }
       });
   }

@@ -40,7 +40,9 @@ interface ResultView {
   host: {
     '[class.compact]': 'compact()',
     '[class.open]': 'open()',
-    '(keydown.escape)': 'close()',
+    '(document:keydown.escape)': 'onEscape()',
+    '(document:pointerdown)': 'onDocumentPointer($event)',
+    '(document:click)': 'onDocumentPointer($event)',
     '(focusout)': 'onFocusOut($event)',
   },
 })
@@ -117,9 +119,30 @@ export class SearchBox {
     this.newConversations.openDirect(username);
   }
 
+  protected onEscape(): void {
+    if (this.open()) {
+      this.close();
+    }
+  }
+
+  protected onDocumentPointer(event: Event): void {
+    if (!this.open()) {
+      return;
+    }
+    const host = this.host.nativeElement;
+    const target = event.target as Node | null;
+    const inside =
+      event.composedPath().includes(host) || (target !== null && host.contains(target));
+    if (!inside) {
+      this.close();
+    }
+  }
+
   protected onFocusOut(event: FocusEvent): void {
     const next = event.relatedTarget as Node | null;
-    if (!next || !this.host.nativeElement.contains(next)) {
+    // Ignore `relatedTarget === null` (e.g. clicking headings or scrollbars inside the panel);
+    // outside clicks are handled by `onDocumentPointer`.
+    if (next !== null && !this.host.nativeElement.contains(next)) {
       this.close();
     }
   }

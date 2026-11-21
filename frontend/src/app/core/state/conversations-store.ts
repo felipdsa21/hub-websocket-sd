@@ -65,24 +65,32 @@ export class ConversationsStore {
     ]);
   }
 
-  public addMember(conversationId: string, username: string): void {
+  public addMember(conversationId: string, username: string): boolean {
+    let added = false;
     this.conversations.update((list) =>
-      list.map((c) =>
-        c.conversationId === conversationId && !c.members.includes(username)
-          ? { ...c, members: [...c.members, username] }
-          : c,
-      ),
+      list.map((c) => {
+        if (c.conversationId === conversationId && !c.members.includes(username)) {
+          added = true;
+          return { ...c, members: [...c.members, username] };
+        }
+        return c;
+      }),
     );
+    return added;
   }
 
-  public removeMember(conversationId: string, username: string): void {
+  public removeMember(conversationId: string, username: string): boolean {
+    let removed = false;
     this.conversations.update((list) =>
-      list.map((c) =>
-        c.conversationId === conversationId
-          ? { ...c, members: c.members.filter((m) => m !== username) }
-          : c,
-      ),
+      list.map((c) => {
+        if (c.conversationId === conversationId && c.members.includes(username)) {
+          removed = true;
+          return { ...c, members: c.members.filter((m) => m !== username) };
+        }
+        return c;
+      }),
     );
+    return removed;
   }
 
   public remove(conversationId: string): void {
@@ -126,5 +134,21 @@ export class ConversationsStore {
         this.storage.writeSeen(me, conversationId, lastMessageAt);
       }
     }
+  }
+
+  /** Merges seen marks written by another tab without moving any mark back (section 4.6). */
+  public mergeSeen(external: ReadonlyMap<string, number>): void {
+    this.seen.update((current) => {
+      let changed = false;
+      const next = new Map(current);
+      for (const [id, sentAt] of external) {
+        const existing = next.get(id);
+        if (existing === undefined || sentAt > existing) {
+          next.set(id, sentAt);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
   }
 }

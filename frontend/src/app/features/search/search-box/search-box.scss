@@ -45,12 +45,9 @@
   padding: 0 4px;
 }
 
-:host(:focus-within) .bar {
+.bar:has(input:focus) {
   outline: 2px solid var(--mat-sys-primary);
-}
-
-:host(.open:focus-within) .bar {
-  outline: none;
+  outline-offset: -2px;
 }
 
 // The open search is one elevated container: the bar on top of the results.

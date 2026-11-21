@@ -226,6 +226,22 @@ export class MessagesStore {
     }
   }
 
+  /** Marks an outgoing message as rejected by the backend and advances the conversation queue. */
+  public failOutgoing(messageId: string, error: HubError): void {
+    const message = this.outgoing().find((m) => m.messageId === messageId);
+    if (!message || message.error) {
+      return;
+    }
+    this.inFlight.delete(messageId);
+    this.sentAtPerf.delete(messageId);
+    this.outgoing.update((list) =>
+      list.map((m) => (m.messageId === messageId ? { ...m, error } : m)),
+    );
+    if (this.config.live()) {
+      this.sendNext(message.conversationId);
+    }
+  }
+
   /**
    * A `message` event (architecture, section 4.2). It goes into the loaded history at the position
    * of its `sk`, once per sender and `messageId`, so every client shows the same order (RNF04).
@@ -460,10 +476,7 @@ export class MessagesStore {
         }
         const reason = error instanceof RequestFailure ? error.reason : 'noResponse';
         if (reason !== 'noResponse') {
-          this.outgoing.update((list) =>
-            list.map((m) => (m.messageId === messageId ? { ...m, error: reason } : m)),
-          );
-          this.sendNext(conversationId);
+          this.failOutgoing(messageId, reason);
         } else if (this.connection.connected()) {
           this.sendNext(conversationId, true);
         }

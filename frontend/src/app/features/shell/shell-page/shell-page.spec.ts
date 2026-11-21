@@ -1,4 +1,7 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideTestFixtures } from '@/core/fixtures/testing';
+import { Breakpoints } from '@/core/layout/breakpoints';
 import { TelemetryStore } from '@/core/state/telemetry-store';
 import { ShellPage } from './shell-page';
 
@@ -53,5 +56,40 @@ describe('ShellPage', () => {
     await fixture.whenStable();
     const badge = root.querySelector('.rtt-badge');
     expect(badge?.textContent?.trim()).toBe('Latência da conexão: RTT 48 ms');
+  });
+
+  it('disables mobile FAB "Novo chat" and "Novo grupo" actions when offline (B1)', async () => {
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [ShellPage],
+      providers: [
+        ...provideTestFixtures({ scenarios: ['sem-conexao'] }),
+        {
+          provide: Breakpoints,
+          useValue: {
+            compact: signal(true),
+            wideList: signal(false),
+            windowSize: signal<'compact' | 'medium' | 'expanded'>('compact'),
+          },
+        },
+      ],
+    }).compileComponents();
+
+    const mobileFixture = TestBed.createComponent(ShellPage);
+    (
+      mobileFixture.componentInstance as unknown as { newMenuOpen: { set(v: boolean): void } }
+    ).newMenuOpen.set(true);
+    await mobileFixture.whenStable();
+
+    const items = [
+      ...(mobileFixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.fab-item',
+      ),
+    ];
+    expect(items.map((b) => b.textContent?.trim())).toEqual([
+      expect.stringContaining('Novo chat'),
+      expect.stringContaining('Novo grupo'),
+    ]);
+    expect(items.every((b) => b.disabled)).toBe(true);
   });
 });

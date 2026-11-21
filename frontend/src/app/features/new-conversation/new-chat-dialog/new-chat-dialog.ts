@@ -7,6 +7,7 @@ import {
   MatDialogRef,
 } from '@angular/material/dialog';
 import { UserState } from '@/core/model/user';
+import { ConnectionStore } from '@/core/state/connection-store';
 import { CurrentUser } from '@/core/state/current-user';
 import { DialogHeader } from '@/shared/ui/dialog-header/dialog-header';
 import { PeoplePicker } from '@/shared/ui/people-picker/people-picker';
@@ -27,10 +28,13 @@ import { PeoplePicker } from '@/shared/ui/people-picker/people-picker';
 export class NewChatDialog {
   private readonly dialogRef = inject(MatDialogRef<NewChatDialog, string>);
   private readonly currentUser = inject(CurrentUser);
+  private readonly connected = inject(ConnectionStore).connected;
 
   protected readonly me = computed(() => new Set([this.currentUser.user()?.username ?? '']));
 
   protected pick(user: UserState): void {
-    this.dialogRef.close(user.username);
+    if (this.connected()) {
+      this.dialogRef.close(user.username);
+    }
   }
 }

@@ -74,4 +74,38 @@ describe('PeoplePicker with the backend', () => {
     await type('brux');
     expect(names()).toEqual([]);
   });
+
+  it('shows empty state with role=status when search finishes without results (UX)', async () => {
+    const { socket, element, type } = await setUp();
+    await type('zzzz');
+    expect(element.querySelector('[role="status"]')).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(SEARCH_DELAY_MS);
+    answer(socket, { conversations: [], people: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    TestBed.tick();
+
+    const status = element.querySelector('[role="status"]');
+    expect(status?.textContent?.trim()).toBe('Nenhuma pessoa encontrada.');
+  });
+
+  it('disables search input and person selection while disconnected (B1)', async () => {
+    const { socket, element, type } = await setUp();
+    await type('bru');
+    await vi.advanceTimersByTimeAsync(SEARCH_DELAY_MS);
+    answer(socket, { conversations: [], people: [BRUNO] });
+    await vi.advanceTimersByTimeAsync(0);
+    TestBed.tick();
+
+    const input = element.querySelector<HTMLInputElement>('input')!;
+    const rowButton = element.querySelector<HTMLButtonElement>('app-result-row button')!;
+    expect(input.disabled).toBe(false);
+    expect(rowButton.disabled).toBe(false);
+
+    socket.drop();
+    TestBed.tick();
+
+    expect(input.disabled).toBe(true);
+    expect(rowButton.disabled).toBe(true);
+  });
 });
