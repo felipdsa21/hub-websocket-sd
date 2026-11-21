@@ -4,9 +4,9 @@
 
 ## 1. Introdução
 
-Este documento explica como o sistema lida com falhas parciais: clientes que caem sem avisar, envios para conexões encerradas, Lambdas interrompidas no meio de um procedimento, falhas isoladas durante uma difusão, conexões sem registro e confirmações perdidas. Os nomes, as tabelas, os procedimentos e as decisões (D) citados estão na [arquitetura](arquitetura.md), que continua sendo a referência, e os requisitos, os riscos e os testes (RF, R e T), na [especificação](especificacao.md).
+Este documento explica como o sistema lida com falhas parciais nos dois lados da comunicação: clientes que caem sem avisar, envios para conexões encerradas, Lambdas interrompidas no meio de um procedimento, falhas isoladas durante uma difusão, conexões sem registro, confirmações perdidas e quedas de rede no cliente web. Os nomes, as tabelas, os procedimentos e as decisões (D) citados estão na [arquitetura](arquitetura.md), que continua sendo a referência, e os requisitos, os riscos e os testes (RF, R e T), na [especificação](especificacao.md).
 
-Em um sistema distribuído, o servidor não consegue distinguir um cliente lento de um cliente que caiu. O backend combina, por isso, o aviso do API Gateway (`$disconnect`), a resposta de cada envio (`410 Gone`) e o tempo desde a última requisição (`lastSeenAt` no `presenceSweeper`), em que cada sinal cobre o caso em que os outros falham.
+Em um sistema distribuído, o servidor não consegue distinguir um cliente lento de um cliente que caiu, e o cliente nem sempre recebe um fechamento limpo quando a rede cai. O backend combina o aviso do API Gateway (`$disconnect`), a resposta de cada envio (`410 Gone`) e o tempo desde a última requisição (`lastSeenAt` no `presenceSweeper`), enquanto o cliente combina o evento de fechamento do socket com o `heartbeat` periódico, reconecta com backoff exponencial e reconcilia o estado perdido.
 
 ## 2. Falhas consideradas
 
@@ -16,6 +16,7 @@ Em um sistema distribuído, o servidor não consegue distinguir um cliente lento
 - **Falha de um único envio na difusão:** um envio pode falhar por outro motivo, como limite de requisições excedido, enquanto os demais destinatários da mesma difusão receberiam normalmente.
 - **Conexão sem registro:** uma conexão ainda aberta pode enviar uma requisição depois de já ter sido desvinculada, por exemplo pela expiração por inatividade.
 - **Confirmação perdida ou conflito no envio:** a conexão pode cair após a gravação da mensagem e antes da confirmação, ou o reenvio pode disputar o marcador com a tentativa original.
+- **Queda silenciosa ou expiração da conexão no cliente:** uma perda de rede sem pacote de fechamento TCP ou o encerramento automático após 2 horas no API Gateway (L02) interrompem a entrega em tempo real até que o cliente reconecte e sincronize (R03, RF08).
 
 ## 3. Detecção de conexões órfãs (`410 Gone`)
 
@@ -56,3 +57,40 @@ A atualização condicional de `lastSeenAt` (seção 3.4 da arquitetura) impede 
 Para tolerar quedas entre a gravação da mensagem e a entrega da confirmação ao remetente, o `sendMessage` grava a mensagem e um marcador de idempotência na mesma transação (seções 3.3 e 4.3 da arquitetura, R07, RF12). Um reenvio encontra o marcador e confirma a mensagem apenas à conexão solicitante, refazendo os passos posteriores à transação caso uma execução anterior tenha sido interrompida.
 
 Conflitos de transação, que acontecem quando um reenvio disputa o mesmo marcador com a tentativa original, seguem as retentativas da seção 3.3 da arquitetura; a atualização de `lastMessageAt` fica fora da transação justamente para que envios simultâneos na mesma conversa não disputem um item (R06). Se o conflito no marcador persistir, o backend deixa a mensagem sem confirmação, em vez de responder com erro, para que a fila do cliente a reenvie (seção 4.3 da arquitetura).
+
+## 9. Heartbeat e reconexão no cliente
+
+No cliente web (`HubSocket` e `SessionStore`), a conexão ativa envia `heartbeat` a cada 30 s; sem `pong` em 10 s, ou quando o navegador sinaliza o fechamento inesperado do socket, a sessão é dada como perdida (seção 4.4 da arquitetura, RF08). A reconexão automática só atua sobre uma sessão já autenticada: uma falha na primeira entrada continua sendo exibida na tela de login sem novas tentativas (seção 4.6 da arquitetura).
+
+A recuperação segue backoff exponencial com primeira tentativa imediata (`0 ms`) e intervalos crescentes (`1 s`, `2 s`, `4 s`, `8 s`, `16 s`, até o teto de `30 s`), registrando cada tentativa no console para auditoria dos testes (T7). Durante a queda, o cliente separa dois sinais (`ConnectionStore`):
+
+- **Ações bloqueadas de imediato (`connected`):** pesquisa, criação e gestão de conversas, troca de nome, abertura de conversa não carregada e paginação de histórico são desabilitadas assim que a queda é detectada, mantendo disponível apenas o enfileiramento de mensagens (RF08, RF12).
+- **Indicação visual e presença após 3 s (`lossIndicated`):** o banner de reconexão e a ocultação da presença dos outros usuários só entram se o `sync` da reconexão não concluir em até 3 s, evitando ruído em quedas curtas como o encerramento das 2 horas (L02, RF07). Quando uma queda já indicada se resolve, a interface confirma o retorno com o aviso `Conectado novamente.`.
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente web
+    participant G as API Gateway
+    participant B as Backend (app)
+
+    C->>G: heartbeat (30 s)
+    Note over C: sem pong em 10 s (ou onclose)
+    Note over C: bloqueia ações; aguarda 3 s antes do banner
+    C->>G: reconecta (0 ms, 1 s, 2 s, ..., até 30 s)
+    C->>B: sync (since = último instante - 30 s)
+    Note over C: sem resposta em 15 s → repete 1x, depois reconecta
+    B-->>C: response (serverTime, conversations, updated)
+    C->>B: getHistory (after = último sk - 30 s) para updated carregadas
+    B-->>C: response (messages, hasMore)
+    Note over C: libera eventos retidos e retoma fila local
+    C->>B: sendMessage (1ª pendente por conversa, mesmo messageId)
+    B-->>C: message (confirmação sem duplicar)
+```
+
+## 10. Recuperação de estado e fila local de reenvio
+
+Assim que a nova conexão abre, o cliente passa a reter eventos em trânsito (`HubEvents`) e envia `sync` com `since` recuado em 30 s em relação ao maior instante entre o último `serverTime` e a última mensagem recebida (seção 4.4 da arquitetura). Se o `sync` fica sem resposta por 15 s com o socket aberto, o cliente o repete uma vez antes de fechar e tentar nova reconexão (seção 4.6 da arquitetura).
+
+Com a resposta do `sync`, o cliente atualiza a lista de conversas e dispara `getHistory` com `after` recuado em 30 s para cada conversa já carregada em `updated` antes de liberar os eventos retidos — impedindo que uma mensagem recém-chegada avance o cursor além de mensagens enviadas durante a queda. Se algum `getHistory` de recuperação falhar por nova queda, a conversa permanece pendente de sincronização e é retomada na reconexão seguinte (`MessagesStore`). A sobreposição de 30 s é segura porque o cliente mescla mensagens pela chave `(sender, messageId)` em ordem de `sk`, eliminando duplicatas (RNF04).
+
+As mensagens enviadas sem conexão ou ainda sem confirmação permanecem em memória na fila local e são reenviadas uma por vez por conversa, na ordem original, após cada `sync` ou após 15 s sem confirmação (seção 4.4 da arquitetura, RF12). Enquanto houver mensagens pendentes na aba, o cliente intercepta o fechamento ou recarga via `beforeunload` e pede confirmação ao sair da conta (seção 4.6 da arquitetura).
