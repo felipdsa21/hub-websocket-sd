@@ -36,7 +36,9 @@ export class MembersPanel {
   private readonly conversations = inject(ConversationsStore);
   private readonly users = inject(UsersStore);
   private readonly currentUser = inject(CurrentUser);
-  protected readonly connected = inject(ConnectionStore).connected;
+  private readonly connection = inject(ConnectionStore);
+  protected readonly connected = this.connection.connected;
+  private readonly presenceVisible = this.connection.presenceVisible;
 
   public readonly conversationId = input.required<string>();
   /** Heading level of the Online/Offline sections, one under the panel's title. */
@@ -49,7 +51,7 @@ export class MembersPanel {
     const members = this.conversations.get(this.conversationId())?.members ?? [];
     const states = members.map((m) => users.get(m)).filter((u) => u !== undefined);
     const repeated = repeatedDisplayNames(states);
-    const connected = this.connected();
+    const showPresence = this.presenceVisible();
 
     const rows = members
       .map((username): MemberRow & { online: boolean } => {
@@ -60,13 +62,13 @@ export class MembersPanel {
           label: username === me ? `${label} (você)` : label,
           name: user?.displayName ?? '',
           known: user !== undefined,
-          presence: presenceOf(user, connected),
+          presence: presenceOf(user, showPresence),
           online: user?.online ?? false,
         };
       })
       .sort((a, b) => compareMembers(a, b, me));
 
-    if (!connected) {
+    if (!showPresence) {
       return [{ label: null, members: rows }];
     }
     const online = rows.filter((r) => r.online);

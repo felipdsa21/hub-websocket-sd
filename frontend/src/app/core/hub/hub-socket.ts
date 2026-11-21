@@ -50,9 +50,12 @@ export class HubSocket {
   /** Fails the `connect()` still waiting for the socket to open. */
   private abortConnect?: (error: Error) => void;
   private readonly eventsSubject = new Subject<HubEvent>();
+  private readonly droppedSubject = new Subject<void>();
 
   public readonly status = signal<SocketStatus>('closed');
   public readonly events: Observable<HubEvent> = this.eventsSubject.asObservable();
+  /** Fires immediately when an open connection closes unexpectedly or misses a heartbeat (RF08). */
+  public readonly dropped: Observable<void> = this.droppedSubject.asObservable();
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.close());
@@ -91,6 +94,9 @@ export class HubSocket {
         const wasOpen = this.status() === 'open';
         this.detach(new Error('The connection closed before opening.'));
         this.status.set(wasOpen ? 'lost' : 'closed');
+        if (wasOpen) {
+          this.droppedSubject.next();
+        }
       };
     });
   }
@@ -171,6 +177,7 @@ export class HubSocket {
           this.socket?.close();
           this.detach();
           this.status.set('lost');
+          this.droppedSubject.next();
         }
       });
     }, HEARTBEAT_INTERVAL_MS);

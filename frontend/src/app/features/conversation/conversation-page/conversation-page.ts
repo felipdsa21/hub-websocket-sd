@@ -74,7 +74,10 @@ export class ConversationPage {
   private readonly router = inject(Router);
   private readonly groupDialogs = inject(GroupDialogs);
   private readonly destroyRef = inject(DestroyRef);
-  protected readonly connected = inject(ConnectionStore).connected;
+  private readonly connection = inject(ConnectionStore);
+  protected readonly connected = this.connection.connected;
+  protected readonly lossIndicated = this.connection.lossIndicated;
+  private readonly presenceVisible = this.connection.presenceVisible;
   protected readonly breakpoints = inject(Breakpoints);
 
   public readonly conversationId = input.required<string>();
@@ -99,20 +102,20 @@ export class ConversationPage {
     if (!conversation) {
       return null;
     }
-    const connected = this.connected();
+    const showPresence = this.presenceVisible();
     const users = this.users.all();
     const members = conversation.members.map((m) => users.get(m)).filter((u) => u !== undefined);
     const identity = conversationIdentity(conversation, {
       me: this.currentUser.user()?.username ?? '',
       users,
-      connected,
+      connected: showPresence,
       repeated: repeatedDisplayNames(members),
     });
     const detail =
       conversation.type === 'group'
         ? joinParts(
             membersLabel(conversation.members.length),
-            connected && `${members.filter((m) => m.online).length} online`,
+            showPresence && `${members.filter((m) => m.online).length} online`,
           )
         : joinParts(identity.usernameTag, presenceText(identity.presence));
     return { ...identity, detail };
