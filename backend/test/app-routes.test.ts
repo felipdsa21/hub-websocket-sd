@@ -2,6 +2,7 @@ import {
   ApiGatewayManagementApiClient,
   DeleteConnectionCommand,
   GoneException,
+  LimitExceededException,
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
 import {
@@ -33,6 +34,7 @@ const NOW = 1_731_542_400_123;
 
 const conditionFailed = new ConditionalCheckFailedException({ message: 'failed', $metadata: {} });
 const gone = new GoneException({ message: 'gone', $metadata: {} });
+const limitExceeded = new LimitExceededException({ message: 'limit', $metadata: {} });
 const txConflict = new TransactionConflictException({ message: 'conflict', $metadata: {} });
 
 const txCanceled = (codes: string[], firstItem?: Record<string, { SS?: string[] }>) =>
@@ -801,6 +803,95 @@ describe('addMember & leaveGroup', () => {
       },
       { connectionId: 'c1', payload: { type: 'response', requestId: REQ_ID, data: {} } },
     ]);
+  });
+
+  test('addMember waits for both fanOuts to finish even when one fails', async () => {
+    const carlosUser = {
+      username: 'carlos',
+      displayName: 'Carlos',
+      connections: new Set(['c4']),
+      version: 1,
+    };
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(GetCommand)
+      .resolvesOnce({
+        Item: {
+          conversationId: GROUP_ID,
+          type: 'group',
+          name: 'SD',
+          members: new Set(['ana', 'bia']),
+        },
+      })
+      .resolvesOnce({
+        Item: {
+          conversationId: GROUP_ID,
+          type: 'group',
+          name: 'SD',
+          members: new Set(['ana', 'bia', 'carlos']),
+        },
+      });
+    db.on(BatchGetCommand)
+      .resolvesOnce({ Responses: { Users: [carlosUser] } })
+      .resolvesOnce({ Responses: { Users: [anaUser, biaUser, carlosUser] } });
+    db.on(TransactWriteCommand).resolves({});
+
+    let resolveTarget!: () => void;
+    const pendingTarget = new Promise<object>((resolve) => {
+      resolveTarget = () => resolve({});
+    });
+    api.on(PostToConnectionCommand, { ConnectionId: 'c1' }).rejects(limitExceeded);
+    api.on(PostToConnectionCommand, { ConnectionId: 'c4' }).callsFake(() => pendingTarget);
+
+    let settled = false;
+    const run = app
+      .handler(
+        event('addMember', { requestId: REQ_ID, conversationId: GROUP_ID, username: 'carlos' }),
+      )
+      .finally(() => {
+        settled = true;
+      });
+    const outcome = expect(run).rejects.toThrow(limitExceeded);
+    await new Promise((r) => setImmediate(r));
+    expect(settled).toBe(false);
+
+    resolveTarget();
+    await outcome;
+    expect(sentTo().filter((d) => d.payload.type === 'conversationAdded')).toHaveLength(1);
+    expect(sentTo().filter((d) => d.payload.type === 'memberJoined')).toHaveLength(3);
+  });
+
+  test('leaveGroup waits for both fanOuts to finish even when one fails', async () => {
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(GetCommand)
+      .resolvesOnce({
+        Item: { conversationId: GROUP_ID, type: 'group', members: new Set(['ana', 'bia']) },
+      })
+      .resolvesOnce({
+        Item: { conversationId: GROUP_ID, type: 'group', members: new Set(['bia']) },
+      });
+    db.on(TransactWriteCommand).resolves({});
+    db.on(BatchGetCommand).resolves({ Responses: { Users: [anaUser, biaUser] } });
+
+    let resolveMemberLeft!: () => void;
+    const pendingMemberLeft = new Promise<object>((resolve) => {
+      resolveMemberLeft = () => resolve({});
+    });
+    api.on(PostToConnectionCommand, { ConnectionId: 'c1' }).rejects(limitExceeded);
+    api.on(PostToConnectionCommand, { ConnectionId: 'c2' }).callsFake(() => pendingMemberLeft);
+
+    let settled = false;
+    const run = app
+      .handler(event('leaveGroup', { requestId: REQ_ID, conversationId: GROUP_ID }))
+      .finally(() => {
+        settled = true;
+      });
+    const outcome = expect(run).rejects.toThrow(limitExceeded);
+    await new Promise((r) => setImmediate(r));
+    expect(settled).toBe(false);
+
+    resolveMemberLeft();
+    await outcome;
+    expect(sentTo().filter((d) => d.payload.type === 'memberLeft')).toHaveLength(2);
   });
 });
 

@@ -30,6 +30,7 @@ import {
   isTransactionConflict,
   isValidNameLength,
   parseUsername,
+  settle,
   withConflictRetry,
 } from './shared';
 
@@ -364,7 +365,7 @@ export async function handleAddMember(ctx: RequestContext): Promise<Outcome> {
   const users = await getUsers(updatedMembers);
   const member = toUserState(users.get(target), target);
 
-  await Promise.all([
+  await settle([
     fanOut(
       [...updatedMembers].filter((u) => u !== target),
       { type: 'memberJoined', conversationId, member },
@@ -437,7 +438,7 @@ export async function handleLeaveGroup(ctx: RequestContext): Promise<Outcome> {
   const remaining = [...toStringSet((freshConv ?? conv).members)].filter((u) => u !== me);
   const users = await getUsers([me, ...remaining]);
 
-  await Promise.all([
+  await settle([
     fanOut([me], { type: 'conversationRemoved', conversationId }, users),
     fanOut(remaining, { type: 'memberLeft', conversationId, username: me }, users),
   ]);

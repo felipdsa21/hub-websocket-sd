@@ -8,6 +8,7 @@ import {
   db,
   getCancellationReasons,
   send,
+  settle,
 } from './shared';
 
 export interface UserState {
@@ -261,7 +262,10 @@ export function membersFromCancellation(err: unknown): Set<string> | undefined {
   return new Set();
 }
 
-/** Sends an event to all connections of the given users, handling 410 Gone per connection (RF08). */
+/**
+ * Broadcasts an event to every connection of the given users, e.g. the members of a conversation.
+ * A 410 Gone unbinds that connection only (RF08); any other failure is rethrown after all deliveries finish.
+ */
 export async function fanOut(
   usernames: Iterable<string>,
   event: object,
@@ -279,7 +283,7 @@ export async function fanOut(
       deliveries.push(send(connId, username, event).then((delivered) => ({ connId, delivered })));
     }
   }
-  const results = await Promise.all(deliveries);
+  const results = await settle(deliveries);
   if (!trackConnectionId) return true;
   return results.some((r) => r.connId === trackConnectionId && r.delivered);
 }
