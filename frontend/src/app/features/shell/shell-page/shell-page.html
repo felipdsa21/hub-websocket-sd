@@ -4,8 +4,8 @@
     <app-search-box [compact]="compact()" />
     <span class="spacer"></span>
     @if (telemetry.showLatency() && telemetry.lastRttMs() !== null) {
-      <span class="rtt-badge" role="status" aria-label="Latência da conexão">
-        RTT {{ telemetry.lastRttMs() }} ms
+      <span class="rtt-badge">
+        <span class="visually-hidden">Latência da conexão: </span>RTT {{ telemetry.lastRttMs() }} ms
       </span>
     }
     <app-account-menu />

@@ -56,6 +56,9 @@ export class TelemetryStore {
   }
 
   public recordRtt(rttMs: number, source: 'heartbeat' | 'message'): void {
+    if (!Number.isFinite(rttMs)) {
+      return;
+    }
     const rounded = Math.max(0, Math.round(rttMs));
     this.rttSamples.update((list) => [...list, rounded].slice(-MAX_RTT_SAMPLES));
     const label = source === 'heartbeat' ? 'Heartbeat' : 'Mensagem';
@@ -65,5 +68,10 @@ export class TelemetryStore {
   public clear(): void {
     this.eventsSignal.set([]);
     this.rttSamples.set([]);
+  }
+
+  public reset(): void {
+    this.clear();
+    this.showLatency.set(false);
   }
 }

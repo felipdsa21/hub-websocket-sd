@@ -33,6 +33,11 @@
   border: 1px solid var(--mat-sys-outline-variant);
   border-radius: 12px;
   padding: 8px 12px;
+
+  &:focus-visible {
+    outline: 2px solid var(--mat-sys-primary);
+    outline-offset: 2px;
+  }
 }
 
 .empty {
@@ -52,7 +57,7 @@
 
 .event-row {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: auto auto minmax(0, 1fr);
   gap: 8px;
   align-items: baseline;
   font: var(--mat-sys-body-small);
@@ -69,5 +74,7 @@
 }
 
 .summary {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--mat-sys-on-surface);
 }

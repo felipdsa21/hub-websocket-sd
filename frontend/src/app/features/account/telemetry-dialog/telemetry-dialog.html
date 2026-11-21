@@ -27,7 +27,7 @@
     Exibir latência (RTT) na barra superior
   </mat-slide-toggle>
 
-  <div class="events" role="log" aria-label="Eventos recentes de telemetria">
+  <div class="events" role="log" aria-label="Eventos recentes de telemetria" tabindex="0">
     @if (telemetry.events().length === 0) {
       <p class="empty">Nenhum evento registrado ainda nesta sessão.</p>
     } @else {

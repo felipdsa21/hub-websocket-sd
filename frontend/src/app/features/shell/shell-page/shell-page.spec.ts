@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { TelemetryStore } from '@/core/state/telemetry-store';
 import { ShellPage } from './shell-page';
 
 describe('ShellPage', () => {
@@ -17,5 +18,20 @@ describe('ShellPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('shows the RTT badge only when showLatency is enabled and a sample exists', async () => {
+    const telemetry = TestBed.inject(TelemetryStore);
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('.rtt-badge')).toBeNull();
+
+    telemetry.recordRtt(48, 'heartbeat');
+    await fixture.whenStable();
+    expect(root.querySelector('.rtt-badge')).toBeNull();
+
+    telemetry.showLatency.set(true);
+    await fixture.whenStable();
+    const badge = root.querySelector('.rtt-badge');
+    expect(badge?.textContent?.trim()).toBe('Latência da conexão: RTT 48 ms');
   });
 });

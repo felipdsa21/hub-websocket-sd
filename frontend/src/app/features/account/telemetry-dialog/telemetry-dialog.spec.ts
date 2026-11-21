@@ -15,16 +15,26 @@ describe('TelemetryDialog', () => {
 
     const fixture = TestBed.createComponent(TelemetryDialog);
     await fixture.whenStable();
-    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    const root = fixture.nativeElement as HTMLElement;
+    const text = root.textContent ?? '';
     expect(text).toContain('42 ms');
     expect(text).toContain('Tentativa de reconexão #1');
 
+    const log = root.querySelector('[role="log"]');
+    expect(log?.getAttribute('tabindex')).toBe('0');
+
     expect(telemetry.showLatency()).toBe(false);
-    const toggle = (fixture.nativeElement as HTMLElement).querySelector(
-      'button[role="switch"]',
-    ) as HTMLButtonElement | null;
+    const toggle = root.querySelector('button[role="switch"]') as HTMLButtonElement | null;
     toggle?.click();
     await fixture.whenStable();
     expect(telemetry.showLatency()).toBe(true);
+
+    const clearBtn = [...root.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === 'Limpar',
+    );
+    clearBtn?.click();
+    await fixture.whenStable();
+    expect(telemetry.events()).toEqual([]);
+    expect(clearBtn?.disabled).toBe(true);
   });
 });

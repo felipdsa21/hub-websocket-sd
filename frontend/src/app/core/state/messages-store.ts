@@ -218,6 +218,8 @@ export class MessagesStore {
 
   public discard(messageId: string): void {
     const message = this.outgoing().find((m) => m.messageId === messageId);
+    this.inFlight.delete(messageId);
+    this.sentAtPerf.delete(messageId);
     this.outgoing.update((list) => list.filter((m) => m.messageId !== messageId));
     if (message && this.config.live()) {
       this.sendNext(message.conversationId);
@@ -262,6 +264,7 @@ export class MessagesStore {
       return;
     }
     this.inFlight.clear();
+    this.sentAtPerf.clear();
     const conversationIds = new Set(
       this.outgoing()
         .filter((m) => !m.error)
@@ -404,6 +407,7 @@ export class MessagesStore {
       this.conversations.updateLastMessage(conversationId, message.sentAt, message.sender);
       if (message.sender === me && this.outgoing().some((m) => m.messageId === message.messageId)) {
         this.inFlight.delete(message.messageId);
+        this.sentAtPerf.delete(message.messageId);
         this.outgoing.update((list) => list.filter((m) => m.messageId !== message.messageId));
         confirmedOwn = true;
       }

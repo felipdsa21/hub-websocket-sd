@@ -124,6 +124,7 @@ export class SessionStore {
     this.users.reset([]);
     this.conversations.reset([], new Map());
     this.messages.reset(null);
+    this.telemetry.reset();
     this.currentUser.user.set(null);
     this.enterStatus.set('idle');
   }
@@ -131,6 +132,7 @@ export class SessionStore {
   private async enterLive(user: SessionUser, displayName: string): Promise<void> {
     this.cancelReconnect();
     this.connection.reset();
+    this.telemetry.clear();
     this.enterStatus.set('connecting');
     // Listening starts before `sync`: an event that arrives before its answer is held and applied
     // after the lists are loaded, so it isn't lost.
@@ -306,6 +308,7 @@ export class SessionStore {
     this.conversations.reset(data.conversations, data.seen);
     this.conversations.loading.set(this.scenarios.has('carregando'));
     this.messages.reset(data);
+    this.telemetry.clear();
     this.currentUser.user.set(user);
     this.enterStatus.set('idle');
   }
