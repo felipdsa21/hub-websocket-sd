@@ -95,8 +95,8 @@ test('configures WebSocketStage throttling without accessLogSettings (M6)', () =
   template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
     StageName: 'dev',
     DefaultRouteSettings: {
-      ThrottlingRateLimit: 50,
-      ThrottlingBurstLimit: 100,
+      ThrottlingRateLimit: 1000,
+      ThrottlingBurstLimit: 2000,
     },
     AccessLogSettings: Match.absent(),
   });

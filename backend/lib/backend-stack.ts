@@ -195,8 +195,8 @@ export class BackendStack extends cdk.Stack {
     });
     const cfnStage = stage.node.defaultChild as CfnStage;
     cfnStage.defaultRouteSettings = {
-      throttlingRateLimit: 50,
-      throttlingBurstLimit: 100,
+      throttlingRateLimit: 1000,
+      throttlingBurstLimit: 2000,
     };
     for (const f of [connect, disconnect, fallback, app, sweeper]) {
       f.addEnvironment('CALLBACK_URL', stage.callbackUrl);
