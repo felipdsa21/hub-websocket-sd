@@ -3,6 +3,11 @@
     <h1 class="app-title" [class.visually-hidden]="compact()">Hub Colaborativo</h1>
     <app-search-box [compact]="compact()" />
     <span class="spacer"></span>
+    @if (telemetry.showLatency() && telemetry.lastRttMs() !== null) {
+      <span class="rtt-badge" role="status" aria-label="Latência da conexão">
+        RTT {{ telemetry.lastRttMs() }} ms
+      </span>
+    }
     <app-account-menu />
   </header>
   @if (lossIndicated()) {

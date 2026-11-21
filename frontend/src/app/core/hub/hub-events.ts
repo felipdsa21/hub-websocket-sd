@@ -2,6 +2,7 @@ import { Service, inject } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { ConversationsStore } from '@/core/state/conversations-store';
 import { MessagesStore } from '@/core/state/messages-store';
+import { TelemetryStore } from '@/core/state/telemetry-store';
 import { UsersStore } from '@/core/state/users-store';
 import { HubSocket } from './hub-socket';
 import { HubEvent, ServerConversation, SyncData, toConversation } from './protocol';
@@ -13,6 +14,7 @@ export class HubEvents {
   private readonly conversations = inject(ConversationsStore);
   private readonly messages = inject(MessagesStore);
   private readonly users = inject(UsersStore);
+  private readonly telemetry = inject(TelemetryStore);
 
   private subscription?: Subscription;
   /** Events held until the lists of the entry are loaded; `null` once they are applied. */
@@ -61,6 +63,10 @@ export class HubEvents {
         const { username, displayName, online, version } = event;
         // A client log used in the tests (architecture, section 4.6).
         console.info(`Presence: ${username} ${online ? 'online' : 'offline'}, version ${version}.`);
+        this.telemetry.record(
+          'presence',
+          `@${username} ${online ? 'online' : 'offline'} (v${version})`,
+        );
         this.users.apply({ username, displayName, online, version });
         break;
       }

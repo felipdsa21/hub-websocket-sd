@@ -51,11 +51,14 @@ export class HubSocket {
   private abortConnect?: (error: Error) => void;
   private readonly eventsSubject = new Subject<HubEvent>();
   private readonly droppedSubject = new Subject<void>();
+  private readonly heartbeatRttSubject = new Subject<number>();
 
   public readonly status = signal<SocketStatus>('closed');
   public readonly events: Observable<HubEvent> = this.eventsSubject.asObservable();
   /** Fires immediately when an open connection closes unexpectedly or misses a heartbeat (RF08). */
   public readonly dropped: Observable<void> = this.droppedSubject.asObservable();
+  /** Round-trip time (ms) of each answered heartbeat. */
+  public readonly heartbeatRtt: Observable<number> = this.heartbeatRttSubject.asObservable();
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.close());
@@ -176,16 +179,20 @@ export class HubSocket {
 
   private startHeartbeat(): void {
     this.heartbeatTimer = setInterval(() => {
-      this.request('heartbeat', {}, PONG_TIMEOUT_MS).catch(() => {
-        // No `pong` in time: the connection is taken as lost (RF08).
-        if (this.status() === 'open') {
-          const socket = this.socket;
-          this.detach();
-          socket?.close();
-          this.status.set('lost');
-          this.droppedSubject.next();
-        }
-      });
+      const startedAt = performance.now();
+      this.request('heartbeat', {}, PONG_TIMEOUT_MS).then(
+        () => this.heartbeatRttSubject.next(performance.now() - startedAt),
+        () => {
+          // No `pong` in time: the connection is taken as lost (RF08).
+          if (this.status() === 'open') {
+            const socket = this.socket;
+            this.detach();
+            socket?.close();
+            this.status.set('lost');
+            this.droppedSubject.next();
+          }
+        },
+      );
     }, HEARTBEAT_INTERVAL_MS);
   }
 

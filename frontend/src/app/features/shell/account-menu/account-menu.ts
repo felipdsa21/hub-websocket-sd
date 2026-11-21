@@ -9,6 +9,7 @@ import { MessagesStore } from '@/core/state/messages-store';
 import { SessionStore } from '@/core/state/session-store';
 import { DisplayNameDialog } from '@/features/account/display-name-dialog/display-name-dialog';
 import { LeaveAccountDialog } from '@/features/account/leave-account-dialog/leave-account-dialog';
+import { TelemetryDialog } from '@/features/account/telemetry-dialog/telemetry-dialog';
 import { Avatar } from '@/shared/ui/avatar/avatar';
 
 /**
@@ -42,6 +43,10 @@ export class AccountMenu {
           this.session.changeDisplayName(name);
         }
       });
+  }
+
+  protected openTelemetry(): void {
+    this.dialog.open(TelemetryDialog, { width: '480px', maxWidth: '92vw' });
   }
 
   /** With pending messages, the user confirms that they may be lost (RF12). */

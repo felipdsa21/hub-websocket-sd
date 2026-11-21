@@ -32,6 +32,16 @@
   flex: 1;
 }
 
+.rtt-badge {
+  flex: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+  font: var(--mat-sys-label-medium);
+  font-variant-numeric: tabular-nums;
+}
+
 .body {
   flex: 1;
   display: flex;
