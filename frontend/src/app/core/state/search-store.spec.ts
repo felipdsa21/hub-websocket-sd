@@ -49,35 +49,35 @@ describe('SearchStore', () => {
 });
 
 describe('ConversationActions', () => {
-  it('opens the existing direct chat instead of starting another (RF03)', () => {
+  it('opens the existing direct chat instead of starting another (RF03)', async () => {
     setUp();
-    const result = TestBed.inject(ConversationActions).openDirect('bruno');
+    const result = await TestBed.inject(ConversationActions).openDirect('bruno');
     expect(result).toEqual({ conversationId: 'd:bruno:marina' });
     expect(TestBed.inject(ConversationsStore).sorted().length).toBe(9);
   });
 
-  it('starts a new direct chat and a new group on top of the list', () => {
+  it('starts a new direct chat and a new group on top of the list', async () => {
     setUp();
     const actions = TestBed.inject(ConversationActions);
     const conversations = TestBed.inject(ConversationsStore);
 
-    actions.openDirect('juliana');
+    await actions.openDirect('juliana');
     expect(conversations.sorted()[0]?.conversationId).toBe('d:juliana:marina');
 
-    const group = actions.createGroup('  Revisão  ', ['diego']);
+    const group = await actions.createGroup('  Revisão  ', ['diego']);
     const created = conversations.sorted()[0]!;
     expect(group).toEqual({ conversationId: created.conversationId });
     expect(created).toMatchObject({ type: 'group', name: 'Revisão', members: ['marina', 'diego'] });
   });
 
-  it('reports missing users and unanswered requests in the action scenarios', () => {
+  it('reports missing users and unanswered requests in the action scenarios', async () => {
     setUp(['erro-acao']);
-    expect(TestBed.inject(ConversationActions).createGroup('G', ['diego', 'bruno'])).toEqual(
+    expect(await TestBed.inject(ConversationActions).createGroup('G', ['diego', 'bruno'])).toEqual(
       expect.objectContaining({ code: 'notFound', details: { usernames: ['diego'] } }),
     );
 
     TestBed.resetTestingModule();
     setUp(['sem-resposta']);
-    expect(TestBed.inject(ConversationActions).openDirect('juliana')).toBe('noResponse');
+    expect(await TestBed.inject(ConversationActions).openDirect('juliana')).toBe('noResponse');
   });
 });

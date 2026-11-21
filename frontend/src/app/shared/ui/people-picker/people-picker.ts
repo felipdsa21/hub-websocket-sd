@@ -1,12 +1,14 @@
-import { Component, computed, inject, input, model, output, signal } from '@angular/core';
-import { MatIconButton } from '@angular/material/button';
+import { Component, computed, effect, inject, input, model, output, signal } from '@angular/core';
+import { MatButton, MatIconButton } from '@angular/material/button';
 import { MatChip, MatChipRemove, MatChipSet } from '@angular/material/chips';
 import { MatFormField, MatLabel, MatSuffix } from '@angular/material/form-field';
 import { MatIcon } from '@angular/material/icon';
 import { MatInput } from '@angular/material/input';
+import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { Presence, UserState } from '@/core/model/user';
 import { ConnectionStore } from '@/core/state/connection-store';
-import { DirectoryStore } from '@/core/state/directory-store';
+import { DirectoryStore, SEARCH_DELAY_MS } from '@/core/state/directory-store';
+import { SearchStatus } from '@/core/state/search-store';
 import {
   joinParts,
   nameWithUsername,
@@ -23,6 +25,7 @@ import { ResultRow } from '../result-row/result-row';
 @Component({
   selector: 'app-people-picker',
   imports: [
+    MatButton,
     MatChip,
     MatChipRemove,
     MatChipSet,
@@ -31,6 +34,7 @@ import { ResultRow } from '../result-row/result-row';
     MatIconButton,
     MatInput,
     MatLabel,
+    MatProgressSpinner,
     MatSuffix,
     ResultRow,
   ],
@@ -49,9 +53,49 @@ export class PeoplePicker {
   public readonly picked = output<UserState>();
 
   protected readonly query = signal('');
+  /** With the backend, the state of the search for the current query (RF09). */
+  protected readonly status = signal<SearchStatus>('idle');
+  /** With the backend, the people of the current query; refreshed after a pause in typing. */
+  private readonly found = signal<readonly UserState[]>([]);
+  private readonly attempt = signal(0);
   protected readonly results = computed(() =>
-    this.directory.searchPeople(this.query(), this.exclude()),
+    this.directory.live()
+      ? this.found().filter((u) => !this.exclude().has(u.username))
+      : this.directory.searchPeople(this.query(), this.exclude()),
   );
+
+  constructor() {
+    effect((onCleanup) => {
+      const query = this.query();
+      this.attempt();
+      if (!this.directory.live()) {
+        return;
+      }
+      // The people of an older query can't be chosen while the new one waits for its answer.
+      this.found.set([]);
+      if (!query.trim()) {
+        this.status.set('idle');
+        return;
+      }
+      this.status.set('loading');
+      let current = true;
+      const timer = setTimeout(() => {
+        this.directory.findPeople(query).then(
+          (people) => {
+            if (current) {
+              this.found.set(people);
+              this.status.set('done');
+            }
+          },
+          () => current && this.status.set('error'),
+        );
+      }, SEARCH_DELAY_MS);
+      onCleanup(() => {
+        current = false;
+        clearTimeout(timer);
+      });
+    });
+  }
 
   /** Names shared by several people in sight show the username too (specification, section 2). */
   private readonly repeated = computed(() =>
@@ -90,6 +134,10 @@ export class PeoplePicker {
     this.selected.update((list) =>
       this.isSelected(user) ? list.filter((u) => u.username !== user.username) : [...list, user],
     );
+  }
+
+  protected retry(): void {
+    this.attempt.update((n) => n + 1);
   }
 
   protected onQuery(event: Event): void {
