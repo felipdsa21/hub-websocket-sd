@@ -1,11 +1,12 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormField, disabled, form, validate } from '@angular/forms/signals';
-import { MatButton } from '@angular/material/button';
+import { MatButton, MatIconButton } from '@angular/material/button';
 import { MatError, MatFormField, MatHint, MatLabel, MatSuffix } from '@angular/material/form-field';
 import { MatIcon } from '@angular/material/icon';
 import { MatInput } from '@angular/material/input';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { Router } from '@angular/router';
+import { ThemeStore } from '@/core/layout/theme-store';
 import { isValidDisplayName, isValidUsername, normalizeDisplayName } from '@/core/model/names';
 import { SessionStore } from '@/core/state/session-store';
 
@@ -22,6 +23,7 @@ const DISPLAY_NAME_HINT = 'Até 50 caracteres; vazio usa o nome de usuário.';
     MatFormField,
     MatHint,
     MatIcon,
+    MatIconButton,
     MatInput,
     MatLabel,
     MatProgressSpinner,
@@ -33,6 +35,7 @@ const DISPLAY_NAME_HINT = 'Até 50 caracteres; vazio usa o nome de usuário.';
 export class LoginPage {
   private readonly session = inject(SessionStore);
   private readonly router = inject(Router);
+  protected readonly theme = inject(ThemeStore);
 
   protected readonly usernameHint = USERNAME_HINT;
   protected readonly displayNameHint = DISPLAY_NAME_HINT;

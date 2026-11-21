@@ -4,6 +4,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatDivider } from '@angular/material/divider';
 import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
 import { Router } from '@angular/router';
+import { ThemeStore } from '@/core/layout/theme-store';
 import { ConnectionStore } from '@/core/state/connection-store';
 import { MessagesStore } from '@/core/state/messages-store';
 import { SessionStore } from '@/core/state/session-store';
@@ -27,6 +28,7 @@ export class AccountMenu {
   private readonly dialog = inject(MatDialog);
   private readonly messages = inject(MessagesStore);
   protected readonly connected = inject(ConnectionStore).connected;
+  protected readonly theme = inject(ThemeStore);
 
   protected readonly user = this.session.user;
 
