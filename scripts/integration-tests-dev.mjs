@@ -202,11 +202,13 @@ async function runCase(id, name, fn) {
 function buildReport({ endpoint, stage, region, sanitize, caseResults }) {
   const passed = caseResults.filter((r) => r.status === 'PASS').length;
   const sanitizedResults = sanitize
-    ? caseResults.map((r) =>
-        r.detail && typeof r.detail === 'object' && 'logGroup' in r.detail
-          ? { ...r, detail: { ...r.detail, logGroup: `/aws/lambda/HubWebSocket-${stage}-app-<id>` } }
-          : r,
-      )
+    ? caseResults.map((r) => {
+        if (!r.detail || typeof r.detail !== 'object') return r;
+        const next = { ...r.detail };
+        if ('logGroup' in next) next.logGroup = `HubWebSocket-${stage}-appLogs-<id>`;
+        if ('sweeperLogGroup' in next) next.sweeperLogGroup = `HubWebSocket-${stage}-presenceSweeperLogs-<id>`;
+        return { ...r, detail: next };
+      })
     : caseResults;
   return {
     executedAt: new Date().toISOString(),
@@ -219,6 +221,79 @@ function buildReport({ endpoint, stage, region, sanitize, caseResults }) {
   };
 }
 
+function awsJson(region, args) {
+  const out = execFileSync('aws', ['--region', region, ...args, '--output', 'json'], {
+    encoding: 'utf8',
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  return out.trim() ? JSON.parse(out) : {};
+}
+
+function resolveStackResources(region, stage) {
+  const summaries = awsJson(region, [
+    'cloudformation',
+    'list-stack-resources',
+    '--stack-name',
+    `HubWebSocket-${stage}`,
+  ]).StackResourceSummaries;
+  const find = (type, prefix) =>
+    summaries.find((r) => r.ResourceType === type && r.LogicalResourceId.startsWith(prefix))
+      ?.PhysicalResourceId;
+  return {
+    appLogGroup: find('AWS::Logs::LogGroup', 'appLogs'),
+    sweeperLogGroup: find('AWS::Logs::LogGroup', 'presenceSweeperLogs'),
+    connectionsTable: find('AWS::DynamoDB::Table', 'Connections'),
+    usersTable: find('AWS::DynamoDB::Table', 'Users'),
+  };
+}
+
+function seedFakeConnection(region, tables, { connectionId, username, connectedAt, lastSeenAt }) {
+  const expiresAt = Math.floor(connectedAt / 1000) + 3 * 3600;
+  awsJson(region, [
+    'dynamodb',
+    'put-item',
+    '--table-name',
+    tables.connectionsTable,
+    '--item',
+    JSON.stringify({
+      connectionId: { S: connectionId },
+      username: { S: username },
+      connectedAt: { N: String(connectedAt) },
+      lastSeenAt: { N: String(lastSeenAt) },
+      expiresAt: { N: String(expiresAt) },
+    }),
+  ]);
+  // Increment version and match announcedVersion so presenceSweeper does not prematurely re-announce (architecture, section 3.4).
+  const userItem = awsJson(region, [
+    'dynamodb',
+    'get-item',
+    '--table-name',
+    tables.usersTable,
+    '--consistent-read',
+    '--key',
+    JSON.stringify({ username: { S: username } }),
+  ]).Item;
+  const nextVersion = Number(userItem?.version?.N ?? '1') + 1;
+  awsJson(region, [
+    'dynamodb',
+    'update-item',
+    '--table-name',
+    tables.usersTable,
+    '--key',
+    JSON.stringify({ username: { S: username } }),
+    '--update-expression',
+    'ADD #c :c SET version = :v, announcedVersion = :v, changedAt = :now',
+    '--expression-attribute-names',
+    JSON.stringify({ '#c': 'connections' }),
+    '--expression-attribute-values',
+    JSON.stringify({
+      ':c': { SS: [connectionId] },
+      ':v': { N: String(nextVersion) },
+      ':now': { N: String(Date.now()) },
+    }),
+  ]);
+}
+
 async function main(opts) {
   url = opts.url;
   const { region, stage, sanitize, outPath } = opts;
@@ -229,9 +304,11 @@ async function main(opts) {
   const secretBody = `texto-confidencial-qa-${TAG}`;
 
   const a = new TestClient(ua, 'QA Alice');
-  const b = new TestClient(ub, 'QA Bruno');
+  const b = new TestClient(ub, `João Antônio ${TAG}`);
   const c = new TestClient(uc, 'QA Carla');
+  const stackRes = resolveStackResources(region, stage);
   let groupId = '';
+  let directId = '';
 
   try {
     await Promise.all([a.connect(), b.connect(), c.connect()]);
@@ -239,7 +316,7 @@ async function main(opts) {
     await runCase('S4-T3-1', 'Chat privado oculto até 1ª mensagem e isolamento entre usuários', async () => {
       const openRes = await a.request('openDirect', { username: ub });
       assert(openRes.type === 'response', 'openDirect should succeed');
-      const directId = openRes.data.conversation.conversationId;
+      directId = openRes.data.conversation.conversationId;
 
       const syncB1 = await b.request('sync');
       assert(syncB1.type === 'response', 'sync for B should succeed');
@@ -366,7 +443,7 @@ async function main(opts) {
       await a.waitForEvent((e) => e.type === 'message' && e.messageId === missedId);
 
       // B reconnects and syncs with since
-      const b2 = new TestClient(ub, 'QA Bruno');
+      const b2 = new TestClient(ub, `João Antônio ${TAG}`);
       try {
         await b2.connect();
         const onEv = await a.waitForEvent((e) => e.type === 'presence' && e.username === ub && e.online === true && e.version > offEv.version);
@@ -382,10 +459,164 @@ async function main(opts) {
       }
     });
 
-    await runCase('S6-SEC-1', 'Rejeição de conexões inválidas ($connect) e rotas desconhecidas / não-JSON ($default)', async () => {
+    await runCase('S4-T2-SIZE', 'Mensagem perto do limite de 32 KB (RF11) entregue e paginada em getHistory', async () => {
+      const bigText = 'á'.repeat(15_800); // 31.600 bytes UTF-8 (abaixo do frame de 32 KB)
+      const bigId = randomUUID();
+      a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: bigId, text: bigText }));
+      const ev = await a.waitForEvent((e) => e.type === 'message' && e.messageId === bigId);
+      assert(ev.text === bigText, 'Large UTF-8 message must match byte-for-byte');
+      const hist = await a.request('getHistory', { conversationId: directId });
+      assert(hist.type === 'response' && hist.data.messages.some((m) => m.messageId === bigId), 'Large message must appear in getHistory');
+      return { utf8Bytes: Buffer.byteLength(bigText, 'utf8') };
+    });
+
+    await runCase('S4-T4-SEARCH', 'Pesquisa normalizada pt-BR (sem acento encontra com acento) e presença (RF05)', async () => {
+      const res = await c.request('search', { query: `joao antonio ${TAG}` });
+      assert(res.type === 'response', 'search failed');
+      const found = res.data.people.find((p) => p.username === ub);
+      assert(Boolean(found) && typeof found.online === 'boolean', 'Accent-insensitive search must find João Antônio with presence');
+      return { matchedUsername: found.username, displayName: found.displayName, online: found.online };
+    });
+
+    await runCase('S4-T5-HISTORY', 'Histórico > 128 KB paginado em múltiplas páginas via getHistory(before) (RF06, T5)', async () => {
+      const grp5 = await a.request('createGroup', { name: `QA Hist ${TAG}`, members: [c.username] });
+      assert(grp5.type === 'response', 'createGroup for T5 failed');
+      const cid5 = grp5.data.conversation.conversationId;
+      const chunk = 'H'.repeat(28_000);
+      const sentIds = [];
+      for (let i = 0; i < 5; i++) {
+        const mid = randomUUID();
+        sentIds.push(mid);
+        a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: cid5, messageId: mid, text: `${i}:${chunk}` }));
+        await a.waitForEvent((e) => e.type === 'message' && e.messageId === mid);
+      }
+      const seen = new Set();
+      let pages = 0;
+      let before;
+      while (true) {
+        const res = await c.request('getHistory', before ? { conversationId: cid5, before } : { conversationId: cid5 });
+        assert(res.type === 'response', 'getHistory page failed');
+        pages++;
+        for (const m of res.data.messages) seen.add(m.messageId);
+        if (!res.data.hasMore) break;
+        before = res.data.messages[0].sk;
+        assert(pages < 20, 'Too many pages');
+      }
+      assert(pages >= 5 && sentIds.every((id) => seen.has(id)), `Expected >=5 pages and all 5 msgs (got pages=${pages}, seen=${seen.size})`);
+      return { totalBytes: 5 * 28_002, pages, messagesRecovered: seen.size };
+    });
+
+    await runCase('S5-T6-MULTITAB', 'Presença multi-aba: fechar 1ª mantém online; fechar 2ª anuncia offline (T6, RF07)', async () => {
+      const bTab1 = new TestClient(ub, `João Antônio ${TAG}`);
+      const bTab2 = new TestClient(ub, `João Antônio ${TAG}`);
+      try {
+        await bTab1.connect();
+        await bTab2.connect();
+        const mid = randomUUID();
+        a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: mid, text: 'multi-aba' }));
+        await Promise.all([
+          bTab1.waitForEvent((e) => e.type === 'message' && e.messageId === mid),
+          bTab2.waitForEvent((e) => e.type === 'message' && e.messageId === mid),
+        ]);
+        const eventsBefore = a.events.length;
+        bTab1.close();
+        const stillOn = await a.waitForEvent((e) => a.events.indexOf(e) >= eventsBefore && e.type === 'presence' && e.username === ub);
+        assert(stillOn.online === true, 'User B must stay online after closing 1 of 2 tabs');
+        const eventsBefore2 = a.events.length;
+        bTab2.close();
+        const nowOff = await a.waitForEvent((e) => a.events.indexOf(e) >= eventsBefore2 && e.type === 'presence' && e.username === ub && e.online === false);
+        assert(nowOff.online === false, 'User B must become offline after closing last tab');
+        return { stillOnlineVersion: stillOn.version, offlineVersion: nowOff.version };
+      } finally {
+        bTab1.close();
+        bTab2.close();
+      }
+    });
+
+    await runCase('S5-T7-410-GONE', 'Tratamento real de 410 Gone (GoneException): desvínculo e confirmação ao remetente (T7.1, RF08)', async () => {
+      // Connect a real socket to obtain a genuine API Gateway connectionId, then close it and re-seed it (T7.1).
+      const bReal = new TestClient(ub, `João Antônio ${TAG}`);
+      await bReal.connect();
+      const userRec = awsJson(region, [
+        'dynamodb',
+        'get-item',
+        '--table-name',
+        stackRes.usersTable,
+        '--consistent-read',
+        '--key',
+        JSON.stringify({ username: { S: ub } }),
+      ]).Item;
+      const staleId = userRec?.connections?.SS?.[0];
+      assert(Boolean(staleId), 'Expected real connectionId for B in Users table');
+      const eventsBeforeClose = a.events.length;
+      bReal.close();
+      await a.waitForEvent((e) => a.events.indexOf(e) >= eventsBeforeClose && e.type === 'presence' && e.username === ub && e.online === false);
+
+      const now = Date.now();
+      seedFakeConnection(region, stackRes, {
+        connectionId: staleId,
+        username: ub,
+        connectedAt: now - 60_000,
+        lastSeenAt: now,
+      });
+      const eventsBefore = a.events.length;
+      const mid = randomUUID();
+      a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: mid, text: 'trigger-410-gone' }));
+      await a.waitForEvent((e) => e.type === 'message' && e.messageId === mid);
+      const offEv = await a.waitForEvent((e) => a.events.indexOf(e) >= eventsBefore && e.type === 'presence' && e.username === ub && e.online === false);
+      assert(offEv.online === false, '410 Gone unbind must announce offline to contact A');
+      const connItem = awsJson(region, [
+        'dynamodb',
+        'get-item',
+        '--table-name',
+        stackRes.connectionsTable,
+        '--consistent-read',
+        '--key',
+        JSON.stringify({ connectionId: { S: staleId } }),
+      ]).Item;
+      assert(!connItem, 'Stale connection item must be removed from Connections after 410 Gone');
+      return { staleRemoved: true, offlineVersion: offEv.version };
+    });
+
+    await runCase('S5-T7-SWEEPER', 'Expiração real por inatividade no presenceSweeper (>10 min) e anúncio offline (T7.2, RF07)', async () => {
+      // Ensure A and C share a conversation (created in S4-T5-HISTORY), disconnect C, seed idle connection (>11 min)
+      c.close();
+      await a.waitForEvent((e) => e.type === 'presence' && e.username === uc && e.online === false);
+      const idleId = `idle-sweep-${TAG}`;
+      const now = Date.now();
+      seedFakeConnection(region, stackRes, {
+        connectionId: idleId,
+        username: uc,
+        connectedAt: now - 12 * 60_000,
+        lastSeenAt: now - 11 * 60_000,
+      });
+      const checkSearch = await a.request('search', { query: uc });
+      assert(checkSearch.type === 'response' && checkSearch.data.people.some((p) => p.username === uc && p.online === true), 'Seeded idle user must initially appear online');
+
+      const eventsBefore = a.events.length;
+      const sweptOff = await a.waitForEvent(
+        (e) => a.events.indexOf(e) >= eventsBefore && e.type === 'presence' && e.username === uc && e.online === false,
+        80_000,
+      );
+      const connItem = awsJson(region, [
+        'dynamodb',
+        'get-item',
+        '--table-name',
+        stackRes.connectionsTable,
+        '--consistent-read',
+        '--key',
+        JSON.stringify({ connectionId: { S: idleId } }),
+      ]).Item;
+      assert(!connItem, 'Idle connection must be removed by presenceSweeper');
+      return { idleRemoved: true, offlineVersion: sweptOff.version, sweeperLogGroup: stackRes.sweeperLogGroup };
+    });
+
+    await runCase('S6-SEC-1', 'Rejeição de conexões inválidas ($connect, incl. controle/bidi) e rotas desconhecidas / não-JSON ($default)', async () => {
       await expectHandshakeRejected('');
       await expectHandshakeRejected('username=a');
       await expectHandshakeRejected('username=invalido%20espaco');
+      await expectHandshakeRejected(`username=ctrl_${TAG}&displayName=Ana%0ABia`);
+      await expectHandshakeRejected(`username=bidi_${TAG}&displayName=Ana%E2%80%AEBia`);
 
       const badAction = await a.request('acaoInexistente', {});
       assert(badAction.type === 'error' && badAction.code === 'unknownAction', 'unknownAction expected on $default');
@@ -393,7 +624,7 @@ async function main(opts) {
       a.sendRaw('{nao-e-json');
       const nonJson = await a.waitForEvent((e) => e.type === 'error' && e.code === 'unknownAction' && !e.requestId);
       assert(Boolean(nonJson), 'Non-JSON payload must return unknownAction from $default');
-      return { handshakeCasesRejected: 3 };
+      return { handshakeCasesRejected: 5 };
     });
   } finally {
     a.close();
@@ -401,18 +632,20 @@ async function main(opts) {
     c.close();
   }
 
-  await runCase('S6-LOGS-1', 'Logs estruturados e anonimizados no CloudWatch sem identificadores em claro nem texto (RNF03)', async () => {
+  await runCase('S6-LOGS-1', 'Logs estruturados e anonimizados no CloudWatch (app e presenceSweeper, RNF03)', async () => {
     // Allow CloudWatch Logs ingestion lag (~4 s)
     await new Promise((r) => setTimeout(r, 4000));
-    const groups = JSON.parse(
-      execFileSync('aws', ['--region', region, 'logs', 'describe-log-groups', '--log-group-name-prefix', `/aws/lambda/HubWebSocket-${stage}-app`, '--output', 'json'], { encoding: 'utf8' }),
-    ).logGroups;
-    const logGroup = groups[0]?.logGroupName;
+    const logGroup = stackRes.appLogGroup;
     assert(Boolean(logGroup), 'app log group not found');
 
-    const events = JSON.parse(
-      execFileSync('aws', ['--region', region, 'logs', 'filter-log-events', '--log-group-name', logGroup, '--start-time', String(startedAt - 10_000), '--output', 'json'], { encoding: 'utf8' }),
-    ).events;
+    const events = awsJson(region, [
+      'logs',
+      'filter-log-events',
+      '--log-group-name',
+      logGroup,
+      '--start-time',
+      String(startedAt - 10_000),
+    ]).events;
     const jsonLines = events
       .map((e) => {
         const idx = e.message.indexOf('{"route":');
@@ -439,7 +672,26 @@ async function main(opts) {
     assert(Boolean(dupLog), 'Expected result=duplicate log entry from resend test');
     assert(Boolean(forbLog), 'Expected code=forbidden log entry from unauthorized test');
 
-    return { logGroup, structuredLines: jsonLines.length, sample, dupLog, forbLog };
+    const sweeperEvents = stackRes.sweeperLogGroup
+      ? awsJson(region, [
+          'logs',
+          'filter-log-events',
+          '--log-group-name',
+          stackRes.sweeperLogGroup,
+          '--start-time',
+          String(startedAt - 75_000),
+        ]).events
+      : [];
+    const sweeperLog = sweeperEvents
+      .map((e) => {
+        const idx = e.message.indexOf('{"route":');
+        if (idx < 0) return null;
+        try { return JSON.parse(e.message.slice(idx)); } catch { return null; }
+      })
+      .find((l) => l && l.route === 'presenceSweeper');
+    assert(Boolean(sweeperLog), 'Expected route=presenceSweeper structured log entry');
+
+    return { logGroup, sweeperLogGroup: stackRes.sweeperLogGroup, structuredLines: jsonLines.length, sample, dupLog, forbLog, sweeperLog };
   });
 
   const report = buildReport({ endpoint: url, stage, region, sanitize, caseResults: results });
@@ -481,7 +733,7 @@ async function runSelfTest() {
     caseResults: rawResults,
   });
   assert(sanitized.endpoint === 'wss://<api-id>.execute-api.sa-east-1.amazonaws.com/dev', 'endpoint not sanitized');
-  assert(sanitized.results[0].detail.logGroup === '/aws/lambda/HubWebSocket-dev-app-<id>', 'logGroup not sanitized');
+  assert(sanitized.results[0].detail.logGroup === 'HubWebSocket-dev-appLogs-<id>', 'logGroup not sanitized');
   assert(rawResults[0].detail.logGroup === '/aws/lambda/HubWebSocket-dev-app-XYZ123', 'raw results mutated');
 
   const cli = new TestClient('qa_self');

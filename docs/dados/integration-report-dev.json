@@ -1,27 +1,27 @@
 {
-  "executedAt": "2026-11-21T03:54:39.645Z",
+  "executedAt": "2026-11-21T16:58:34.625Z",
   "endpoint": "wss://<api-id>.execute-api.sa-east-1.amazonaws.com/dev",
   "stage": "dev",
   "region": "sa-east-1",
-  "passed": 6,
-  "total": 6,
+  "passed": 12,
+  "total": 12,
   "results": [
     {
       "id": "S4-T3-1",
-      "name": "Chat privado oculto at\u00e9 1\u00aa mensagem e isolamento entre usu\u00e1rios",
+      "name": "Chat privado oculto até 1ª mensagem e isolamento entre usuários",
       "status": "PASS",
-      "durationMs": 964.7,
+      "durationMs": 463.5,
       "detail": {
-        "directId": "d:qa_mwpvj6v6_a:qa_mwpvj6v6_b"
+        "directId": "d:qa_mwqni5xe_a:qa_mwqni5xe_b"
       }
     },
     {
       "id": "S4-T3-2",
-      "name": "Grupo, isolamento, hist\u00f3rico, adi\u00e7\u00e3o, sa\u00edda e aviso lastMember",
+      "name": "Grupo, isolamento, histórico, adição, saída e aviso lastMember",
       "status": "PASS",
-      "durationMs": 3210.2,
+      "durationMs": 1950.5,
       "detail": {
-        "groupId": "g:856431dd-57d6-456a-b66f-ca7f85c71091",
+        "groupId": "g:6d688045-daec-4a90-86cc-67121f7fde38",
         "concurrentVerified": 3
       }
     },
@@ -29,63 +29,131 @@
       "id": "S5-T7-1",
       "name": "Reenvio idempotente (RF12) e mesmo messageId por outro remetente",
       "status": "PASS",
-      "durationMs": 2392.3,
+      "durationMs": 784.7,
       "detail": {
-        "sharedId": "08c7798f-27ce-4a85-9b27-0d7b3f9cf40d"
+        "sharedId": "7eebbb97-e001-4a1d-98d8-038363beabb5"
       }
     },
     {
       "id": "S5-T7-2",
-      "name": "Desconex\u00e3o, presen\u00e7a offline em tempo real e recupera\u00e7\u00e3o via sync + getHistory(after)",
+      "name": "Desconexão, presença offline em tempo real e recuperação via sync + getHistory(after)",
       "status": "PASS",
-      "durationMs": 3099.1,
+      "durationMs": 1068.9,
       "detail": {
-        "missedId": "8efcba90-19da-4ba5-b7da-d0649ce04174",
+        "missedId": "3798800f-350b-4c94-bf5a-e463bf50b7a8",
         "offlineVersion": 2,
         "onlineVersion": 3
       }
     },
     {
-      "id": "S6-SEC-1",
-      "name": "Rejei\u00e7\u00e3o de conex\u00f5es inv\u00e1lidas ($connect) e rotas desconhecidas / n\u00e3o-JSON ($default)",
+      "id": "S4-T2-SIZE",
+      "name": "Mensagem perto do limite de 32 KB (RF11) entregue e paginada em getHistory",
       "status": "PASS",
-      "durationMs": 822.9,
+      "durationMs": 306.1,
       "detail": {
-        "handshakeCasesRejected": 3
+        "utf8Bytes": 31600
+      }
+    },
+    {
+      "id": "S4-T4-SEARCH",
+      "name": "Pesquisa normalizada pt-BR (sem acento encontra com acento) e presença (RF05)",
+      "status": "PASS",
+      "durationMs": 105.5,
+      "detail": {
+        "matchedUsername": "qa_mwqni5xe_b",
+        "displayName": "João Antônio mwqni5xe",
+        "online": false
+      }
+    },
+    {
+      "id": "S4-T5-HISTORY",
+      "name": "Histórico > 128 KB paginado em múltiplas páginas via getHistory(before) (RF06, T5)",
+      "status": "PASS",
+      "durationMs": 1326.5,
+      "detail": {
+        "totalBytes": 140010,
+        "pages": 5,
+        "messagesRecovered": 5
+      }
+    },
+    {
+      "id": "S5-T6-MULTITAB",
+      "name": "Presença multi-aba: fechar 1ª mantém online; fechar 2ª anuncia offline (T6, RF07)",
+      "status": "PASS",
+      "durationMs": 852.1,
+      "detail": {
+        "stillOnlineVersion": 7,
+        "offlineVersion": 8
+      }
+    },
+    {
+      "id": "S5-T7-410-GONE",
+      "name": "Tratamento real de 410 Gone (GoneException): desvínculo e confirmação ao remetente (T7.1, RF08)",
+      "status": "PASS",
+      "durationMs": 5715.7,
+      "detail": {
+        "staleRemoved": true,
+        "offlineVersion": 12
+      }
+    },
+    {
+      "id": "S5-T7-SWEEPER",
+      "name": "Expiração real por inatividade no presenceSweeper (>10 min) e anúncio offline (T7.2, RF07)",
+      "status": "PASS",
+      "durationMs": 48012.1,
+      "detail": {
+        "idleRemoved": true,
+        "offlineVersion": 4,
+        "sweeperLogGroup": "HubWebSocket-dev-presenceSweeperLogs-<id>"
+      }
+    },
+    {
+      "id": "S6-SEC-1",
+      "name": "Rejeição de conexões inválidas ($connect, incl. controle/bidi) e rotas desconhecidas / não-JSON ($default)",
+      "status": "PASS",
+      "durationMs": 1338.8,
+      "detail": {
+        "handshakeCasesRejected": 5
       }
     },
     {
       "id": "S6-LOGS-1",
-      "name": "Logs estruturados e anonimizados no CloudWatch sem identificadores em claro nem texto (RNF03)",
+      "name": "Logs estruturados e anonimizados no CloudWatch (app e presenceSweeper, RNF03)",
       "status": "PASS",
-      "durationMs": 5968.1,
+      "durationMs": 6812.9,
       "detail": {
-        "logGroup": "/aws/lambda/HubWebSocket-dev-app-<id>",
-        "structuredLines": 28,
+        "logGroup": "HubWebSocket-dev-appLogs-<id>",
+        "sweeperLogGroup": "HubWebSocket-dev-presenceSweeperLogs-<id>",
+        "structuredLines": 45,
         "sample": {
           "route": "sendMessage",
           "result": "ok",
-          "connectionId": "2e188d17dd62",
-          "username": "42eb351a4a4e",
-          "conversationId": "324c724ac480",
-          "durationMs": 485
+          "connectionId": "fba1f768139c",
+          "username": "97e128a955a0",
+          "conversationId": "ecf218703221",
+          "durationMs": 127
         },
         "dupLog": {
           "route": "sendMessage",
           "result": "duplicate",
-          "connectionId": "2e188d17dd62",
-          "username": "42eb351a4a4e",
-          "conversationId": "324c724ac480",
-          "durationMs": 275
+          "connectionId": "fba1f768139c",
+          "username": "97e128a955a0",
+          "conversationId": "ecf218703221",
+          "durationMs": 64
         },
         "forbLog": {
           "route": "sendMessage",
           "result": "error",
           "code": "forbidden",
-          "connectionId": "6cdb6a8cff0b",
-          "username": "3fa0c3a1eec7",
-          "conversationId": "c06989d60965",
-          "durationMs": 83
+          "connectionId": "8ce56bead886",
+          "username": "a4471b23417f",
+          "conversationId": "a4610d84ee9d",
+          "durationMs": 37
+        },
+        "sweeperLog": {
+          "route": "presenceSweeper",
+          "result": "ok",
+          "durationMs": 104
         }
       }
     }

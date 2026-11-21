@@ -20,11 +20,20 @@ node scripts/collect-cloudwatch-metrics.mjs --stage dev --start "2026-11-21T03:5
 node scripts/collect-cloudwatch-metrics.mjs --self-test
 ```
 
-## Testes de integração no estágio dev (T3, T7, segurança e logs)
+## Testes de integração no estágio dev (T2, T3, T4, T5, T6, T7, segurança e logs)
 
-Valida isolamento de conversas, histórico, ordenação concorrente, reenvio idempotente, presença/recuperação após desconexão, recusa de conexões inválidas, autorização `forbidden` (RNF01) e logs anonimizados no CloudWatch (RNF03).
+Valida isolamento de conversas, limite 32 KB UTF-8 (RF11), pesquisa sem acento `pt-BR` (RF05), histórico > 128 KB paginado (RF06), presença multi-aba (T6), tratamento real de `410 Gone` (`GoneException`, T7.1), expiração real por inatividade no `presenceSweeper` (T7.2), reenvio idempotente (RF12), recusa de conexões inválidas (incluindo caracteres de controle/bidi), autorização `forbidden` (RNF01) e logs anonimizados no CloudWatch (`appLogs` e `presenceSweeperLogs`, RNF03).
 
 ```sh
 node scripts/integration-tests-dev.mjs "wss://<api-id>.execute-api.sa-east-1.amazonaws.com/dev" --sanitize --out docs/dados/integration-report-dev.json
 node scripts/integration-tests-dev.mjs --self-test
+```
+
+## Geração dos gráficos SVG do experimento T8
+
+Gera os quatro gráficos SVG em `docs/imagens/` (`t8-latencia-por-carga.svg`, `t8-warmup-vs-medido.svg`, `t8-vazao-por-carga.svg` e `t8-consumo-dynamodb.svg`) diretamente a partir dos JSONs em `docs/dados/`, sem dependências externas.
+
+```sh
+python3 scripts/generate-charts.py
+python3 scripts/generate-charts.py --self-test
 ```
