@@ -263,4 +263,86 @@ describe('SessionStore reconnection and retry queue (RF08, RF12)', () => {
     expect(sockets).toHaveLength(2);
     expect(connection.lossIndicated()).toBe(false);
   });
+
+  it('computes catch-up after before applying messages held during reconnect sync', async () => {
+    const { sockets, socket, messages } = await setUp([aliceBrunoChat()], 100_000);
+    messages.open(ALICE_BRUNO);
+    const m1 = message('bruno', 80_000, 'm1', 'antes');
+    answer(socket, { messages: [m1], hasMore: false });
+    await new Promise((r) => setTimeout(r));
+
+    vi.useFakeTimers();
+    socket.drop();
+    const next = sockets[1]!;
+    next.open();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // A live message sent > 30 s later arrives while `sync` is in flight and is held.
+    const m2 = message('bruno', 85_000, 'm2', 'durante');
+    const m3 = message('bruno', 130_000, 'm3', 'ao-vivo');
+    next.receive({ type: 'message', ...m3 });
+    answer(next, {
+      serverTime: 130_000,
+      updated: [ALICE_BRUNO],
+      conversations: [aliceBrunoChat({ lastMessageAt: 130_000, lastMessageBy: 'bruno' })],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // `after` must still come from m1 (80_000 - 30_000), not m3 (130_000 - 30_000).
+    expect(next.sent.find((r) => r['action'] === 'getHistory')).toMatchObject({
+      conversationId: ALICE_BRUNO,
+      after: skBeforeInstant(80_000 - SYNC_OVERLAP_MS),
+    });
+
+    answer(next, { messages: [m1, m2, m3], hasMore: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.history(ALICE_BRUNO)?.messages).toEqual([m1, m2, m3]);
+  });
+
+  it('retries an interrupted history catch-up on the next reconnection', async () => {
+    const { sockets, socket, messages } = await setUp([aliceBrunoChat()], 100_000);
+    messages.open(ALICE_BRUNO);
+    const m1 = message('bruno', 80_000, 'm1', 'antes');
+    answer(socket, { messages: [m1], hasMore: false });
+    await new Promise((r) => setTimeout(r));
+
+    vi.useFakeTimers();
+    socket.drop();
+    const second = sockets[1]!;
+    second.open();
+    await vi.advanceTimersByTimeAsync(0);
+    answer(second, {
+      serverTime: 150_000,
+      updated: [ALICE_BRUNO],
+      conversations: [aliceBrunoChat({ lastMessageAt: 90_000, lastMessageBy: 'bruno' })],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(second.sent.filter((r) => r['action'] === 'getHistory')).toHaveLength(1);
+
+    // Connection drops before `getHistory` answers.
+    second.drop();
+    await vi.advanceTimersByTimeAsync(0);
+    const third = sockets[2]!;
+    third.open();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Next sync no longer includes ALICE_BRUNO in `updated`, yet catch-up retries.
+    answer(third, {
+      serverTime: 160_000,
+      updated: [],
+      conversations: [aliceBrunoChat({ lastMessageAt: 90_000, lastMessageBy: 'bruno' })],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const retry = third.sent.find((r) => r['action'] === 'getHistory');
+    expect(retry).toMatchObject({
+      conversationId: ALICE_BRUNO,
+      after: skBeforeInstant(80_000 - SYNC_OVERLAP_MS),
+    });
+
+    const m2 = message('bruno', 90_000, 'm2', 'perdida');
+    answer(third, { messages: [m1, m2], hasMore: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.history(ALICE_BRUNO)?.messages).toEqual([m1, m2]);
+  });
 });

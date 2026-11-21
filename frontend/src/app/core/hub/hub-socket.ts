@@ -104,11 +104,10 @@ export class HubSocket {
   /** Closes the connection on the user's request; it doesn't count as lost. */
   public close(): void {
     const socket = this.socket;
-    if (!socket) {
-      return;
+    if (socket) {
+      this.detach();
+      socket.close();
     }
-    this.detach();
-    socket.close();
     this.status.set('closed');
   }
 
@@ -132,7 +131,13 @@ export class HubSocket {
         reject(new RequestFailure('noResponse'));
       }, timeoutMs);
       this.pending.set(requestId, { resolve: (data) => resolve(data as T), reject, timer });
-      socket.send(JSON.stringify({ ...fields, action, requestId }));
+      try {
+        socket.send(JSON.stringify({ ...fields, action, requestId }));
+      } catch {
+        this.pending.delete(requestId);
+        clearTimeout(timer);
+        reject(new RequestFailure('noResponse'));
+      }
     });
   }
 
@@ -174,8 +179,9 @@ export class HubSocket {
       this.request('heartbeat', {}, PONG_TIMEOUT_MS).catch(() => {
         // No `pong` in time: the connection is taken as lost (RF08).
         if (this.status() === 'open') {
-          this.socket?.close();
+          const socket = this.socket;
           this.detach();
+          socket?.close();
           this.status.set('lost');
           this.droppedSubject.next();
         }

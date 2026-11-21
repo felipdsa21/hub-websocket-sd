@@ -196,11 +196,10 @@ export class SessionStore {
             return;
           }
           this.applyReconnectedSync(data);
+          // Start catch-up before releasing held events so a held message doesn't advance `after`.
+          this.messages.syncAfterReconnect(data.updated);
           this.events.release();
           this.connection.markRecovered();
-          for (const conversationId of data.updated) {
-            void this.messages.syncAfterReconnect(conversationId);
-          }
           this.messages.resendPending();
           return;
         } catch (error) {

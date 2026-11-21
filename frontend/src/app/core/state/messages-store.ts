@@ -54,6 +54,8 @@ export class MessagesStore {
 
   /** Messages with a `sendMessage` waiting for confirmation; one per conversation (section 4.4). */
   private readonly inFlight = new Set<string>();
+  /** Loaded conversations whose reconnect catch-up did not finish and must retry next reconnect. */
+  private readonly pendingSync = new Set<string>();
   /** Latest `sentAt` received from the backend, used to compute `sync` `since` (section 4.4). */
   private lastReceived = 0;
 
@@ -80,6 +82,7 @@ export class MessagesStore {
 
   public reset(data: Fixtures | null): void {
     this.inFlight.clear();
+    this.pendingSync.clear();
     this.lastReceived = 0;
     this.backend = data ? [...data.messages].sort(compareMessages) : [];
     this.histories.set(new Map());
@@ -248,6 +251,7 @@ export class MessagesStore {
     if (!this.config.live()) {
       return;
     }
+    this.inFlight.clear();
     const conversationIds = new Set(
       this.outgoing()
         .filter((m) => !m.error)
@@ -259,40 +263,50 @@ export class MessagesStore {
   }
 
   /**
-   * Fetches messages missed while disconnected for a conversation whose history is already loaded,
-   * using an `after` cursor shifted back by 30 s to cover out-of-order writes (section 4.4).
+   * Fetches messages missed while disconnected for loaded conversations listed in `updated` (or
+   * still pending from an interrupted catch-up), using an `after` cursor shifted back by 30 s
+   * (architecture, section 4.4).
    */
-  public async syncAfterReconnect(conversationId: string): Promise<void> {
+  public syncAfterReconnect(conversationIds: readonly string[]): void {
     if (!this.config.live()) {
       return;
     }
+    for (const conversationId of new Set([...this.pendingSync, ...conversationIds])) {
+      void this.catchUp(conversationId);
+    }
+  }
+
+  private async catchUp(conversationId: string): Promise<void> {
     const history = this.history(conversationId);
     if (!history || history.status === 'loading' || history.status === 'error') {
+      this.pendingSync.delete(conversationId);
       return;
     }
+    this.pendingSync.add(conversationId);
     try {
       if (history.messages.length === 0) {
         const page = await this.socket.request<HistoryPage>('getHistory', { conversationId });
         this.applySyncedPage(conversationId, page.messages, page.hasMore);
-        return;
-      }
-      const last = history.messages.at(-1)!;
-      let cursor = skBeforeInstant(Math.max(0, last.sentAt - SYNC_OVERLAP_MS));
-      for (;;) {
-        const page: HistoryPage = await this.socket.request<HistoryPage>('getHistory', {
-          conversationId,
-          after: cursor,
-        });
-        this.applySyncedPage(conversationId, page.messages);
-        if (!page.hasMore || page.messages.length === 0) {
-          break;
+      } else {
+        const last = history.messages.at(-1)!;
+        let cursor = skBeforeInstant(Math.max(0, last.sentAt - SYNC_OVERLAP_MS));
+        for (;;) {
+          const page: HistoryPage = await this.socket.request<HistoryPage>('getHistory', {
+            conversationId,
+            after: cursor,
+          });
+          this.applySyncedPage(conversationId, page.messages);
+          if (!page.hasMore || page.messages.length === 0) {
+            break;
+          }
+          const nextCursor = page.messages.at(-1)!.sk;
+          if (nextCursor <= cursor) {
+            break;
+          }
+          cursor = nextCursor;
         }
-        const nextCursor = page.messages.at(-1)!.sk;
-        if (nextCursor <= cursor) {
-          break;
-        }
-        cursor = nextCursor;
       }
+      this.pendingSync.delete(conversationId);
     } catch (error) {
       console.warn(`Failed to catch up history for ${conversationId}:`, error);
     }
