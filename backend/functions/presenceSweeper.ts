@@ -1,7 +1,17 @@
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch';
 import { GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { scanAllUsers, toStringSet } from './data';
-import { close, db, errorName, log, rethrowFailures, settle, unbind } from './shared';
+import {
+  REANNOUNCE_DELAY_MS,
+  announcePresence,
+  close,
+  db,
+  errorName,
+  log,
+  rethrowFailures,
+  settle,
+  unbind,
+} from './shared';
 
 export const cloudwatch = new CloudWatchClient({});
 
@@ -47,30 +57,51 @@ async function sweepConnections(
 }
 
 /**
- * Unbinds ids left in Users.connections without a Connections record, e.g. after the TTL deleted it.
- * Each is re-read before unbinding because a Scan is not a snapshot of a single instant (architecture, section 3.4).
+ * Scans Users once to unbind orphan connection ids (architecture, section 3.4) and re-announce
+ * stale presence updates where `announcedVersion < version` for over 1 minute (section 3.5).
  */
-async function sweepOrphans(seen: Set<string>) {
+async function sweepUsers(seen: Set<string>) {
   const users = await scanAllUsers();
-  const orphans: Promise<void>[] = [];
+  const cutoff = Date.now() - REANNOUNCE_DELAY_MS;
+  const tasks: Promise<void>[] = [];
+
   for (const user of users.values()) {
-    for (const id of toStringSet(user.connections)) {
-      if (seen.has(id)) continue;
-      orphans.push(
-        (async () => {
-          const { Item } = await db.send(
-            new GetCommand({
-              TableName: process.env.CONNECTIONS_TABLE,
-              Key: { connectionId: id },
-              ConsistentRead: true,
+    const candidates = [...toStringSet(user.connections)].filter((id) => !seen.has(id));
+    const needsReannounce =
+      user.version > (user.announcedVersion ?? 0) &&
+      typeof user.changedAt === 'number' &&
+      user.changedAt < cutoff;
+
+    if (candidates.length === 0 && !needsReannounce) continue;
+
+    tasks.push(
+      (async () => {
+        let unboundAny = false;
+        if (candidates.length > 0) {
+          await settle(
+            candidates.map(async (id) => {
+              const { Item } = await db.send(
+                new GetCommand({
+                  TableName: process.env.CONNECTIONS_TABLE,
+                  Key: { connectionId: id },
+                  ConsistentRead: true,
+                }),
+              );
+              if (!Item) {
+                await unbind(id, user.username);
+                unboundAny = true;
+              }
             }),
           );
-          if (!Item) await unbind(id, user.username);
-        })(),
-      );
-    }
+        }
+        // If an orphan was unbound, unbind() already updated and announced the fresher version.
+        if (needsReannounce && !unboundAny) {
+          await announcePresence(user);
+        }
+      })(),
+    );
   }
-  await settle(orphans);
+  await settle(tasks);
 }
 
 /** Publishes the open-connections count to CloudWatch (architecture, section 5; RNF06). */
@@ -102,7 +133,7 @@ export async function handler() {
   try {
     const seen = new Set<string>();
     const first = await run(() => sweepConnections(seen));
-    await run(() => sweepOrphans(seen));
+    await run(() => sweepUsers(seen));
     const delay = start + SECOND_SCAN_DELAY_MS - Date.now();
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
     const second = await run(() => sweepConnections());
@@ -111,7 +142,6 @@ export async function handler() {
       await run(() => publishOpenConnections(active));
     }
     if (errors.length > 0) rethrowFailures(errors);
-    // shortcut: presence re-announcement (section 3.5) is added with the presence events PR.
     log({ route: 'presenceSweeper', result: 'ok', durationMs: Date.now() - start });
   } catch (err) {
     log({

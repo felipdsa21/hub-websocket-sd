@@ -1,15 +1,20 @@
-import { BatchGetCommand, GetCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import {
   ErrorCode,
   ErrorDetails,
   Outcome,
+  PresenceUserRecord,
   USERNAME,
   UUID,
+  batchGet,
   db,
   getCancellationReasons,
   send,
   settle,
+  toStringSet,
 } from './shared';
+
+export { batchGet, toStringSet };
 
 export interface UserState {
   username: string;
@@ -18,12 +23,7 @@ export interface UserState {
   version: number;
 }
 
-export interface UserRecord {
-  username: string;
-  displayName: string;
-  connections?: Set<string> | string[];
-  version: number;
-}
+export type UserRecord = PresenceUserRecord;
 
 export interface ConversationRecord {
   conversationId: string;
@@ -78,12 +78,6 @@ export interface RequestContext {
 
 export const table = (envKey: string) => process.env[envKey] ?? envKey;
 
-export function toStringSet(value: unknown): Set<string> {
-  if (value instanceof Set) return new Set(Array.from(value, String));
-  if (Array.isArray(value)) return new Set(value.map(String));
-  return new Set();
-}
-
 export function directConversationId(a: string, b: string): string {
   const [first, second] = a < b ? [a, b] : [b, a];
   return `d:${first}:${second}`;
@@ -117,34 +111,6 @@ export function toUserState(record: UserRecord | undefined, fallbackUsername: st
     online: toStringSet(record.connections).size > 0,
     version: record.version,
   };
-}
-
-export async function batchGet<T>(
-  tableName: string,
-  keys: Record<string, unknown>[],
-): Promise<T[]> {
-  const items: T[] = [];
-  for (let i = 0; i < keys.length; i += 100) {
-    let pending: Record<string, unknown>[] | undefined = keys.slice(i, i + 100);
-    for (let attempt = 0; pending && pending.length > 0; attempt++) {
-      const { Responses, UnprocessedKeys } = await db.send(
-        new BatchGetCommand({
-          RequestItems: { [tableName]: { Keys: pending, ConsistentRead: true } },
-        }),
-      );
-      if (Responses?.[tableName]) {
-        items.push(...(Responses[tableName] as T[]));
-      }
-      pending = UnprocessedKeys?.[tableName]?.Keys as Record<string, unknown>[] | undefined;
-      if (pending && pending.length > 0) {
-        if (attempt >= 5) {
-          throw new Error(`BatchGet exhausted retries on ${tableName}`);
-        }
-        await new Promise((resolve) => setTimeout(resolve, 15 * 2 ** attempt));
-      }
-    }
-  }
-  return items;
 }
 
 export async function getConversation(

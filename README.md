@@ -25,7 +25,7 @@ O cliente web, em Angular, abre uma conexão WebSocket persistente com o API Gat
 
 ## Estado atual
 
-O backend implementa as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search` com persistência no DynamoDB e entrega via `@connections`, a rotina `presenceSweeper` (expiração de inativas a cada minuto e métrica `OpenConnections`), logs estruturados com anonimização HMAC-SHA256 (SSM Parameter Store) e o painel no CloudWatch; ainda faltam os anúncios de presença.
+O backend implementa as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search` com persistência no DynamoDB e entrega via `@connections`, anúncios de presença em tempo real aos contatos, a rotina `presenceSweeper` (expiração de inativas a cada minuto, refeitura de anúncios pendentes e métrica `OpenConnections`), logs estruturados com anonimização HMAC-SHA256 (SSM Parameter Store) e o painel no CloudWatch.
 
 O frontend tem todas as telas. Com o endereço do backend configurado, ele entra pela conexão WebSocket, mantém o heartbeat, carrega a lista de conversas com o `sync`, carrega o histórico, envia e recebe mensagens em tempo real e aplica os eventos de conversas, membros e presença; a pesquisa e as ações sobre conversas (iniciar chat, criar grupo, adicionar pessoas e sair) ainda não estão ligadas ao backend. Sem o endereço, tudo roda sobre dados fixos, e os estados que só o backend produziria, como a queda da conexão ou uma mensagem recusada, são simulados por cenários.
 
