@@ -1,0 +1,93 @@
+{
+  "executedAt": "2026-11-21T03:54:39.645Z",
+  "endpoint": "wss://<api-id>.execute-api.sa-east-1.amazonaws.com/dev",
+  "stage": "dev",
+  "region": "sa-east-1",
+  "passed": 6,
+  "total": 6,
+  "results": [
+    {
+      "id": "S4-T3-1",
+      "name": "Chat privado oculto at\u00e9 1\u00aa mensagem e isolamento entre usu\u00e1rios",
+      "status": "PASS",
+      "durationMs": 964.7,
+      "detail": {
+        "directId": "d:qa_mwpvj6v6_a:qa_mwpvj6v6_b"
+      }
+    },
+    {
+      "id": "S4-T3-2",
+      "name": "Grupo, isolamento, hist\u00f3rico, adi\u00e7\u00e3o, sa\u00edda e aviso lastMember",
+      "status": "PASS",
+      "durationMs": 3210.2,
+      "detail": {
+        "groupId": "g:856431dd-57d6-456a-b66f-ca7f85c71091",
+        "concurrentVerified": 3
+      }
+    },
+    {
+      "id": "S5-T7-1",
+      "name": "Reenvio idempotente (RF12) e mesmo messageId por outro remetente",
+      "status": "PASS",
+      "durationMs": 2392.3,
+      "detail": {
+        "sharedId": "08c7798f-27ce-4a85-9b27-0d7b3f9cf40d"
+      }
+    },
+    {
+      "id": "S5-T7-2",
+      "name": "Desconex\u00e3o, presen\u00e7a offline em tempo real e recupera\u00e7\u00e3o via sync + getHistory(after)",
+      "status": "PASS",
+      "durationMs": 3099.1,
+      "detail": {
+        "missedId": "8efcba90-19da-4ba5-b7da-d0649ce04174",
+        "offlineVersion": 2,
+        "onlineVersion": 3
+      }
+    },
+    {
+      "id": "S6-SEC-1",
+      "name": "Rejei\u00e7\u00e3o de conex\u00f5es inv\u00e1lidas ($connect) e rotas desconhecidas / n\u00e3o-JSON ($default)",
+      "status": "PASS",
+      "durationMs": 822.9,
+      "detail": {
+        "handshakeCasesRejected": 3
+      }
+    },
+    {
+      "id": "S6-LOGS-1",
+      "name": "Logs estruturados e anonimizados no CloudWatch sem identificadores em claro nem texto (RNF03)",
+      "status": "PASS",
+      "durationMs": 5968.1,
+      "detail": {
+        "logGroup": "/aws/lambda/HubWebSocket-dev-app-<id>",
+        "structuredLines": 28,
+        "sample": {
+          "route": "sendMessage",
+          "result": "ok",
+          "connectionId": "2e188d17dd62",
+          "username": "42eb351a4a4e",
+          "conversationId": "324c724ac480",
+          "durationMs": 485
+        },
+        "dupLog": {
+          "route": "sendMessage",
+          "result": "duplicate",
+          "connectionId": "2e188d17dd62",
+          "username": "42eb351a4a4e",
+          "conversationId": "324c724ac480",
+          "durationMs": 275
+        },
+        "forbLog": {
+          "route": "sendMessage",
+          "result": "error",
+          "code": "forbidden",
+          "connectionId": "6cdb6a8cff0b",
+          "username": "3fa0c3a1eec7",
+          "conversationId": "c06989d60965",
+          "durationMs": 83
+        }
+      }
+    }
+  ]
+}
