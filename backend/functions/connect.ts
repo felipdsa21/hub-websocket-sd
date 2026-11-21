@@ -3,6 +3,7 @@ import {
   PresenceUserRecord,
   announcePresence,
   db,
+  errorName,
   isValidNameLength,
   parseUsername,
   withRequestLog,
@@ -54,9 +55,19 @@ export const handler = withRequestLog(async (event) => {
       ReturnValues: 'ALL_NEW',
     }),
   );
+  // Announcement failure is logged without failing the handshake; presenceSweeper catches up (section 3.4).
+  let announceError: string | undefined;
   if (res?.Attributes && typeof res.Attributes.version === 'number') {
-    await announcePresence(res.Attributes as PresenceUserRecord);
+    try {
+      await announcePresence(res.Attributes as PresenceUserRecord);
+    } catch (err) {
+      announceError = errorName(err);
+    }
   }
 
-  return { result: 'ok', username: identity.username };
+  return {
+    result: 'ok',
+    username: identity.username,
+    ...(announceError && { error: announceError }),
+  };
 });

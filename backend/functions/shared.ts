@@ -127,6 +127,7 @@ export type LogResult = 'ok' | 'duplicate' | 'error' | 'rejected' | 'gone';
 export interface Outcome {
   result: LogResult;
   code?: ErrorCode;
+  error?: string;
   statusCode?: number;
   username?: string;
   conversationId?: string;

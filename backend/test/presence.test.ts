@@ -4,6 +4,7 @@ import {
   LimitExceededException,
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
+import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import {
   BatchGetCommand,
   DeleteCommand,
@@ -112,6 +113,9 @@ describe('Presence announcements (RF01, RF07, section 3.5)', () => {
     const sent = postedEvents();
     expect(sent).toHaveLength(2);
     expect(new Set(sent.map((s) => s.connectionId))).toEqual(new Set(['c-bruno-1', 'c-carla-1']));
+    const usersBatchKeys =
+      ddbMock.commandCalls(BatchGetCommand)[1]!.args[0].input.RequestItems?.Users?.Keys;
+    expect(usersBatchKeys).toEqual([{ username: 'bruno' }, { username: 'carla' }]);
     for (const item of sent) {
       expect(item.event).toEqual({
         type: 'presence',
@@ -286,5 +290,126 @@ describe('Presence announcements (RF01, RF07, section 3.5)', () => {
       .filter((c) => c.args[0].input.UpdateExpression === 'SET announcedVersion = :v')
       .map((c) => c.args[0].input.Key?.username);
     expect(announcedKeys).toEqual(['stale']);
+  });
+
+  test('$connect logs announcement failure without failing the handshake (section 3.4)', async () => {
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(UpdateCommand).resolves({
+      Attributes: {
+        username: 'alice',
+        displayName: 'Alice',
+        connections: new Set(['c-alice-1']),
+        version: 1,
+      },
+    });
+    ddbMock
+      .on(QueryCommand, { TableName: 'Memberships' })
+      .rejects(new LimitExceededException({ message: 'limit', $metadata: {} }));
+
+    const res = await connect(wsEvent('$connect', 'c-alice-1', { username: 'alice' }));
+
+    expect(res).toEqual({ statusCode: 200 });
+    expect(JSON.parse(String(logSpy.mock.calls[0]![0]))).toMatchObject({
+      route: '$connect',
+      result: 'ok',
+      error: 'LimitExceededException',
+    });
+  });
+
+  test('announcePresence ignores ConditionalCheckFailedException when a newer version is already announced (D10)', async () => {
+    ddbMock.on(QueryCommand, { TableName: 'Memberships' }).resolves({ Items: [] });
+    ddbMock
+      .on(UpdateCommand)
+      .rejects(new ConditionalCheckFailedException({ message: 'stale version', $metadata: {} }));
+
+    await expect(
+      announcePresence({
+        username: 'alice',
+        displayName: 'Alice',
+        connections: new Set(['c-alice-1']),
+        version: 3,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  test('presenceSweeper does not duplicate announcement when unbinding an orphan on a stale user', async () => {
+    const now = 1_750_000_000_000;
+    jest.useFakeTimers({ now });
+    ddbMock.on(ScanCommand, { TableName: 'Connections' }).resolves({ Items: [] });
+    ddbMock.on(ScanCommand, { TableName: 'Users' }).resolves({
+      Items: [
+        {
+          username: 'alice',
+          displayName: 'Alice',
+          connections: new Set(['c-orphan']),
+          version: 3,
+          announcedVersion: 1,
+          changedAt: now - REANNOUNCE_DELAY_MS - 1_000,
+        },
+      ],
+    });
+    ddbMock.on(GetCommand, { Key: { connectionId: 'c-orphan' } }).resolves({});
+    ddbMock
+      .on(UpdateCommand, {
+        Key: { username: 'alice' },
+        UpdateExpression: 'DELETE connections :c ADD version :one SET changedAt = :now',
+      })
+      .resolves({
+        Attributes: {
+          username: 'alice',
+          displayName: 'Alice',
+          connections: new Set(),
+          version: 4,
+        },
+      });
+    ddbMock.on(DeleteCommand).resolves({});
+    ddbMock.on(QueryCommand, { TableName: 'Memberships' }).resolves({
+      Items: [{ username: 'alice', conversationId: 'd:alice:bruno' }],
+    });
+    ddbMock
+      .on(BatchGetCommand)
+      .resolvesOnce({
+        Responses: {
+          Conversations: [
+            { conversationId: 'd:alice:bruno', members: new Set(['alice', 'bruno']) },
+          ],
+        },
+      })
+      .resolvesOnce({
+        Responses: {
+          Users: [
+            {
+              username: 'bruno',
+              displayName: 'Bruno',
+              connections: new Set(['c-bruno-1']),
+              version: 1,
+            },
+          ],
+        },
+      });
+    ddbMock
+      .on(UpdateCommand, {
+        Key: { username: 'alice' },
+        UpdateExpression: 'SET announcedVersion = :v',
+      })
+      .resolves({});
+
+    const run = presenceSweeper();
+    await jest.advanceTimersByTimeAsync(SECOND_SCAN_DELAY_MS);
+    await run;
+
+    expect(postedEvents()).toEqual([
+      {
+        connectionId: 'c-bruno-1',
+        event: {
+          type: 'presence',
+          username: 'alice',
+          displayName: 'Alice',
+          online: false,
+          version: 4,
+        },
+      },
+    ]);
   });
 });
