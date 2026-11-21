@@ -49,5 +49,5 @@ export const handler = withRequestLog(async (event) => {
   );
   // shortcut: presence is not announced to contacts yet (section 3.5); the sweeper or week 5 catches up.
 
-  return { result: 'ok' };
+  return { result: 'ok', username: identity.username };
 });

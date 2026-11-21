@@ -58,3 +58,61 @@ test('lets the Lambdas post to connections (R04)', () => {
     },
   });
 });
+
+test('grants SSM and KMS decrypt permissions for HMAC log anonymization (RNF03)', () => {
+  template.hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({ Action: 'ssm:GetParameter' }),
+        Match.objectLike({
+          Action: 'kms:Decrypt',
+          Condition: Match.objectLike({
+            'ForAnyValue:StringEquals': { 'kms:ResourceAliases': 'alias/aws/ssm' },
+          }),
+        }),
+      ]),
+    },
+  });
+  template.hasResourceProperties('AWS::Lambda::Function', {
+    Environment: {
+      Variables: Match.objectLike({
+        LOG_HMAC_SECRET_PARAM: '/hub-websocket/dev/log-hmac-secret',
+      }),
+    },
+  });
+});
+
+test('creates the CloudWatch dashboard with all 4 widgets and allows sweeper to publish OpenConnections (RNF06)', () => {
+  template.hasResourceProperties('AWS::CloudWatch::Dashboard', {
+    DashboardName: 'HubWebSocket-dev',
+  });
+  const dashboards = template.findResources('AWS::CloudWatch::Dashboard');
+  const bodyStr = JSON.stringify(Object.values(dashboards)[0]!.Properties.DashboardBody);
+  for (const expected of [
+    'Conexões',
+    'ConnectCount',
+    'OpenConnections',
+    'HubWebSocket/dev',
+    'Mensagens e requisições',
+    'MessageCount',
+    'Erros',
+    'IntegrationError',
+    'ClientError',
+    'ExecutionError',
+    'Latência (ms)',
+    'IntegrationLatency',
+    'p95',
+  ]) {
+    expect(bodyStr).toContain(expected);
+  }
+  template.hasResourceProperties('AWS::IAM::Policy', {
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({
+          Action: 'cloudwatch:PutMetricData',
+          Condition: { StringEquals: { 'cloudwatch:namespace': 'HubWebSocket/dev' } },
+        }),
+      ]),
+    },
+  });
+});

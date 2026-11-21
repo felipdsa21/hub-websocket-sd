@@ -208,14 +208,14 @@ async function handleResend(
     }),
   );
   if (!Item) {
-    throw new Error(`Missing message ${existingRef} referenced by idempotency marker`);
+    throw new Error('Missing message referenced by idempotency marker');
   }
   const msg = Item as MessageRecord;
   if (!(await finalizeMessageState(conv, msg.sentAt, msg.sender))) {
     return { result: 'error', code: 'conflict' };
   }
   const delivered = await send(ctx.connectionId, ctx.username, toMessageEvent(msg));
-  return { result: delivered ? 'ok' : 'gone' };
+  return { result: delivered ? 'duplicate' : 'gone', conversationId: conv.conversationId };
 }
 
 async function persistMessage(
