@@ -17,8 +17,6 @@ export const cloudwatch = new CloudWatchClient({});
 
 // A connection with no request for this long is expired (RF07, architecture section 3.4).
 export const IDLE_MS = 10 * 60 * 1000;
-// The schedule has 1-minute resolution and may run late, so each run scans Connections twice.
-export const SECOND_SCAN_DELAY_MS = 30_000;
 export const OPEN_CONNECTIONS_METRIC = 'OpenConnections';
 
 /** Scans Connections, closing and unbinding the idle ones; returns the seen ids and remaining active count. */
@@ -88,8 +86,8 @@ async function sweepUsers(seen: Set<string>) {
                 }),
               );
               if (!Item) {
-                await unbind(id, user.username);
-                unboundAny = true;
+                const { announced } = await unbind(id, user.username);
+                if (announced) unboundAny = true;
               }
             }),
           );
@@ -132,14 +130,10 @@ export async function handler() {
 
   try {
     const seen = new Set<string>();
-    const first = await run(() => sweepConnections(seen));
+    const swept = await run(() => sweepConnections(seen));
     await run(() => sweepUsers(seen));
-    const delay = start + SECOND_SCAN_DELAY_MS - Date.now();
-    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
-    const second = await run(() => sweepConnections());
-    const active = second?.active ?? first?.active;
-    if (active !== undefined) {
-      await run(() => publishOpenConnections(active));
+    if (swept !== undefined) {
+      await run(() => publishOpenConnections(swept.active));
     }
     if (errors.length > 0) rethrowFailures(errors);
     log({ route: 'presenceSweeper', result: 'ok', durationMs: Date.now() - start });

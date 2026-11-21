@@ -138,16 +138,18 @@ export function anonymize(value: string, secret: string): string {
   return createHmac('sha256', secret).update(value).digest('hex').slice(0, 12);
 }
 
-let hmacSecretPromise: Promise<string> | undefined;
+let hmacSecretPromise: Promise<string | undefined> | undefined;
+let hmacWarned = false;
 
 /** Clears the cached SSM secret (for unit tests). */
 export function resetHmacSecretCache() {
   hmacSecretPromise = undefined;
+  hmacWarned = false;
 }
 
-async function getHmacSecret(): Promise<string | undefined> {
+function getHmacSecret(): Promise<string | undefined> {
   const paramName = process.env.LOG_HMAC_SECRET_PARAM;
-  if (!paramName) return undefined;
+  if (!paramName) return Promise.resolve(undefined);
   if (!hmacSecretPromise) {
     hmacSecretPromise = ssm
       .send(new GetParameterCommand({ Name: paramName, WithDecryption: true }))
@@ -157,10 +159,24 @@ async function getHmacSecret(): Promise<string | undefined> {
       })
       .catch((err) => {
         hmacSecretPromise = undefined;
-        throw err;
+        if (!hmacWarned) {
+          hmacWarned = true;
+          console.warn(
+            JSON.stringify({
+              event: 'hmacSecretUnavailable',
+              error: errorName(err),
+            }),
+          );
+        }
+        return undefined;
       });
   }
   return hmacSecretPromise;
+}
+
+// Start fetching the SSM secret during Lambda cold start without blocking handler logic.
+if (process.env.LOG_HMAC_SECRET_PARAM) {
+  void getHmacSecret();
 }
 
 export function log(entry: {
@@ -211,9 +227,10 @@ export function withRequestLog(
 ) {
   return async (event: APIGatewayProxyWebsocketEventV2) => {
     const { routeKey: route, requestTimeEpoch, connectionId } = event.requestContext;
-    const secret = await getHmacSecret().catch(() => undefined);
+    const secretPromise = getHmacSecret();
     try {
       const { statusCode = 200, username, conversationId, ...outcome } = await handle(event);
+      const secret = await secretPromise;
       log({
         route,
         ...outcome,
@@ -222,6 +239,7 @@ export function withRequestLog(
       });
       return { statusCode };
     } catch (err) {
+      const secret = await secretPromise;
       log({
         route,
         result: 'error',
@@ -313,12 +331,17 @@ export async function announcePresence(user: PresenceUserRecord): Promise<void> 
   }
 }
 
+export interface UnbindResult {
+  owner?: string;
+  announced: boolean;
+}
+
 /** Unbinds a connection from its user (architecture, section 3.4). `username` is passed when a post to the connection answered 410. */
 export async function unbind(
   connectionId: string,
   username?: string,
   announce = true,
-): Promise<string | undefined> {
+): Promise<UnbindResult> {
   const { Item } = await db.send(
     new GetCommand({
       TableName: process.env.CONNECTIONS_TABLE,
@@ -326,8 +349,10 @@ export async function unbind(
       ConsistentRead: true,
     }),
   );
-  if (!Item && !username) return undefined;
-  if (Item && username && Date.now() - Item.connectedAt < HANDSHAKE_GRACE_MS) return Item.username;
+  if (!Item && !username) return { announced: false };
+  if (Item && username && Date.now() - Item.connectedAt < HANDSHAKE_GRACE_MS) {
+    return { owner: Item.username, announced: false };
+  }
   const owner: string = Item?.username ?? username;
 
   let updatedUser: PresenceUserRecord | undefined;
@@ -359,8 +384,9 @@ export async function unbind(
   );
   if (announce && updatedUser) {
     await announcePresence(updatedUser);
+    return { owner, announced: true };
   }
-  return owner;
+  return { owner, announced: false };
 }
 
 /** Refreshes lastSeenAt and resolves the connection's user; undefined when the connection has no record. */
@@ -492,4 +518,31 @@ export function parseUsername(value: unknown): string | undefined {
 export function isValidNameLength(name: string): boolean {
   const length = [...name].length;
   return length >= 1 && length <= 50;
+}
+
+function hasDisallowedNameChar(value: string): boolean {
+  for (const ch of value) {
+    const code = ch.codePointAt(0)!;
+    if (
+      code <= 0x1f ||
+      code === 0x7f ||
+      (code >= 0x202a && code <= 0x202e) ||
+      (code >= 0x2066 && code <= 0x2069)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Validates and normalizes a display or group name (architecture, sections 3.1 and 4.5):
+ * rejects ASCII control and bidi override/isolate characters, trims outer whitespace,
+ * and requires 1 to 50 Unicode code points.
+ */
+export function parseDisplayName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (hasDisallowedNameChar(value)) return undefined;
+  const trimmed = value.trim();
+  return isValidNameLength(trimmed) ? trimmed : undefined;
 }

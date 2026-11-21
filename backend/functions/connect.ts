@@ -4,7 +4,7 @@ import {
   announcePresence,
   db,
   errorName,
-  isValidNameLength,
+  parseDisplayName,
   parseUsername,
   withRequestLog,
 } from './shared';
@@ -16,8 +16,9 @@ const RECORD_TTL_S = 3 * 60 * 60;
 export function parseIdentity(query: Record<string, string | undefined> | undefined) {
   const username = parseUsername(query?.username);
   if (!username) return undefined;
-  const displayName = query?.displayName ?? username;
-  if (!isValidNameLength(displayName) || displayName !== displayName.trim()) return undefined;
+  const displayName =
+    query?.displayName === undefined ? username : parseDisplayName(query.displayName);
+  if (!displayName) return undefined;
   return { username, displayName };
 }
 

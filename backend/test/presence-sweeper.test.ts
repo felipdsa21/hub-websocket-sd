@@ -14,7 +14,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
 import { fanOut } from '../functions/data';
-import { IDLE_MS, SECOND_SCAN_DELAY_MS, handler } from '../functions/presenceSweeper';
+import { IDLE_MS, handler } from '../functions/presenceSweeper';
 import { errorName, settle } from '../functions/shared';
 
 const db = mockClient(DynamoDBDocumentClient);
@@ -26,13 +26,6 @@ const NOW = 1_731_542_400_123;
 
 const unboundIds = () =>
   db.commandCalls(DeleteCommand).map((c) => c.args[0].input.Key?.connectionId);
-
-/** Runs the sweeper, letting the fake clock skip the wait before the second scan. */
-async function runSweeper() {
-  const run = handler();
-  await jest.advanceTimersByTimeAsync(SECOND_SCAN_DELAY_MS);
-  return run;
-}
 
 beforeAll(() => {
   process.env.CONNECTIONS_TABLE = 'Connections';
@@ -56,7 +49,7 @@ afterEach(() => {
 });
 
 describe('presenceSweeper', () => {
-  test('closes and unbinds only the connections idle for over 10 minutes (RF07)', async () => {
+  test('closes and unbinds only the connections idle for over 10 minutes in a single scan (RF07, M7)', async () => {
     db.on(ScanCommand, { TableName: 'Connections' }).resolves({
       Items: [
         { connectionId: 'old', lastSeenAt: NOW - IDLE_MS - 1 },
@@ -65,7 +58,7 @@ describe('presenceSweeper', () => {
     });
     db.on(GetCommand).resolves({ Item: { connectionId: 'old', username: 'ana', connectedAt: 0 } });
 
-    await runSweeper();
+    await handler();
 
     const closed = api
       .commandCalls(DeleteConnectionCommand)
@@ -74,8 +67,8 @@ describe('presenceSweeper', () => {
     expect(new Set(unboundIds())).toEqual(new Set(['old']));
     expect(db.commandCalls(UpdateCommand)[0]!.args[0].input.Key).toEqual({ username: 'ana' });
     const scans = db.commandCalls(ScanCommand, { TableName: 'Connections' });
-    expect(scans).toHaveLength(2);
-    expect(scans.every((c) => c.args[0].input.ConsistentRead === true)).toBe(true);
+    expect(scans).toHaveLength(1);
+    expect(scans[0]!.args[0].input.ConsistentRead).toBe(true);
   });
 
   test('still unbinds an idle connection whose close fails', async () => {
@@ -85,7 +78,7 @@ describe('presenceSweeper', () => {
     db.on(GetCommand).resolves({ Item: { connectionId: 'old', username: 'ana', connectedAt: 0 } });
     api.on(DeleteConnectionCommand).rejects(limitExceeded);
 
-    await runSweeper();
+    await handler();
 
     expect(unboundIds()).toContain('old');
   });
@@ -102,7 +95,7 @@ describe('presenceSweeper', () => {
       Item: { connectionId: 'opening', username: 'ana', connectedAt: NOW },
     });
 
-    await runSweeper();
+    await handler();
 
     expect(unboundIds()).toEqual(['ghost']);
     expect(
@@ -112,17 +105,13 @@ describe('presenceSweeper', () => {
     });
   });
 
-  test('one failed unbind does not stop the others, orphans, or the second scan', async () => {
-    db.on(ScanCommand, { TableName: 'Connections' })
-      .resolvesOnce({
-        Items: [
-          { connectionId: 'a', lastSeenAt: 0 },
-          { connectionId: 'b', lastSeenAt: 0 },
-        ],
-      })
-      .resolvesOnce({
-        Items: [{ connectionId: 'c', lastSeenAt: 0 }],
-      });
+  test('one failed unbind does not stop the others or orphan cleanup', async () => {
+    db.on(ScanCommand, { TableName: 'Connections' }).resolves({
+      Items: [
+        { connectionId: 'a', lastSeenAt: 0 },
+        { connectionId: 'b', lastSeenAt: 0 },
+      ],
+    });
     db.on(ScanCommand, { TableName: 'Users' }).resolves({
       Items: [{ username: 'bia', connections: new Set(['b', 'ghost']), version: 1 }],
     });
@@ -131,36 +120,23 @@ describe('presenceSweeper', () => {
       Item: { connectionId: 'b', username: 'bia', connectedAt: 0 },
     });
     db.on(GetCommand, { Key: { connectionId: 'ghost' } }).resolves({});
-    db.on(GetCommand, { Key: { connectionId: 'c' } }).resolves({
-      Item: { connectionId: 'c', username: 'caio', connectedAt: 0 },
-    });
 
-    const run = handler();
-    const outcome = expect(run).rejects.toThrow(limitExceeded);
-    await jest.advanceTimersByTimeAsync(SECOND_SCAN_DELAY_MS);
-    await outcome;
+    await expect(handler()).rejects.toThrow(limitExceeded);
 
-    expect(unboundIds()).toEqual(['b', 'ghost', 'c']);
+    expect(unboundIds()).toEqual(['b', 'ghost']);
   });
 
   test('runs every step and logs all error names when multiple steps fail', async () => {
-    db.on(ScanCommand, { TableName: 'Connections' })
-      .resolvesOnce({ Items: [{ connectionId: 'a', lastSeenAt: 0 }] })
-      .resolvesOnce({ Items: [{ connectionId: 'c', lastSeenAt: 0 }] });
+    db.on(ScanCommand, { TableName: 'Connections' }).resolves({
+      Items: [{ connectionId: 'a', lastSeenAt: 0 }],
+    });
     db.on(GetCommand, { Key: { connectionId: 'a' } }).rejects(limitExceeded);
     db.on(ScanCommand, { TableName: 'Users' }).rejects(internalError);
-    db.on(GetCommand, { Key: { connectionId: 'c' } }).resolves({
-      Item: { connectionId: 'c', username: 'caio', connectedAt: 0 },
-    });
 
-    const run = handler();
-    const outcome = run.catch((err: unknown) => err);
-    await jest.advanceTimersByTimeAsync(SECOND_SCAN_DELAY_MS);
-    const err = await outcome;
+    const err = await handler().catch((e: unknown) => e);
 
     expect(err).toBeInstanceOf(AggregateError);
     expect((err as AggregateError).errors).toEqual([limitExceeded, internalError]);
-    expect(unboundIds()).toEqual(['c']);
     expect(logged()).toEqual([
       expect.objectContaining({
         route: 'presenceSweeper',
@@ -168,34 +144,6 @@ describe('presenceSweeper', () => {
         error: 'LimitExceededException, Error',
       }),
     ]);
-  });
-
-  test('runs the second scan 30 s after the start, not after the earlier steps finish', async () => {
-    db.on(ScanCommand, { TableName: 'Connections' }).resolves({ Items: [] });
-    db.on(ScanCommand, { TableName: 'Users' }).callsFake(() => {
-      jest.advanceTimersByTime(12_000);
-      return { Items: [] };
-    });
-
-    const run = handler();
-    await jest.advanceTimersByTimeAsync(SECOND_SCAN_DELAY_MS - 12_000 - 1);
-    expect(db.commandCalls(ScanCommand, { TableName: 'Connections' })).toHaveLength(1);
-
-    await jest.advanceTimersByTimeAsync(1);
-    await run;
-    expect(db.commandCalls(ScanCommand, { TableName: 'Connections' })).toHaveLength(2);
-  });
-
-  test('starts the second scan immediately if earlier steps already took 30 s', async () => {
-    db.on(ScanCommand, { TableName: 'Connections' }).resolves({ Items: [] });
-    db.on(ScanCommand, { TableName: 'Users' }).callsFake(() => {
-      jest.advanceTimersByTime(SECOND_SCAN_DELAY_MS + 5_000);
-      return { Items: [] };
-    });
-
-    await handler();
-
-    expect(db.commandCalls(ScanCommand, { TableName: 'Connections' })).toHaveLength(2);
   });
 });
 

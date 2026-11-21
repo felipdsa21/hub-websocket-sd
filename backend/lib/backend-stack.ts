@@ -1,12 +1,29 @@
-import { WebSocketApi, WebSocketStage } from 'aws-cdk-lib/aws-apigatewayv2';
+import { CfnStage, WebSocketApi, WebSocketStage } from 'aws-cdk-lib/aws-apigatewayv2';
 import { WebSocketLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
-import { CachePolicy, Distribution, ViewerProtocolPolicy } from 'aws-cdk-lib/aws-cloudfront';
+import {
+  CachePolicy,
+  Distribution,
+  HeadersFrameOption,
+  HeadersReferrerPolicy,
+  ResponseHeadersPolicy,
+  ViewerProtocolPolicy,
+} from 'aws-cdk-lib/aws-cloudfront';
 import { S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
-import { Dashboard, GraphWidget, Metric, Stats } from 'aws-cdk-lib/aws-cloudwatch';
-import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
+import {
+  Alarm,
+  ComparisonOperator,
+  Dashboard,
+  GraphWidget,
+  MathExpression,
+  Metric,
+  Stats,
+  TreatMissingData,
+} from 'aws-cdk-lib/aws-cloudwatch';
+import { AttributeType, BillingMode, Operation, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
-import { Runtime } from 'aws-cdk-lib/aws-lambda';
+import { Architecture, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
 import { Schedule, ScheduleExpression } from 'aws-cdk-lib/aws-scheduler';
@@ -39,14 +56,15 @@ export class BackendStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: BackendStackProps) {
     super(scope, id, props);
 
-    const removalPolicy =
-      props.stage === 'prod' ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
+    const isProd = props.stage === 'prod';
+    const removalPolicy = isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY;
     const table = (name: string, partitionKey: string, sortKey?: string, ttl?: string) =>
       new Table(this, name, {
         partitionKey: { name: partitionKey, type: AttributeType.STRING },
         sortKey: sortKey ? { name: sortKey, type: AttributeType.STRING } : undefined,
         timeToLiveAttribute: ttl,
         billingMode: BillingMode.PAY_PER_REQUEST,
+        pointInTimeRecoverySpecification: isProd ? { pointInTimeRecoveryEnabled: true } : undefined,
         removalPolicy,
       });
     const tables = {
@@ -54,27 +72,61 @@ export class BackendStack extends cdk.Stack {
       USERS_TABLE: table('Users', 'username'),
       CONVERSATIONS_TABLE: table('Conversations', 'conversationId'),
       MEMBERSHIPS_TABLE: table('Memberships', 'username', 'conversationId'),
-      MESSAGES_TABLE: table('Messages', 'conversationId', 'sk'),
+      MESSAGES_TABLE: table('Messages', 'conversationId', 'sk', 'expiresAt'),
     };
+    type TableKey = keyof typeof tables;
 
-    const fn = (name: string, timeoutSeconds = 10) => {
+    const fn = (
+      name: string,
+      opts: {
+        memorySize: number;
+        timeoutSeconds?: number;
+        readWrite: TableKey[];
+        read?: TableKey[];
+      },
+    ) => {
+      const read = opts.read ?? [];
+      const tableKeys = [...opts.readWrite, ...read];
+      const logGroup = new LogGroup(this, `${name}Logs`, {
+        retention: isProd ? RetentionDays.ONE_MONTH : RetentionDays.TWO_WEEKS,
+        removalPolicy,
+      });
       const f = new NodejsFunction(this, name, {
         entry: path.join(__dirname, '..', 'functions', `${name}.ts`),
         runtime: Runtime.NODEJS_22_X,
-        timeout: cdk.Duration.seconds(timeoutSeconds),
-        environment: Object.fromEntries(
-          Object.entries(tables).map(([key, t]) => [key, t.tableName]),
-        ),
+        architecture: Architecture.ARM_64,
+        memorySize: opts.memorySize,
+        timeout: cdk.Duration.seconds(opts.timeoutSeconds ?? 10),
+        logGroup,
+        environment: Object.fromEntries(tableKeys.map((key) => [key, tables[key].tableName])),
       });
-      Object.values(tables).forEach((t) => t.grantReadWriteData(f));
+      opts.readWrite.forEach((key) => tables[key].grantReadWriteData(f));
+      read.forEach((key) => tables[key].grantReadData(f));
       return f;
     };
-    const connect = fn('connect');
-    const disconnect = fn('disconnect');
-    const fallback = fn('default');
-    const app = fn('app');
-    // Two scans of Connections 30 s apart plus the Users scan fit in 50 s (architecture, section 3.4).
-    const sweeper = fn('presenceSweeper', 50);
+    const presenceTables = {
+      readWrite: ['CONNECTIONS_TABLE', 'USERS_TABLE'] as TableKey[],
+      read: ['MEMBERSHIPS_TABLE', 'CONVERSATIONS_TABLE'] as TableKey[],
+    };
+    const connect = fn('connect', { memorySize: 512, ...presenceTables });
+    const disconnect = fn('disconnect', { memorySize: 512, ...presenceTables });
+    const fallback = fn('default', { memorySize: 512, readWrite: ['CONNECTIONS_TABLE'] });
+    const app = fn('app', {
+      memorySize: 512,
+      readWrite: [
+        'CONNECTIONS_TABLE',
+        'USERS_TABLE',
+        'CONVERSATIONS_TABLE',
+        'MEMBERSHIPS_TABLE',
+        'MESSAGES_TABLE',
+      ],
+    });
+    // Single pass of Connections + Users + OpenConnections metric fits well within 30 s.
+    const sweeper = fn('presenceSweeper', {
+      memorySize: 256,
+      timeoutSeconds: 30,
+      ...presenceTables,
+    });
 
     // SecureString parameter created once per stage outside CDK (architecture, section 5).
     const hmacParamName = `/hub-websocket/${props.stage}/log-hmac-secret`;
@@ -141,6 +193,11 @@ export class BackendStack extends cdk.Stack {
       stageName: props.stage,
       autoDeploy: true,
     });
+    const cfnStage = stage.node.defaultChild as CfnStage;
+    cfnStage.defaultRouteSettings = {
+      throttlingRateLimit: 50,
+      throttlingBurstLimit: 100,
+    };
     for (const f of [connect, disconnect, fallback, app, sweeper]) {
       f.addEnvironment('CALLBACK_URL', stage.callbackUrl);
       stage.grantManagementApiAccess(f);
@@ -157,7 +214,7 @@ export class BackendStack extends cdk.Stack {
         period,
       });
 
-    // CloudWatch dashboard with API Gateway, Lambda and open-connections metrics (RNF06, section 5).
+    // CloudWatch dashboard with API Gateway, Lambda, DynamoDB and open-connections metrics (RNF06, section 5).
     const dashboard = new Dashboard(this, 'Dashboard', {
       dashboardName: `HubWebSocket-${props.stage}`,
     });
@@ -211,17 +268,146 @@ export class BackendStack extends cdk.Stack {
           apiMetric('IntegrationLatency', 'p95', 'IntegrationLatency (p95)'),
           app.metricDuration({ period, statistic: Stats.AVERAGE, label: 'Lambda app (avg)' }),
           app.metricDuration({ period, statistic: 'p95', label: 'Lambda app (p95)' }),
+          connect.metricDuration({
+            period,
+            statistic: Stats.AVERAGE,
+            label: 'Lambda connect (avg)',
+          }),
+          connect.metricDuration({ period, statistic: 'p95', label: 'Lambda connect (p95)' }),
+          sweeper.metricDuration({
+            period,
+            statistic: Stats.AVERAGE,
+            label: 'Lambda presenceSweeper (avg)',
+          }),
+          sweeper.metricDuration({
+            period,
+            statistic: Stats.MAXIMUM,
+            label: 'Lambda presenceSweeper (max)',
+          }),
         ],
       }),
     );
+    const dynamoOps = [
+      Operation.GET_ITEM,
+      Operation.BATCH_GET_ITEM,
+      Operation.PUT_ITEM,
+      Operation.UPDATE_ITEM,
+      Operation.DELETE_ITEM,
+      Operation.QUERY,
+      Operation.SCAN,
+      Operation.TRANSACT_WRITE_ITEMS,
+    ];
+    // DynamoDB publishes SystemErrors and ThrottledRequests per (TableName, Operation); unique metric IDs avoid CDK GraphWidget collisions.
+    const dynamoMetric = (
+      idPrefix: string,
+      t: Table,
+      metricName: 'SystemErrors' | 'ThrottledRequests',
+      label: string,
+    ) => {
+      const usingMetrics = Object.fromEntries(
+        dynamoOps.map((op, idx) => [
+          `${idPrefix}_${idx}`,
+          new Metric({
+            namespace: 'AWS/DynamoDB',
+            metricName,
+            dimensionsMap: { TableName: t.tableName, Operation: op },
+            statistic: Stats.SUM,
+            period,
+          }),
+        ]),
+      );
+      return new MathExpression({
+        expression: `SUM([${Object.keys(usingMetrics).join(', ')}])`,
+        usingMetrics,
+        label,
+        period,
+      });
+    };
+    const tableMetrics = [
+      ['Connections', tables.CONNECTIONS_TABLE],
+      ['Users', tables.USERS_TABLE],
+      ['Conversations', tables.CONVERSATIONS_TABLE],
+      ['Memberships', tables.MEMBERSHIPS_TABLE],
+      ['Messages', tables.MESSAGES_TABLE],
+    ] as const;
+    dashboard.addWidgets(
+      new GraphWidget({
+        title: 'Throttles (Lambda)',
+        width: 12,
+        left: [
+          connect.metricThrottles({ period, label: 'connect throttles' }),
+          disconnect.metricThrottles({ period, label: 'disconnect throttles' }),
+          fallback.metricThrottles({ period, label: 'default throttles' }),
+          app.metricThrottles({ period, label: 'app throttles' }),
+          sweeper.metricThrottles({ period, label: 'presenceSweeper throttles' }),
+        ],
+      }),
+      new GraphWidget({
+        title: 'DynamoDB (erros e throttling)',
+        width: 12,
+        left: tableMetrics.flatMap(([label, t], i) => [
+          dynamoMetric(`se_${i}`, t, 'SystemErrors', `${label} SystemErrors`),
+          dynamoMetric(`tr_${i}`, t, 'ThrottledRequests', `${label} ThrottledRequests`),
+        ]),
+      }),
+    );
+
+    new Alarm(this, 'AppErrorsAlarm', {
+      alarmName: `HubWebSocket-${props.stage}-AppErrors`,
+      alarmDescription: 'Lambda app reported one or more invocation errors.',
+      metric: app.metricErrors({ period, statistic: Stats.SUM }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
+    });
+    new Alarm(this, 'AppThrottlesAlarm', {
+      alarmName: `HubWebSocket-${props.stage}-AppThrottles`,
+      alarmDescription: 'Lambda app had one or more throttled invocations.',
+      metric: app.metricThrottles({ period, statistic: Stats.SUM }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
+    });
+    new Alarm(this, 'PresenceSweeperDurationAlarm', {
+      alarmName: `HubWebSocket-${props.stage}-PresenceSweeperDuration`,
+      alarmDescription: 'Lambda presenceSweeper duration approached its 30 s timeout.',
+      metric: sweeper.metricDuration({ period, statistic: Stats.MAXIMUM }),
+      threshold: 20_000,
+      evaluationPeriods: 1,
+      comparisonOperator: ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+      treatMissingData: TreatMissingData.NOT_BREACHING,
+    });
 
     // Static frontend hosted in a private S3 bucket behind CloudFront with OAC (D08, RNF07).
     const frontendBucket = new Bucket(this, 'FrontendBucket', {
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       encryption: BucketEncryption.S3_MANAGED,
       enforceSSL: true,
+      versioned: isProd,
       removalPolicy,
-      autoDeleteObjects: props.stage !== 'prod',
+      autoDeleteObjects: !isProd,
+    });
+    const responseHeadersPolicy = new ResponseHeadersPolicy(this, 'FrontendSecurityHeaders', {
+      securityHeadersBehavior: {
+        strictTransportSecurity: {
+          accessControlMaxAge: cdk.Duration.days(365),
+          includeSubdomains: true,
+          override: true,
+        },
+        contentTypeOptions: { override: true },
+        frameOptions: { frameOption: HeadersFrameOption.DENY, override: true },
+        referrerPolicy: {
+          referrerPolicy: HeadersReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN,
+          override: true,
+        },
+        contentSecurityPolicy: {
+          override: true,
+          contentSecurityPolicy:
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' wss: https:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+        },
+      },
     });
     const frontendOrigin = S3BucketOrigin.withOriginAccessControl(frontendBucket);
     const distribution = new Distribution(this, 'FrontendDistribution', {
@@ -230,12 +416,20 @@ export class BackendStack extends cdk.Stack {
         origin: frontendOrigin,
         viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: CachePolicy.CACHING_OPTIMIZED,
+        responseHeadersPolicy,
       },
       additionalBehaviors: {
         'config.json': {
           origin: frontendOrigin,
           viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: CachePolicy.CACHING_DISABLED,
+          responseHeadersPolicy,
+        },
+        'index.html': {
+          origin: frontendOrigin,
+          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: CachePolicy.CACHING_DISABLED,
+          responseHeadersPolicy,
         },
       },
       // SPA fallback so deep links like /entrar or /c/<id> serve index.html.

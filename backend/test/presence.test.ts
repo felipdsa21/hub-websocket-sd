@@ -19,7 +19,7 @@ import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
 import { handler as connect } from '../functions/connect';
 import { handler as disconnect } from '../functions/disconnect';
-import { SECOND_SCAN_DELAY_MS, handler as presenceSweeper } from '../functions/presenceSweeper';
+import { handler as presenceSweeper } from '../functions/presenceSweeper';
 import { REANNOUNCE_DELAY_MS, announcePresence } from '../functions/shared';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
@@ -281,9 +281,7 @@ describe('Presence announcements (RF01, RF07, section 3.5)', () => {
     ddbMock.on(QueryCommand, { TableName: 'Memberships' }).resolves({ Items: [] });
     ddbMock.on(UpdateCommand).resolves({});
 
-    const run = presenceSweeper();
-    await jest.advanceTimersByTimeAsync(SECOND_SCAN_DELAY_MS);
-    await run;
+    await presenceSweeper();
 
     const announcedKeys = ddbMock
       .commandCalls(UpdateCommand)
@@ -395,9 +393,7 @@ describe('Presence announcements (RF01, RF07, section 3.5)', () => {
       })
       .resolves({});
 
-    const run = presenceSweeper();
-    await jest.advanceTimersByTimeAsync(SECOND_SCAN_DELAY_MS);
-    await run;
+    await presenceSweeper();
 
     expect(postedEvents()).toEqual([
       {
@@ -408,6 +404,78 @@ describe('Presence announcements (RF01, RF07, section 3.5)', () => {
           displayName: 'Alice',
           online: false,
           version: 4,
+        },
+      },
+    ]);
+  });
+
+  test('presenceSweeper still re-announces a stale user when orphan unbind loses a race (B7)', async () => {
+    const now = 1_750_000_000_000;
+    jest.useFakeTimers({ now });
+    ddbMock.on(ScanCommand, { TableName: 'Connections' }).resolves({ Items: [] });
+    ddbMock.on(ScanCommand, { TableName: 'Users' }).resolves({
+      Items: [
+        {
+          username: 'alice',
+          displayName: 'Alice',
+          connections: new Set(['c-orphan']),
+          version: 3,
+          announcedVersion: 1,
+          changedAt: now - REANNOUNCE_DELAY_MS - 1_000,
+        },
+      ],
+    });
+    ddbMock.on(GetCommand, { Key: { connectionId: 'c-orphan' } }).resolves({});
+    // Another path removed c-orphan from Users.connections before unbind ran, so unbind did not announce.
+    ddbMock
+      .on(UpdateCommand, {
+        Key: { username: 'alice' },
+        UpdateExpression: 'DELETE connections :c ADD version :one SET changedAt = :now',
+      })
+      .rejects(new ConditionalCheckFailedException({ message: 'already removed', $metadata: {} }));
+    ddbMock.on(DeleteCommand).resolves({});
+    ddbMock.on(QueryCommand, { TableName: 'Memberships' }).resolves({
+      Items: [{ username: 'alice', conversationId: 'd:alice:bruno' }],
+    });
+    ddbMock
+      .on(BatchGetCommand)
+      .resolvesOnce({
+        Responses: {
+          Conversations: [
+            { conversationId: 'd:alice:bruno', members: new Set(['alice', 'bruno']) },
+          ],
+        },
+      })
+      .resolvesOnce({
+        Responses: {
+          Users: [
+            {
+              username: 'bruno',
+              displayName: 'Bruno',
+              connections: new Set(['c-bruno-1']),
+              version: 1,
+            },
+          ],
+        },
+      });
+    ddbMock
+      .on(UpdateCommand, {
+        Key: { username: 'alice' },
+        UpdateExpression: 'SET announcedVersion = :v',
+      })
+      .resolves({});
+
+    await presenceSweeper();
+
+    expect(postedEvents()).toEqual([
+      {
+        connectionId: 'c-bruno-1',
+        event: {
+          type: 'presence',
+          username: 'alice',
+          displayName: 'Alice',
+          online: true,
+          version: 3,
         },
       },
     ]);
