@@ -12,20 +12,39 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 
-const selfTest = process.argv.includes('--self-test');
-const sanitize = process.argv.includes('--sanitize');
-const url = process.argv[2];
-if (!selfTest && (!url || !url.startsWith('ws'))) {
-  console.error('Usage: node integration-tests-dev.mjs <wss-url> [--region sa-east-1] [--stage dev] [--sanitize] [--out report.json]');
-  process.exit(1);
+function parseCliArgs(argv) {
+  const selfTest = argv.includes('--self-test');
+  const sanitize = argv.includes('--sanitize');
+  const arg = (name, def) => {
+    const i = argv.indexOf(`--${name}`);
+    if (i < 0) return def;
+    const val = argv[i + 1];
+    if (!val || val.startsWith('--')) throw new Error(`Missing value for --${name}`);
+    return val;
+  };
+  const url = argv[2];
+  if (!selfTest) {
+    let parsed = null;
+    try {
+      if (url && !url.startsWith('--')) parsed = new URL(url);
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || (parsed.protocol !== 'ws:' && parsed.protocol !== 'wss:')) {
+      throw new Error('Usage: node integration-tests-dev.mjs <wss-url> [--region sa-east-1] [--stage dev] [--sanitize] [--out report.json]');
+    }
+  }
+  return {
+    selfTest,
+    sanitize,
+    url,
+    region: arg('region', 'sa-east-1'),
+    stage: arg('stage', 'dev'),
+    outPath: arg('out', undefined),
+  };
 }
-const arg = (name, def) => {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 ? process.argv[i + 1] : def;
-};
-const region = arg('region', 'sa-east-1');
-const stage = arg('stage', 'dev');
-const outPath = arg('out', undefined);
+
+let url = '';
 const TAG = Date.now().toString(36);
 
 function assert(cond, msg) {
@@ -41,13 +60,36 @@ class TestClient {
     this.eventWaiters = [];
   }
 
-  connect() {
+  connect(timeoutMs = 10_000) {
     return new Promise((resolve, reject) => {
       const q = new URLSearchParams({ username: this.username, displayName: this.displayName });
       const ws = new WebSocket(`${url}?${q.toString()}`);
       this.ws = ws;
-      ws.onopen = () => resolve();
-      ws.onerror = (e) => reject(e);
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        ws.close();
+        reject(new Error(`Timeout connecting ${this.username}`));
+      }, timeoutMs);
+      ws.onopen = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      ws.onerror = (e) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(e);
+      };
+      ws.onclose = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(new Error(`WebSocket closed during connect for ${this.username}`));
+      };
       ws.onmessage = (ev) => {
         const msg = JSON.parse(String(ev.data));
         this.events.push(msg);
@@ -89,28 +131,53 @@ class TestClient {
     const existing = this.events.find(predicate);
     if (existing) return Promise.resolve(existing);
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const waiter = { predicate, resolve, reject, timer: null };
+      waiter.timer = setTimeout(() => {
+        const idx = this.eventWaiters.indexOf(waiter);
+        if (idx >= 0) this.eventWaiters.splice(idx, 1);
         reject(new Error(`Timeout waiting for event on ${this.username}`));
       }, timeoutMs);
-      this.eventWaiters.push({ predicate, resolve, timer });
+      this.eventWaiters.push(waiter);
     });
   }
 
   close() {
-    this.ws?.close();
+    for (const [, p] of this.pending) {
+      clearTimeout(p.timer);
+      p.reject(new Error(`Client ${this.username} closed`));
+    }
+    this.pending.clear();
+    for (const w of this.eventWaiters) {
+      clearTimeout(w.timer);
+      w.reject(new Error(`Client ${this.username} closed`));
+    }
+    this.eventWaiters.length = 0;
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      this.ws.close();
+    }
   }
 }
 
 function expectHandshakeRejected(queryString) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(queryString ? `${url}?${queryString}` : url);
-    const timer = setTimeout(() => reject(new Error('Expected handshake rejection but timed out')), 10_000);
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      ws.close();
+      reject(new Error('Expected handshake rejection but timed out'));
+    }, 10_000);
     ws.onopen = () => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       ws.close();
       reject(new Error(`Handshake unexpectedly succeeded for query "${queryString}"`));
     };
     ws.onerror = () => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       resolve(true);
     };
@@ -132,7 +199,29 @@ async function runCase(id, name, fn) {
   }
 }
 
-async function main() {
+function buildReport({ endpoint, stage, region, sanitize, caseResults }) {
+  const passed = caseResults.filter((r) => r.status === 'PASS').length;
+  const sanitizedResults = sanitize
+    ? caseResults.map((r) =>
+        r.detail && typeof r.detail === 'object' && 'logGroup' in r.detail
+          ? { ...r, detail: { ...r.detail, logGroup: `/aws/lambda/HubWebSocket-${stage}-app-<id>` } }
+          : r,
+      )
+    : caseResults;
+  return {
+    executedAt: new Date().toISOString(),
+    endpoint: sanitize ? `wss://<api-id>.execute-api.${region}.amazonaws.com/${stage}` : endpoint,
+    stage,
+    region,
+    passed,
+    total: caseResults.length,
+    results: sanitizedResults,
+  };
+}
+
+async function main(opts) {
+  url = opts.url;
+  const { region, stage, sanitize, outPath } = opts;
   const startedAt = Date.now();
   const ua = `qa_${TAG}_a`;
   const ub = `qa_${TAG}_b`;
@@ -142,152 +231,175 @@ async function main() {
   const a = new TestClient(ua, 'QA Alice');
   const b = new TestClient(ub, 'QA Bruno');
   const c = new TestClient(uc, 'QA Carla');
-
-  await Promise.all([a.connect(), b.connect(), c.connect()]);
   let groupId = '';
 
-  await runCase('S4-T3-1', 'Chat privado oculto até 1ª mensagem e isolamento entre usuários', async () => {
-    const openRes = await a.request('openDirect', { username: ub });
-    assert(openRes.type === 'response', 'openDirect should succeed');
-    const directId = openRes.data.conversation.conversationId;
+  try {
+    await Promise.all([a.connect(), b.connect(), c.connect()]);
 
-    const syncB1 = await b.request('sync');
-    assert(!syncB1.data.conversations.some((x) => x.conversationId === directId), 'direct chat must stay hidden for B before first message');
+    await runCase('S4-T3-1', 'Chat privado oculto até 1ª mensagem e isolamento entre usuários', async () => {
+      const openRes = await a.request('openDirect', { username: ub });
+      assert(openRes.type === 'response', 'openDirect should succeed');
+      const directId = openRes.data.conversation.conversationId;
 
-    const msgId = randomUUID();
-    a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: msgId, text: secretBody }));
-    const bAdded = await b.waitForEvent((e) => e.type === 'conversationAdded' && e.conversation.conversationId === directId);
-    const bMsg = await b.waitForEvent((e) => e.type === 'message' && e.messageId === msgId);
-    assert(bAdded && bMsg.sender === ua, 'B must receive conversationAdded and message');
-    assert(!c.events.some((e) => e.type === 'message' && e.messageId === msgId), 'C must not receive direct message');
-    return { directId };
-  });
+      const syncB1 = await b.request('sync');
+      assert(syncB1.type === 'response', 'sync for B should succeed');
+      assert(!syncB1.data.conversations.some((x) => x.conversationId === directId), 'direct chat must stay hidden for B before first message');
 
-  await runCase('S4-T3-2', 'Grupo, isolamento, histórico, adição, saída e aviso lastMember', async () => {
-    const grp = await a.request('createGroup', { name: `QA Grupo ${TAG}`, members: [uc] });
-    assert(grp.type === 'response', 'createGroup failed');
-    groupId = grp.data.conversation.conversationId;
-    await c.waitForEvent((e) => e.type === 'conversationAdded' && e.conversation.conversationId === groupId);
-
-    const m1 = randomUUID();
-    a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: groupId, messageId: m1, text: 'msg-grupo-1' }));
-    await c.waitForEvent((e) => e.type === 'message' && e.messageId === m1);
-    assert(!b.events.some((e) => e.type === 'message' && e.messageId === m1), 'B must not receive group message before joining');
-
-    // RNF01: B (non-member) refused on sendMessage, getHistory, addMember, leaveGroup
-    const rSend = await b.request('sendMessage', { conversationId: groupId, messageId: randomUUID(), text: 'intruso' });
-    const rHist = await b.request('getHistory', { conversationId: groupId });
-    const rAdd = await b.request('addMember', { conversationId: groupId, username: ub });
-    const rLeave = await b.request('leaveGroup', { conversationId: groupId });
-    assert(rSend.type === 'error' && rSend.code === 'forbidden', 'sendMessage must return forbidden');
-    assert(rHist.type === 'error' && rHist.code === 'forbidden', 'getHistory must return forbidden');
-    assert(rAdd.type === 'error' && rAdd.code === 'forbidden', 'addMember must return forbidden');
-    assert(rLeave.type === 'error' && rLeave.code === 'forbidden', 'leaveGroup must return forbidden');
-
-    // Add B and verify B sees history
-    const addOk = await c.request('addMember', { conversationId: groupId, username: ub });
-    assert(addOk.type === 'response', 'addMember by C failed');
-    await b.waitForEvent((e) => e.type === 'conversationAdded' && e.conversation.conversationId === groupId);
-    const histB = await b.request('getHistory', { conversationId: groupId });
-    assert(histB.data.messages.some((m) => m.messageId === m1), 'B must see prior group history');
-
-    // Concurrent sends -> identical sk ordering across A, B, C
-    const concurrentIds = [randomUUID(), randomUUID(), randomUUID()];
-    a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: groupId, messageId: concurrentIds[0], text: 'c-a' }));
-    b.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: groupId, messageId: concurrentIds[1], text: 'c-b' }));
-    c.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: groupId, messageId: concurrentIds[2], text: 'c-c' }));
-    for (const id of concurrentIds) {
-      await Promise.all([
-        a.waitForEvent((e) => e.type === 'message' && e.messageId === id),
-        b.waitForEvent((e) => e.type === 'message' && e.messageId === id),
-        c.waitForEvent((e) => e.type === 'message' && e.messageId === id),
+      const msgId = randomUUID();
+      a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: msgId, text: secretBody }));
+      const [bAdded, bMsg] = await Promise.all([
+        b.waitForEvent((e) => e.type === 'conversationAdded' && e.conversation.conversationId === directId),
+        b.waitForEvent((e) => e.type === 'message' && e.messageId === msgId),
+        a.waitForEvent((e) => e.type === 'message' && e.messageId === msgId),
       ]);
-    }
-    const concurrentSet = new Set(concurrentIds);
-    const order = (cli) =>
-      cli.events
-        .filter((e) => e.type === 'message' && e.conversationId === groupId && concurrentSet.has(e.messageId))
-        .sort((x, y) => (x.sk < y.sk ? -1 : x.sk > y.sk ? 1 : 0))
-        .map((e) => e.sk);
-    assert(order(a).length === 3 && JSON.stringify(order(a)) === JSON.stringify(order(b)) && JSON.stringify(order(b)) === JSON.stringify(order(c)), 'Ordering must match across all clients');
+      assert(bAdded && bMsg.sender === ua && bMsg.text === secretBody, 'B must receive conversationAdded and message');
+      assert(!c.events.some((e) => e.type === 'message' && e.messageId === msgId), 'C must not receive direct message');
+      return { directId };
+    });
 
-    // Leave group and lastMember confirmation
-    assert((await c.request('leaveGroup', { conversationId: groupId })).type === 'response', 'C leave failed');
-    assert((await a.request('leaveGroup', { conversationId: groupId })).type === 'response', 'A leave failed');
-    const lastErr = await b.request('leaveGroup', { conversationId: groupId });
-    assert(lastErr.type === 'error' && lastErr.code === 'lastMember', 'B leaving last without confirm must return lastMember');
-    const lastOk = await b.request('leaveGroup', { conversationId: groupId, confirm: true });
-    assert(lastOk.type === 'response', 'B leaving last with confirm must succeed');
-    return { groupId, concurrentVerified: 3 };
-  });
+    await runCase('S4-T3-2', 'Grupo, isolamento, histórico, adição, saída e aviso lastMember', async () => {
+      const grp = await a.request('createGroup', { name: `QA Grupo ${TAG}`, members: [uc] });
+      assert(grp.type === 'response', 'createGroup failed');
+      groupId = grp.data.conversation.conversationId;
+      await c.waitForEvent((e) => e.type === 'conversationAdded' && e.conversation.conversationId === groupId);
 
-  await runCase('S5-T7-1', 'Reenvio idempotente (RF12) e mesmo messageId por outro remetente', async () => {
-    const directId = (await a.request('openDirect', { username: ub })).data.conversation.conversationId;
-    const sharedId = randomUUID();
-    a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: sharedId, text: 'idem-1' }));
-    await a.waitForEvent((e) => e.type === 'message' && e.messageId === sharedId);
-    await b.waitForEvent((e) => e.type === 'message' && e.messageId === sharedId);
+      const m1 = randomUUID();
+      a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: groupId, messageId: m1, text: 'msg-grupo-1' }));
+      await c.waitForEvent((e) => e.type === 'message' && e.messageId === m1);
+      assert(!b.events.some((e) => e.type === 'message' && e.messageId === m1), 'B must not receive group message before joining');
 
-    const bCountBefore = b.events.filter((e) => e.type === 'message' && e.messageId === sharedId && e.sender === ua).length;
-    // Resend same messageId from A
-    a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: sharedId, text: 'idem-1' }));
-    await new Promise((r) => setTimeout(r, 1200));
-    const bCountAfter = b.events.filter((e) => e.type === 'message' && e.messageId === sharedId && e.sender === ua).length;
-    assert(bCountAfter === bCountBefore, 'Resend must not duplicate delivery to B');
+      // RNF01: B (non-member) refused on sendMessage, getHistory, addMember, leaveGroup
+      const rSend = await b.request('sendMessage', { conversationId: groupId, messageId: randomUUID(), text: 'intruso' });
+      const rHist = await b.request('getHistory', { conversationId: groupId });
+      const rAdd = await b.request('addMember', { conversationId: groupId, username: ub });
+      const rLeave = await b.request('leaveGroup', { conversationId: groupId });
+      assert(rSend.type === 'error' && rSend.code === 'forbidden', 'sendMessage must return forbidden');
+      assert(rHist.type === 'error' && rHist.code === 'forbidden', 'getHistory must return forbidden');
+      assert(rAdd.type === 'error' && rAdd.code === 'forbidden', 'addMember must return forbidden');
+      assert(rLeave.type === 'error' && rLeave.code === 'forbidden', 'leaveGroup must return forbidden');
 
-    // Different sender reusing same messageId must succeed
-    b.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: sharedId, text: 'idem-from-b' }));
-    const fromB = await a.waitForEvent((e) => e.type === 'message' && e.messageId === sharedId && e.sender === ub);
-    assert(fromB.text === 'idem-from-b', 'Another sender reusing messageId must be delivered');
-    return { sharedId };
-  });
+      // Add B and verify B sees history
+      const addOk = await c.request('addMember', { conversationId: groupId, username: ub });
+      assert(addOk.type === 'response', 'addMember by C failed');
+      await b.waitForEvent((e) => e.type === 'conversationAdded' && e.conversation.conversationId === groupId);
+      const histB = await b.request('getHistory', { conversationId: groupId });
+      assert(histB.type === 'response' && histB.data.messages.some((m) => m.messageId === m1), 'B must see prior group history');
 
-  await runCase('S5-T7-2', 'Desconexão, presença offline em tempo real e recuperação via sync + getHistory(after)', async () => {
-    const directId = (await a.request('openDirect', { username: ub })).data.conversation.conversationId;
-    const syncBefore = await b.request('sync');
-    const histBefore = await b.request('getHistory', { conversationId: directId });
-    const lastSk = histBefore.data.messages.at(-1).sk;
+      // Concurrent sends -> identical sk ordering across A, B, C
+      const concurrentIds = [randomUUID(), randomUUID(), randomUUID()];
+      a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: groupId, messageId: concurrentIds[0], text: 'c-a' }));
+      b.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: groupId, messageId: concurrentIds[1], text: 'c-b' }));
+      c.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: groupId, messageId: concurrentIds[2], text: 'c-c' }));
+      for (const id of concurrentIds) {
+        await Promise.all([
+          a.waitForEvent((e) => e.type === 'message' && e.messageId === id),
+          b.waitForEvent((e) => e.type === 'message' && e.messageId === id),
+          c.waitForEvent((e) => e.type === 'message' && e.messageId === id),
+        ]);
+      }
+      const concurrentSet = new Set(concurrentIds);
+      const order = (cli) =>
+        cli.events
+          .filter((e) => e.type === 'message' && e.conversationId === groupId && concurrentSet.has(e.messageId))
+          .sort((x, y) => (x.sk < y.sk ? -1 : x.sk > y.sk ? 1 : 0))
+          .map((e) => e.sk);
+      assert(
+        order(a).length === 3 &&
+          new Set(order(a)).size === 3 &&
+          JSON.stringify(order(a)) === JSON.stringify(order(b)) &&
+          JSON.stringify(order(b)) === JSON.stringify(order(c)),
+        'Ordering must match across all clients',
+      );
 
-    // Close B and confirm A gets presence offline
+      // Leave group and lastMember confirmation
+      assert((await c.request('leaveGroup', { conversationId: groupId })).type === 'response', 'C leave failed');
+      assert((await a.request('leaveGroup', { conversationId: groupId })).type === 'response', 'A leave failed');
+      const lastErr = await b.request('leaveGroup', { conversationId: groupId });
+      assert(lastErr.type === 'error' && lastErr.code === 'lastMember', 'B leaving last without confirm must return lastMember');
+      const lastOk = await b.request('leaveGroup', { conversationId: groupId, confirm: true });
+      assert(lastOk.type === 'response', 'B leaving last with confirm must succeed');
+      return { groupId, concurrentVerified: 3 };
+    });
+
+    await runCase('S5-T7-1', 'Reenvio idempotente (RF12) e mesmo messageId por outro remetente', async () => {
+      const openRes = await a.request('openDirect', { username: ub });
+      assert(openRes.type === 'response', 'openDirect should succeed');
+      const directId = openRes.data.conversation.conversationId;
+      const sharedId = randomUUID();
+      a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: sharedId, text: 'idem-1' }));
+      await a.waitForEvent((e) => e.type === 'message' && e.messageId === sharedId && e.sender === ua);
+      await b.waitForEvent((e) => e.type === 'message' && e.messageId === sharedId && e.sender === ua);
+
+      const bCountBefore = b.events.filter((e) => e.type === 'message' && e.messageId === sharedId && e.sender === ua).length;
+      // Resend same messageId from A and wait for sender confirmation before checking B
+      a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: sharedId, text: 'idem-1' }));
+      await a.waitForEvent(() => a.events.filter((e) => e.type === 'message' && e.messageId === sharedId && e.sender === ua).length >= 2);
+      await new Promise((r) => setTimeout(r, 300));
+      const bCountAfter = b.events.filter((e) => e.type === 'message' && e.messageId === sharedId && e.sender === ua).length;
+      assert(bCountAfter === bCountBefore, 'Resend must not duplicate delivery to B');
+
+      // Different sender reusing same messageId must succeed
+      b.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: sharedId, text: 'idem-from-b' }));
+      const fromB = await a.waitForEvent((e) => e.type === 'message' && e.messageId === sharedId && e.sender === ub);
+      assert(fromB.text === 'idem-from-b', 'Another sender reusing messageId must be delivered');
+      return { sharedId };
+    });
+
+    await runCase('S5-T7-2', 'Desconexão, presença offline em tempo real e recuperação via sync + getHistory(after)', async () => {
+      const openRes = await a.request('openDirect', { username: ub });
+      assert(openRes.type === 'response', 'openDirect should succeed');
+      const directId = openRes.data.conversation.conversationId;
+      const syncBefore = await b.request('sync');
+      assert(syncBefore.type === 'response', 'sync before disconnect failed');
+      const histBefore = await b.request('getHistory', { conversationId: directId });
+      assert(histBefore.type === 'response' && histBefore.data.messages.length > 0, 'getHistory before disconnect failed');
+      const lastSk = histBefore.data.messages.at(-1).sk;
+
+      // Close B and confirm A gets presence offline
+      b.close();
+      const offEv = await a.waitForEvent((e) => e.type === 'presence' && e.username === ub && e.online === false);
+      assert(offEv.online === false, 'A must receive offline presence for B');
+
+      // A sends message while B is offline
+      const missedId = randomUUID();
+      a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: missedId, text: 'enquanto-offline' }));
+      await a.waitForEvent((e) => e.type === 'message' && e.messageId === missedId);
+
+      // B reconnects and syncs with since
+      const b2 = new TestClient(ub, 'QA Bruno');
+      try {
+        await b2.connect();
+        const onEv = await a.waitForEvent((e) => e.type === 'presence' && e.username === ub && e.online === true && e.version > offEv.version);
+        assert(onEv.online === true, 'A must receive online presence when B reconnects');
+
+        const syncAfter = await b2.request('sync', { since: Math.max(0, syncBefore.data.serverTime - 30_000) });
+        assert(syncAfter.type === 'response' && syncAfter.data.updated.includes(directId), 'sync(since) must include updated direct chat');
+        const catchup = await b2.request('getHistory', { conversationId: directId, after: lastSk });
+        assert(catchup.type === 'response' && catchup.data.messages.some((m) => m.messageId === missedId), 'getHistory(after) must return missed message');
+        return { missedId, offlineVersion: offEv.version, onlineVersion: onEv.version };
+      } finally {
+        b2.close();
+      }
+    });
+
+    await runCase('S6-SEC-1', 'Rejeição de conexões inválidas ($connect) e rotas desconhecidas / não-JSON ($default)', async () => {
+      await expectHandshakeRejected('');
+      await expectHandshakeRejected('username=a');
+      await expectHandshakeRejected('username=invalido%20espaco');
+
+      const badAction = await a.request('acaoInexistente', {});
+      assert(badAction.type === 'error' && badAction.code === 'unknownAction', 'unknownAction expected on $default');
+
+      a.sendRaw('{nao-e-json');
+      const nonJson = await a.waitForEvent((e) => e.type === 'error' && e.code === 'unknownAction' && !e.requestId);
+      assert(Boolean(nonJson), 'Non-JSON payload must return unknownAction from $default');
+      return { handshakeCasesRejected: 3 };
+    });
+  } finally {
+    a.close();
     b.close();
-    const offEv = await a.waitForEvent((e) => e.type === 'presence' && e.username === ub && e.online === false);
-    assert(offEv.online === false, 'A must receive offline presence for B');
-
-    // A sends message while B is offline
-    const missedId = randomUUID();
-    a.sendRaw(JSON.stringify({ action: 'sendMessage', requestId: randomUUID(), conversationId: directId, messageId: missedId, text: 'enquanto-offline' }));
-    await a.waitForEvent((e) => e.type === 'message' && e.messageId === missedId);
-
-    // B reconnects and syncs with since
-    const b2 = new TestClient(ub, 'QA Bruno');
-    await b2.connect();
-    const onEv = await a.waitForEvent((e) => e.type === 'presence' && e.username === ub && e.online === true && e.version > offEv.version);
-    assert(onEv.online === true, 'A must receive online presence when B reconnects');
-
-    const syncAfter = await b2.request('sync', { since: Math.max(0, syncBefore.data.serverTime - 30_000) });
-    assert(syncAfter.data.updated.includes(directId), 'sync(since) must include updated direct chat');
-    const catchup = await b2.request('getHistory', { conversationId: directId, after: lastSk });
-    assert(catchup.data.messages.some((m) => m.messageId === missedId), 'getHistory(after) must return missed message');
-    b2.close();
-    return { missedId, offlineVersion: offEv.version, onlineVersion: onEv.version };
-  });
-
-  await runCase('S6-SEC-1', 'Rejeição de conexões inválidas ($connect) e rotas desconhecidas / não-JSON ($default)', async () => {
-    await expectHandshakeRejected('');
-    await expectHandshakeRejected('username=a');
-    await expectHandshakeRejected('username=invalido%20espaco');
-
-    const badAction = await a.request('acaoInexistente', {});
-    assert(badAction.type === 'error' && badAction.code === 'unknownAction', 'unknownAction expected on $default');
-
-    a.sendRaw('{nao-e-json');
-    const nonJson = await a.waitForEvent((e) => e.type === 'error' && e.code === 'unknownAction' && !e.requestId);
-    assert(Boolean(nonJson), 'Non-JSON payload must return unknownAction from $default');
-    return { handshakeCasesRejected: 3 };
-  });
-
-  a.close();
-  c.close();
+    c.close();
+  }
 
   await runCase('S6-LOGS-1', 'Logs estruturados e anonimizados no CloudWatch sem identificadores em claro nem texto (RNF03)', async () => {
     // Allow CloudWatch Logs ingestion lag (~4 s)
@@ -330,32 +442,16 @@ async function main() {
     return { logGroup, structuredLines: jsonLines.length, sample, dupLog, forbLog };
   });
 
-  const passed = results.filter((r) => r.status === 'PASS').length;
-  const sanitizedResults = sanitize
-    ? results.map((r) =>
-        r.detail && typeof r.detail === 'object' && 'logGroup' in r.detail
-          ? { ...r, detail: { ...r.detail, logGroup: `/aws/lambda/HubWebSocket-${stage}-app-<id>` } }
-          : r,
-      )
-    : results;
-  const report = {
-    executedAt: new Date().toISOString(),
-    endpoint: sanitize ? `wss://<api-id>.execute-api.${region}.amazonaws.com/${stage}` : url,
-    stage,
-    region,
-    passed,
-    total: results.length,
-    results: sanitizedResults,
-  };
+  const report = buildReport({ endpoint: url, stage, region, sanitize, caseResults: results });
   if (outPath) {
     writeFileSync(outPath, JSON.stringify(report, null, 2));
     console.log(`Saved integration report to ${outPath}`);
   }
-  console.log(`\nSummary: ${passed}/${results.length} passed`);
-  if (passed !== results.length) process.exit(1);
+  console.log(`\nSummary: ${report.passed}/${report.total} passed`);
+  if (report.passed !== report.total) process.exit(1);
 }
 
-if (selfTest) {
+async function runSelfTest() {
   assert(true, 'ok');
   let threw = false;
   try {
@@ -363,10 +459,52 @@ if (selfTest) {
   } catch {
     threw = true;
   }
-  if (!threw) process.exit(1);
+  assert(threw, 'assert(false) must throw');
+
+  const parsed = parseCliArgs(['node', 'script', 'wss://example.com/dev', '--sanitize', '--out', 'r.json']);
+  assert(parsed.sanitize && parsed.outPath === 'r.json' && parsed.region === 'sa-east-1', 'parseCliArgs failed');
+
+  let badFlag = false;
+  try {
+    parseCliArgs(['node', 'script', 'wss://example.com/dev', '--out', '--sanitize']);
+  } catch {
+    badFlag = true;
+  }
+  assert(badFlag, 'parseCliArgs must reject flag without value');
+
+  const rawResults = [{ id: 'S6-LOGS-1', status: 'PASS', detail: { logGroup: '/aws/lambda/HubWebSocket-dev-app-XYZ123' } }];
+  const sanitized = buildReport({
+    endpoint: 'wss://secret123.execute-api.sa-east-1.amazonaws.com/dev',
+    stage: 'dev',
+    region: 'sa-east-1',
+    sanitize: true,
+    caseResults: rawResults,
+  });
+  assert(sanitized.endpoint === 'wss://<api-id>.execute-api.sa-east-1.amazonaws.com/dev', 'endpoint not sanitized');
+  assert(sanitized.results[0].detail.logGroup === '/aws/lambda/HubWebSocket-dev-app-<id>', 'logGroup not sanitized');
+  assert(rawResults[0].detail.logGroup === '/aws/lambda/HubWebSocket-dev-app-XYZ123', 'raw results mutated');
+
+  const cli = new TestClient('qa_self');
+  const waitP = cli.waitForEvent(() => false, 5_000);
+  cli.close();
+  let waitRejected = false;
+  try {
+    await waitP;
+  } catch {
+    waitRejected = true;
+  }
+  assert(waitRejected && cli.eventWaiters.length === 0, 'close() must clear waiters');
   console.log('Self-test passed');
+}
+
+const opts = parseCliArgs(process.argv);
+if (opts.selfTest) {
+  runSelfTest().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
 } else {
-  main().catch((err) => {
+  main(opts).catch((err) => {
     console.error(err);
     process.exit(1);
   });
