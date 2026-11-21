@@ -1,0 +1,77 @@
+import { TestBed } from '@angular/core/testing';
+import { provideTestFixtures } from '@/core/fixtures/testing';
+import {
+  BRUNO,
+  FakeWebSocket,
+  answer,
+  enterAsAlice,
+  provideFakeSockets,
+  useTestBackend,
+} from '@/core/hub/testing';
+import { SEARCH_DELAY_MS } from '@/core/state/directory-store';
+import { SessionStore } from '@/core/state/session-store';
+import { PeoplePicker } from './people-picker';
+
+async function setUp() {
+  localStorage.clear();
+  const sockets: FakeWebSocket[] = [];
+  TestBed.configureTestingModule({
+    providers: [...provideTestFixtures(), ...provideFakeSockets(sockets)],
+  });
+  useTestBackend();
+  vi.spyOn(console, 'info').mockImplementation(() => undefined);
+  const session = TestBed.inject(SessionStore);
+  const socket = await enterAsAlice((u, d) => session.enter(u, d), sockets, []);
+  vi.useFakeTimers();
+  const fixture = TestBed.createComponent(PeoplePicker);
+  const element: HTMLElement = fixture.nativeElement;
+  const type = async (text: string) => {
+    const input = element.querySelector('input')!;
+    input.value = text;
+    input.dispatchEvent(new Event('input'));
+    TestBed.tick();
+  };
+  const names = () => [...element.querySelectorAll('li')].map((li) => li.textContent);
+  return { socket, element, type, names };
+}
+
+describe('PeoplePicker with the backend', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('shows a failed search and repeats it on request (RF09)', async () => {
+    const { socket, element, type } = await setUp();
+    await type('bru');
+    expect(element.querySelector('mat-progress-spinner')).not.toBeNull();
+
+    await vi.advanceTimersByTimeAsync(SEARCH_DELAY_MS);
+    socket.receive({
+      type: 'error',
+      requestId: socket.last().requestId,
+      code: 'invalidRequest',
+      message: 'x',
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    TestBed.tick();
+    const alert = element.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain('Não foi possível pesquisar.');
+
+    alert!.querySelector('button')!.click();
+    TestBed.tick();
+    await vi.advanceTimersByTimeAsync(SEARCH_DELAY_MS);
+    const searches = socket.sent.filter((r) => r['action'] === 'search');
+    expect(searches.map((r) => r['query'])).toEqual(['bru', 'bru']);
+  });
+
+  it('hides the people of the previous query while the next one loads', async () => {
+    const { socket, type, names } = await setUp();
+    await type('bru');
+    await vi.advanceTimersByTimeAsync(SEARCH_DELAY_MS);
+    answer(socket, { conversations: [], people: [BRUNO] });
+    await vi.advanceTimersByTimeAsync(0);
+    TestBed.tick();
+    expect(names().join()).toContain('Bruno');
+
+    await type('brux');
+    expect(names()).toEqual([]);
+  });
+});
