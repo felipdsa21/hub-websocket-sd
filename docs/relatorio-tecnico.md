@@ -64,7 +64,7 @@ Os resultados completos, gráficos e métricas de infraestrutura estão em [docs
 Principais conclusões experimentais:
 1. O descarte da rodada de aquecimento (R05) reduziu a latência média em **56,4%** sob 10 usuários (`844,50 ms` → `368,14 ms`), comprovando o impacto do início a frio das Lambdas.
 2. As cinco funções Lambda apresentaram **0 erros** e as cinco tabelas DynamoDB apresentaram **0 throttling**.
-3. O p95 de `551,06 ms` em 10 usuários (contra o alvo RNF02 de `500 ms`, embora média e p50 fiquem em `368 ms` e `343 ms`) teve duas causas medidas: cota inicial `ConcurrentExecutions = 10` da conta AWS (disputada com o `presenceSweeper`, causando 7 retries recuperados sem perda nem duplicação por RF12) e memória padrão de `128 MB` na Lambda `app`.
+3. O p95 de `551,06 ms` em 10 usuários (contra o alvo RNF02 de `500 ms`, embora média e p50 fiquem em `368,14 ms` e `343,41 ms`) teve duas causas medidas: cota inicial `ConcurrentExecutions = 10` da conta AWS (disputada com o `presenceSweeper`, gerando `8` eventos de `ExecutionError` — `1` retry no aquecimento e `7` na rodada medida — todos recuperados sem perda nem duplicação por RF12) e memória padrão de `128 MB` na Lambda `app`.
 
 ## 7. Conclusão e trabalhos futuros
 

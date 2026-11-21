@@ -6,7 +6,7 @@
 
 ## 1. Preparação antes da apresentação (5 min antes)
 
-1. Abrir a URL HTTPS da distribuição CloudFront em duas janelas lado a lado (**Cliente A** e **Cliente B**), ambas na tela de entrada (`/entrar`), com o **DevTools → Console** aberto no Cliente A para exibir os logs de presença, reconexão e reenvio (seção 4.6 da [arquitetura](arquitetura.md)).
+1. Abrir a URL HTTPS da distribuição CloudFront em dois perfis/sessões de navegador distintos lado a lado (**Cliente A** e **Cliente B**), ambos na tela de entrada (`/entrar`), com o **DevTools → Console** aberto no Cliente A para exibir os logs de presença, reconexão e reenvio (seção 4.6 da [arquitetura](arquitetura.md)).
 2. Deixar uma terceira aba pronta no console da AWS com:
    - **CloudWatch → Dashboards → `HubWebSocket-dev`** (período `Últimos 15 minutos`, atualização automática ligada);
    - **CloudWatch → Log groups → `/aws/lambda/HubWebSocket-dev-app*`** (Live Tail ou filtro recente pronto).
@@ -37,14 +37,14 @@
 3. Ainda offline, enviar **duas mensagens** pelo **Cliente A** (elas ficam como pendentes na fila local) e enviar **uma mensagem** pelo **Cliente B** para Ana.
 4. Mostrar no Console do **Cliente A** os intervalos crescentes de backoff exponencial (`0 ms`, `1 s`, `2 s`, `4 s`…).
 5. Religar a rede (**Online** no DevTools):
-   - O Cliente A reconecta sozinho, executa `sync(since)` + `getHistory(after)` (recuados 30 s) e exibe o aviso **`Conectado novamente.`**.
+   - O Cliente A reconecta sozinho, executa `sync(since)` + `getHistory` (`after` recuado 30 s quando já há mensagens locais) e exibe o aviso **`Conectado novamente.`**.
    - As duas mensagens pendentes são reenviadas em ordem, uma por vez, com confirmação idempotente (RF12) e sem duplicação.
    - A mensagem enviada por Bruno enquanto Ana estava offline aparece exatamente uma vez e na mesma ordem cronológica (`sk`) nos dois clientes (RNF04).
 
 ### Bloco 4 — Telemetria no cliente, logs anonimizados e painel CloudWatch (2 min)
 **Requisitos evidenciados:** RNF03, RNF06, T8.
 
-1. No menu da conta do **Cliente A**, abrir **Telemetria e eventos** e ativar **Exibir latência (RTT) na barra superior** para mostrar o RTT em milissegundos e o registro de eventos (reconexões, presença, reenvios).
+1. No menu da conta do **Cliente A**, abrir **Telemetria e eventos** e ativar **Exibir latência (RTT) na barra superior** para mostrar o RTT em milissegundos e o registro de eventos (conexão/reconexões, presença, reenvios e latência).
 2. Alternar para a aba do **CloudWatch Logs**: mostrar uma linha JSON real com `route`, `result`, `durationMs` e `connectionId`/`username`/`conversationId` anonimizados em **12 caracteres hexadecimais** (`HMAC-SHA256` com segredo no SSM Parameter Store), sem nenhum identificador em claro nem texto das mensagens.
 3. Alternar para o **Dashboard `HubWebSocket-dev`**: exibir `ConnectCount`, `OpenConnections` (métrica customizada do `presenceSweeper`), `MessageCount`, `IntegrationLatency` e ausência de erros nas Lambdas.
 
@@ -52,7 +52,7 @@
 **Requisitos evidenciados:** RNF02, RNF04, R05, R06.
 
 1. Apresentar os gráficos da [avaliação de desempenho](avaliacao-desempenho.md) (2, 5 e 10 usuários simultâneos, aquecimento vs. rodada medida, consumo DynamoDB).
-2. Destacar: ordenação 100% consistente (110/110 mensagens únicas no T8), média de `368 ms` com 10 usuários simultâneos, redução de `56,4%` ao aquecer as Lambdas (R05), e o achado prático da cota inicial `ConcurrentExecutions = 10` da conta nova (recuperada sem perda pela fila idempotente).
+2. Destacar: ordenação 100% consistente (110/110 mensagens únicas no T8), média de `368,14 ms` com 10 usuários simultâneos, redução de `56,4%` ao aquecer as Lambdas (R05), e o achado prático da cota inicial `ConcurrentExecutions = 10` da conta nova (recuperada sem perda pela fila idempotente).
 
 ## 3. Pontos de atenção durante a demo
 
