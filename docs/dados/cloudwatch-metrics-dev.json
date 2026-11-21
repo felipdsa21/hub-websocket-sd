@@ -42,6 +42,7 @@
     {
       "id": "apigw_connect",
       "label": "APIGW ConnectCount",
+      "stat": "Sum",
       "datapoints": 4,
       "sum": 41,
       "avg": 10.25,
@@ -62,6 +63,7 @@
     {
       "id": "apigw_messages",
       "label": "APIGW MessageCount",
+      "stat": "Sum",
       "datapoints": 5,
       "sum": 1915,
       "avg": 383,
@@ -84,8 +86,9 @@
     {
       "id": "apigw_lat_avg",
       "label": "APIGW IntegrationLatency avg",
+      "stat": "Average",
       "datapoints": 5,
-      "sum": 3798.3,
+      "sum": null,
       "avg": 759.66,
       "max": 2362.4,
       "timestamps": [
@@ -106,8 +109,9 @@
     {
       "id": "apigw_lat_p95",
       "label": "APIGW IntegrationLatency p95",
+      "stat": "p95",
       "datapoints": 5,
-      "sum": 6897.28,
+      "sum": null,
       "avg": 1379.46,
       "max": 3637.42,
       "timestamps": [
@@ -128,6 +132,7 @@
     {
       "id": "apigw_err_int",
       "label": "APIGW IntegrationError",
+      "stat": "Sum",
       "datapoints": 5,
       "sum": 0,
       "avg": 0,
@@ -150,6 +155,7 @@
     {
       "id": "apigw_err_cli",
       "label": "APIGW ClientError",
+      "stat": "Sum",
       "datapoints": 5,
       "sum": 41,
       "avg": 8.2,
@@ -172,6 +178,7 @@
     {
       "id": "apigw_err_exe",
       "label": "APIGW ExecutionError",
+      "stat": "Sum",
       "datapoints": 5,
       "sum": 8,
       "avg": 1.6,
@@ -194,8 +201,9 @@
     {
       "id": "custom_open_conn",
       "label": "OpenConnections",
+      "stat": "Maximum",
       "datapoints": 5,
-      "sum": 29,
+      "sum": null,
       "avg": 5.8,
       "max": 9,
       "timestamps": [
@@ -216,6 +224,7 @@
     {
       "id": "fn_0_inv",
       "label": "Lambda app Invocations",
+      "stat": "Sum",
       "datapoints": 4,
       "sum": 183,
       "avg": 45.75,
@@ -236,6 +245,7 @@
     {
       "id": "fn_0_err",
       "label": "Lambda app Errors",
+      "stat": "Sum",
       "datapoints": 4,
       "sum": 0,
       "avg": 0,
@@ -256,8 +266,9 @@
     {
       "id": "fn_0_dur_avg",
       "label": "Lambda app Duration avg",
+      "stat": "Average",
       "datapoints": 4,
-      "sum": 1304.6,
+      "sum": null,
       "avg": 326.15,
       "max": 469.45,
       "timestamps": [
@@ -276,8 +287,9 @@
     {
       "id": "fn_0_dur_p95",
       "label": "Lambda app Duration p95",
+      "stat": "p95",
       "datapoints": 4,
-      "sum": 2748.62,
+      "sum": null,
       "avg": 687.16,
       "max": 1011.83,
       "timestamps": [
@@ -296,8 +308,9 @@
     {
       "id": "fn_0_dur_max",
       "label": "Lambda app Duration max",
+      "stat": "Maximum",
       "datapoints": 4,
-      "sum": 4022.95,
+      "sum": null,
       "avg": 1005.74,
       "max": 2130.56,
       "timestamps": [
@@ -316,6 +329,7 @@
     {
       "id": "fn_1_inv",
       "label": "Lambda connect Invocations",
+      "stat": "Sum",
       "datapoints": 5,
       "sum": 37,
       "avg": 7.4,
@@ -338,6 +352,7 @@
     {
       "id": "fn_1_err",
       "label": "Lambda connect Errors",
+      "stat": "Sum",
       "datapoints": 5,
       "sum": 0,
       "avg": 0,
@@ -360,8 +375,9 @@
     {
       "id": "fn_1_dur_avg",
       "label": "Lambda connect Duration avg",
+      "stat": "Average",
       "datapoints": 5,
-      "sum": 1960.36,
+      "sum": null,
       "avg": 392.07,
       "max": 682.57,
       "timestamps": [
@@ -382,8 +398,9 @@
     {
       "id": "fn_1_dur_p95",
       "label": "Lambda connect Duration p95",
+      "stat": "p95",
       "datapoints": 5,
-      "sum": 3090.33,
+      "sum": null,
       "avg": 618.07,
       "max": 900.48,
       "timestamps": [
@@ -404,8 +421,9 @@
     {
       "id": "fn_1_dur_max",
       "label": "Lambda connect Duration max",
+      "stat": "Maximum",
       "datapoints": 5,
-      "sum": 3129.2,
+      "sum": null,
       "avg": 625.84,
       "max": 918.06,
       "timestamps": [
@@ -426,6 +444,7 @@
     {
       "id": "fn_2_inv",
       "label": "Lambda default Invocations",
+      "stat": "Sum",
       "datapoints": 2,
       "sum": 4,
       "avg": 2,
@@ -442,6 +461,7 @@
     {
       "id": "fn_2_err",
       "label": "Lambda default Errors",
+      "stat": "Sum",
       "datapoints": 2,
       "sum": 0,
       "avg": 0,
@@ -458,8 +478,9 @@
     {
       "id": "fn_2_dur_avg",
       "label": "Lambda default Duration avg",
+      "stat": "Average",
       "datapoints": 2,
-      "sum": 773.61,
+      "sum": null,
       "avg": 386.81,
       "max": 676.76,
       "timestamps": [
@@ -474,8 +495,9 @@
     {
       "id": "fn_2_dur_p95",
       "label": "Lambda default Duration p95",
+      "stat": "p95",
       "datapoints": 2,
-      "sum": 1348.64,
+      "sum": null,
       "avg": 674.32,
       "max": 1227.98,
       "timestamps": [
@@ -490,8 +512,9 @@
     {
       "id": "fn_2_dur_max",
       "label": "Lambda default Duration max",
+      "stat": "Maximum",
       "datapoints": 2,
-      "sum": 1357.25,
+      "sum": null,
       "avg": 678.63,
       "max": 1236.22,
       "timestamps": [
@@ -506,6 +529,7 @@
     {
       "id": "fn_3_inv",
       "label": "Lambda disconnect Invocations",
+      "stat": "Sum",
       "datapoints": 4,
       "sum": 20,
       "avg": 5,
@@ -526,6 +550,7 @@
     {
       "id": "fn_3_err",
       "label": "Lambda disconnect Errors",
+      "stat": "Sum",
       "datapoints": 4,
       "sum": 0,
       "avg": 0,
@@ -546,8 +571,9 @@
     {
       "id": "fn_3_dur_avg",
       "label": "Lambda disconnect Duration avg",
+      "stat": "Average",
       "datapoints": 4,
-      "sum": 2621.44,
+      "sum": null,
       "avg": 655.36,
       "max": 1019.19,
       "timestamps": [
@@ -566,8 +592,9 @@
     {
       "id": "fn_3_dur_p95",
       "label": "Lambda disconnect Duration p95",
+      "stat": "p95",
       "datapoints": 4,
-      "sum": 4632.62,
+      "sum": null,
       "avg": 1158.16,
       "max": 2119.86,
       "timestamps": [
@@ -586,8 +613,9 @@
     {
       "id": "fn_3_dur_max",
       "label": "Lambda disconnect Duration max",
+      "stat": "Maximum",
       "datapoints": 4,
-      "sum": 4728.51,
+      "sum": null,
       "avg": 1182.13,
       "max": 2193.81,
       "timestamps": [
@@ -606,6 +634,7 @@
     {
       "id": "fn_4_inv",
       "label": "Lambda presenceSweeper Invocations",
+      "stat": "Sum",
       "datapoints": 5,
       "sum": 5,
       "avg": 1,
@@ -628,6 +657,7 @@
     {
       "id": "fn_4_err",
       "label": "Lambda presenceSweeper Errors",
+      "stat": "Sum",
       "datapoints": 5,
       "sum": 0,
       "avg": 0,
@@ -650,8 +680,9 @@
     {
       "id": "fn_4_dur_avg",
       "label": "Lambda presenceSweeper Duration avg",
+      "stat": "Average",
       "datapoints": 5,
-      "sum": 150708.58,
+      "sum": null,
       "avg": 30141.72,
       "max": 30159.04,
       "timestamps": [
@@ -672,8 +703,9 @@
     {
       "id": "fn_4_dur_p95",
       "label": "Lambda presenceSweeper Duration p95",
+      "stat": "p95",
       "datapoints": 5,
-      "sum": 150708.58,
+      "sum": null,
       "avg": 30141.72,
       "max": 30159.04,
       "timestamps": [
@@ -694,8 +726,9 @@
     {
       "id": "fn_4_dur_max",
       "label": "Lambda presenceSweeper Duration max",
+      "stat": "Maximum",
       "datapoints": 5,
-      "sum": 150708.58,
+      "sum": null,
       "avg": 30141.72,
       "max": 30159.04,
       "timestamps": [
@@ -716,6 +749,7 @@
     {
       "id": "ddb_0_rcu",
       "label": "DynamoDB Connections RCU",
+      "stat": "Sum",
       "datapoints": 5,
       "sum": 69,
       "avg": 13.8,
@@ -738,6 +772,7 @@
     {
       "id": "ddb_0_wcu",
       "label": "DynamoDB Connections WCU",
+      "stat": "Sum",
       "datapoints": 6,
       "sum": 240,
       "avg": 40,
@@ -762,6 +797,7 @@
     {
       "id": "ddb_0_thr",
       "label": "DynamoDB Connections Throttled",
+      "stat": "Sum",
       "datapoints": 0,
       "sum": 0,
       "avg": null,
@@ -772,6 +808,7 @@
     {
       "id": "ddb_1_rcu",
       "label": "DynamoDB Conversations RCU",
+      "stat": "Sum",
       "datapoints": 6,
       "sum": 345,
       "avg": 57.5,
@@ -796,6 +833,7 @@
     {
       "id": "ddb_1_wcu",
       "label": "DynamoDB Conversations WCU",
+      "stat": "Sum",
       "datapoints": 6,
       "sum": 176,
       "avg": 29.33,
@@ -820,6 +858,7 @@
     {
       "id": "ddb_1_thr",
       "label": "DynamoDB Conversations Throttled",
+      "stat": "Sum",
       "datapoints": 0,
       "sum": 0,
       "avg": null,
@@ -830,6 +869,7 @@
     {
       "id": "ddb_2_rcu",
       "label": "DynamoDB Memberships RCU",
+      "stat": "Sum",
       "datapoints": 6,
       "sum": 62,
       "avg": 10.33,
@@ -854,6 +894,7 @@
     {
       "id": "ddb_2_wcu",
       "label": "DynamoDB Memberships WCU",
+      "stat": "Sum",
       "datapoints": 5,
       "sum": 70,
       "avg": 14,
@@ -876,6 +917,7 @@
     {
       "id": "ddb_2_thr",
       "label": "DynamoDB Memberships Throttled",
+      "stat": "Sum",
       "datapoints": 0,
       "sum": 0,
       "avg": null,
@@ -886,6 +928,7 @@
     {
       "id": "ddb_3_rcu",
       "label": "DynamoDB Messages RCU",
+      "stat": "Sum",
       "datapoints": 5,
       "sum": 12,
       "avg": 2.4,
@@ -908,6 +951,7 @@
     {
       "id": "ddb_3_wcu",
       "label": "DynamoDB Messages WCU",
+      "stat": "Sum",
       "datapoints": 6,
       "sum": 576,
       "avg": 96,
@@ -932,6 +976,7 @@
     {
       "id": "ddb_3_thr",
       "label": "DynamoDB Messages Throttled",
+      "stat": "Sum",
       "datapoints": 0,
       "sum": 0,
       "avg": null,
@@ -942,6 +987,7 @@
     {
       "id": "ddb_4_rcu",
       "label": "DynamoDB Users RCU",
+      "stat": "Sum",
       "datapoints": 6,
       "sum": 1403,
       "avg": 233.83,
@@ -966,6 +1012,7 @@
     {
       "id": "ddb_4_wcu",
       "label": "DynamoDB Users WCU",
+      "stat": "Sum",
       "datapoints": 6,
       "sum": 105,
       "avg": 17.5,
@@ -990,6 +1037,7 @@
     {
       "id": "ddb_4_thr",
       "label": "DynamoDB Users Throttled",
+      "stat": "Sum",
       "datapoints": 0,
       "sum": 0,
       "avg": null,
