@@ -19,3 +19,12 @@ Exporta as métricas do API Gateway WebSocket, das cinco Lambdas, das cinco tabe
 node scripts/collect-cloudwatch-metrics.mjs --stage dev --start "2026-11-21T03:53:00Z" --end "2026-11-21T04:02:00Z" --sanitize --out docs/dados/cloudwatch-metrics-dev.json
 node scripts/collect-cloudwatch-metrics.mjs --self-test
 ```
+
+## Testes de integração no estágio dev (T3, T7, segurança e logs)
+
+Valida isolamento de conversas, histórico, ordenação concorrente, reenvio idempotente, presença/recuperação após desconexão, recusa de conexões inválidas, autorização `forbidden` (RNF01) e logs anonimizados no CloudWatch (RNF03).
+
+```sh
+node scripts/integration-tests-dev.mjs "wss://<api-id>.execute-api.sa-east-1.amazonaws.com/dev" --sanitize --out docs/dados/integration-report-dev.json
+node scripts/integration-tests-dev.mjs --self-test
+```
