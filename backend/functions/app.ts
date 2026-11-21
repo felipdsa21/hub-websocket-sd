@@ -32,6 +32,11 @@ export const handler = withRequestLog(async (event) => {
       ? body.messageId
       : undefined;
 
+  const bodyConversationId =
+    typeof body.conversationId === 'string' && body.conversationId
+      ? body.conversationId
+      : undefined;
+
   const fail = async (
     owner: string | undefined,
     code: ErrorCode,
@@ -46,7 +51,12 @@ export const handler = withRequestLog(async (event) => {
       messageId,
       details,
     });
-    return { result: delivered ? 'error' : 'gone', code };
+    return {
+      result: delivered ? 'error' : 'gone',
+      code,
+      username: owner,
+      conversationId: bodyConversationId,
+    };
   };
 
   const username = await touch(connectionId, now);
@@ -54,7 +64,7 @@ export const handler = withRequestLog(async (event) => {
     // sendMessage closes silently so the client keeps the message pending and retries after reconnecting (RF12).
     if (routeKey === 'sendMessage') {
       await close(connectionId);
-      return { result: 'rejected', code: 'notRegistered' };
+      return { result: 'rejected', code: 'notRegistered', conversationId: bodyConversationId };
     }
     try {
       return await fail(undefined, 'notRegistered', 'This connection is not registered.');
@@ -69,7 +79,7 @@ export const handler = withRequestLog(async (event) => {
 
   if (routeKey === 'heartbeat') {
     const delivered = await send(connectionId, username, { type: 'pong', requestId });
-    return { result: delivered ? 'ok' : 'gone' };
+    return { result: delivered ? 'ok' : 'gone', username };
   }
 
   const ctx: RequestContext = {
@@ -82,28 +92,37 @@ export const handler = withRequestLog(async (event) => {
       fail(username, code, message, details, messageId ?? rawMessageId),
     reply: async (data) => {
       const delivered = await sendResponse(connectionId, username, requestId, data);
-      return { result: delivered ? 'ok' : 'gone' };
+      return { result: delivered ? 'ok' : 'gone', username, conversationId: bodyConversationId };
     },
   };
 
-  switch (routeKey) {
-    case 'sync':
-      return handleSync(ctx);
-    case 'sendMessage':
-      return handleSendMessage(ctx);
-    case 'openDirect':
-      return handleOpenDirect(ctx);
-    case 'createGroup':
-      return handleCreateGroup(ctx);
-    case 'addMember':
-      return handleAddMember(ctx);
-    case 'leaveGroup':
-      return handleLeaveGroup(ctx);
-    case 'getHistory':
-      return handleGetHistory(ctx);
-    case 'search':
-      return handleSearch(ctx);
-    default:
-      throw new Error(`Route ${routeKey} is wired to app but not implemented`);
-  }
+  const dispatch = (): Promise<Outcome> => {
+    switch (routeKey) {
+      case 'sync':
+        return handleSync(ctx);
+      case 'sendMessage':
+        return handleSendMessage(ctx);
+      case 'openDirect':
+        return handleOpenDirect(ctx);
+      case 'createGroup':
+        return handleCreateGroup(ctx);
+      case 'addMember':
+        return handleAddMember(ctx);
+      case 'leaveGroup':
+        return handleLeaveGroup(ctx);
+      case 'getHistory':
+        return handleGetHistory(ctx);
+      case 'search':
+        return handleSearch(ctx);
+      default:
+        throw new Error(`Route ${routeKey} is wired to app but not implemented`);
+    }
+  };
+
+  const outcome = await dispatch();
+  return {
+    ...outcome,
+    username: outcome.username ?? username,
+    conversationId: outcome.conversationId ?? bodyConversationId,
+  };
 });

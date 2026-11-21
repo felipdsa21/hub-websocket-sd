@@ -20,7 +20,7 @@ export const handler = withRequestLog(async (event) => {
       requestId: typeof requestId === 'string' ? requestId : undefined,
       messageId: typeof messageId === 'string' ? messageId : undefined,
     });
-    return { result: delivered ? 'error' : 'gone', code };
+    return { result: delivered ? 'error' : 'gone', code, username };
   } finally {
     if (!username) await close(connectionId);
   }

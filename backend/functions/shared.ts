@@ -4,6 +4,7 @@ import {
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
 import { DynamoDBClient, TransactionCanceledException } from '@aws-sdk/client-dynamodb';
+import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import {
   DeleteCommand,
   DynamoDBDocumentClient,
@@ -11,9 +12,11 @@ import {
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
+import { createHmac } from 'node:crypto';
 
 export const db = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 export const api = new ApiGatewayManagementApiClient({ endpoint: process.env.CALLBACK_URL });
+export const ssm = new SSMClient({});
 
 // A connection id enters Users.connections before the handshake ends, and a postToConnection in that window also answers 410.
 const HANDSHAKE_GRACE_MS = 30_000;
@@ -69,22 +72,56 @@ export async function withConflictRetry<T>(operation: () => Promise<T>): Promise
   }
 }
 
-/** `gone`: the reply was not delivered because the connection answered 410. */
-export type LogResult = 'ok' | 'error' | 'rejected' | 'gone';
+/** `duplicate`: a resent message already stored (RF12); `gone`: reply not delivered because the connection answered 410. */
+export type LogResult = 'ok' | 'duplicate' | 'error' | 'rejected' | 'gone';
 
 /** What a handler reports about its request; `statusCode` matters only to $connect, where it decides the handshake. */
 export interface Outcome {
   result: LogResult;
   code?: ErrorCode;
   statusCode?: number;
+  username?: string;
+  conversationId?: string;
 }
 
-// shortcut: logs carry no identifiers until the SSM secret for the HMAC exists (architecture, section 5), week 6.
+/** First 12 hex characters of HMAC-SHA256(secret, value), keeping logs correlatable without raw ids (section 5). */
+export function anonymize(value: string, secret: string): string {
+  return createHmac('sha256', secret).update(value).digest('hex').slice(0, 12);
+}
+
+let hmacSecretPromise: Promise<string> | undefined;
+
+/** Clears the cached SSM secret (for unit tests). */
+export function resetHmacSecretCache() {
+  hmacSecretPromise = undefined;
+}
+
+async function getHmacSecret(): Promise<string | undefined> {
+  const paramName = process.env.LOG_HMAC_SECRET_PARAM;
+  if (!paramName) return undefined;
+  if (!hmacSecretPromise) {
+    hmacSecretPromise = ssm
+      .send(new GetParameterCommand({ Name: paramName, WithDecryption: true }))
+      .then((res) => {
+        if (!res.Parameter?.Value) throw new Error(`Empty SSM parameter ${paramName}`);
+        return res.Parameter.Value;
+      })
+      .catch((err) => {
+        hmacSecretPromise = undefined;
+        throw err;
+      });
+  }
+  return hmacSecretPromise;
+}
+
 export function log(entry: {
   route: string;
   result: LogResult;
   code?: ErrorCode;
   error?: string;
+  connectionId?: string;
+  username?: string;
+  conversationId?: string;
   durationMs: number;
 }) {
   console.log(JSON.stringify(entry));
@@ -104,6 +141,18 @@ export function rethrowFailures(failures: unknown[]): never {
   throw new AggregateError(failures, `${failures.length} operations failed`);
 }
 
+function anonymizeIds(
+  secret: string | undefined,
+  ids: { connectionId?: string; username?: string; conversationId?: string },
+) {
+  if (!secret) return {};
+  return {
+    ...(ids.connectionId && { connectionId: anonymize(ids.connectionId, secret) }),
+    ...(ids.username && { username: anonymize(ids.username, secret) }),
+    ...(ids.conversationId && { conversationId: anonymize(ids.conversationId, secret) }),
+  };
+}
+
 /**
  * Wraps a handler so that every request writes exactly one log line, including a request that throws (RNF03).
  * Durations count from requestTimeEpoch, when API Gateway received the request, so every route measures the same span.
@@ -112,16 +161,23 @@ export function withRequestLog(
   handle: (event: APIGatewayProxyWebsocketEventV2) => Promise<Outcome>,
 ) {
   return async (event: APIGatewayProxyWebsocketEventV2) => {
-    const { routeKey: route, requestTimeEpoch } = event.requestContext;
+    const { routeKey: route, requestTimeEpoch, connectionId } = event.requestContext;
+    const secret = await getHmacSecret().catch(() => undefined);
     try {
-      const { statusCode = 200, ...outcome } = await handle(event);
-      log({ route, ...outcome, durationMs: Date.now() - requestTimeEpoch });
+      const { statusCode = 200, username, conversationId, ...outcome } = await handle(event);
+      log({
+        route,
+        ...outcome,
+        ...anonymizeIds(secret, { connectionId, username, conversationId }),
+        durationMs: Date.now() - requestTimeEpoch,
+      });
       return { statusCode };
     } catch (err) {
       log({
         route,
         result: 'error',
         error: errorName(err),
+        ...anonymizeIds(secret, { connectionId }),
         durationMs: Date.now() - requestTimeEpoch,
       });
       throw err;
@@ -130,7 +186,7 @@ export function withRequestLog(
 }
 
 /** Unbinds a connection from its user (architecture, section 3.4). `username` is passed when a post to the connection answered 410. */
-export async function unbind(connectionId: string, username?: string) {
+export async function unbind(connectionId: string, username?: string): Promise<string | undefined> {
   const { Item } = await db.send(
     new GetCommand({
       TableName: process.env.CONNECTIONS_TABLE,
@@ -138,8 +194,8 @@ export async function unbind(connectionId: string, username?: string) {
       ConsistentRead: true,
     }),
   );
-  if (!Item && !username) return;
-  if (Item && username && Date.now() - Item.connectedAt < HANDSHAKE_GRACE_MS) return;
+  if (!Item && !username) return undefined;
+  if (Item && username && Date.now() - Item.connectedAt < HANDSHAKE_GRACE_MS) return Item.username;
   const owner: string = Item?.username ?? username;
 
   try {
@@ -166,6 +222,7 @@ export async function unbind(connectionId: string, username?: string) {
   await db.send(
     new DeleteCommand({ TableName: process.env.CONNECTIONS_TABLE, Key: { connectionId } }),
   );
+  return owner;
 }
 
 /** Refreshes lastSeenAt and resolves the connection's user; undefined when the connection has no record. */

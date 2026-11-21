@@ -1,6 +1,8 @@
 import { WebSocketApi, WebSocketStage } from 'aws-cdk-lib/aws-apigatewayv2';
 import { WebSocketLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import { Dashboard, GraphWidget, Metric, Stats } from 'aws-cdk-lib/aws-cloudwatch';
 import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
+import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Schedule, ScheduleExpression } from 'aws-cdk-lib/aws-scheduler';
@@ -67,6 +69,41 @@ export class BackendStack extends cdk.Stack {
     // Two scans of Connections 30 s apart plus the Users scan fit in 50 s (architecture, section 3.4).
     const sweeper = fn('presenceSweeper', 50);
 
+    // SecureString parameter created once per stage outside CDK (architecture, section 5).
+    const hmacParamName = `/hub-websocket/${props.stage}/log-hmac-secret`;
+    const hmacParamArn = cdk.Arn.format(
+      { service: 'ssm', resource: 'parameter', resourceName: hmacParamName.slice(1) },
+      this,
+    );
+    const ssmReadPolicy = new PolicyStatement({
+      actions: ['ssm:GetParameter'],
+      resources: [hmacParamArn],
+    });
+    // Decrypting an SSM SecureString encrypted with the AWS-managed key requires kms:Decrypt on aws/ssm.
+    const kmsDecryptPolicy = new PolicyStatement({
+      actions: ['kms:Decrypt'],
+      resources: [cdk.Arn.format({ service: 'kms', resource: 'key', resourceName: '*' }, this)],
+      conditions: {
+        StringEquals: { 'kms:ViaService': `ssm.${this.region}.amazonaws.com` },
+        'ForAnyValue:StringEquals': { 'kms:ResourceAliases': 'alias/aws/ssm' },
+      },
+    });
+    for (const f of [connect, disconnect, fallback, app]) {
+      f.addEnvironment('LOG_HMAC_SECRET_PARAM', hmacParamName);
+      f.addToRolePolicy(ssmReadPolicy);
+      f.addToRolePolicy(kmsDecryptPolicy);
+    }
+
+    const metricsNamespace = `HubWebSocket/${props.stage}`;
+    sweeper.addEnvironment('METRICS_NAMESPACE', metricsNamespace);
+    sweeper.addToRolePolicy(
+      new PolicyStatement({
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
+        conditions: { StringEquals: { 'cloudwatch:namespace': metricsNamespace } },
+      }),
+    );
+
     // No retries and the shortest event age: the next run, a minute later, redoes the same work (D05).
     sweeper.configureAsyncInvoke({ retryAttempts: 0, maxEventAge: cdk.Duration.seconds(60) });
     new Schedule(this, 'PresenceSweeperSchedule', {
@@ -102,6 +139,77 @@ export class BackendStack extends cdk.Stack {
       stage.grantManagementApiAccess(f);
     }
 
+    const period = cdk.Duration.minutes(1);
+    const apiMetric = (metricName: string, statistic: string, label: string) =>
+      new Metric({
+        namespace: 'AWS/ApiGateway',
+        metricName,
+        dimensionsMap: { ApiId: api.apiId, Stage: props.stage },
+        statistic,
+        label,
+        period,
+      });
+
+    // CloudWatch dashboard with API Gateway, Lambda and open-connections metrics (RNF06, section 5).
+    const dashboard = new Dashboard(this, 'Dashboard', {
+      dashboardName: `HubWebSocket-${props.stage}`,
+    });
+    dashboard.addWidgets(
+      new GraphWidget({
+        title: 'Conexões',
+        width: 12,
+        left: [
+          apiMetric('ConnectCount', Stats.SUM, 'ConnectCount'),
+          new Metric({
+            namespace: metricsNamespace,
+            metricName: 'OpenConnections',
+            statistic: Stats.MAXIMUM,
+            label: 'OpenConnections',
+            period,
+          }),
+        ],
+      }),
+      new GraphWidget({
+        title: 'Mensagens e requisições',
+        width: 12,
+        left: [
+          apiMetric('MessageCount', Stats.SUM, 'API Gateway MessageCount'),
+          app.metricInvocations({ period, label: 'Lambda app' }),
+          fallback.metricInvocations({ period, label: 'Lambda default' }),
+          connect.metricInvocations({ period, label: 'Lambda connect' }),
+          disconnect.metricInvocations({ period, label: 'Lambda disconnect' }),
+        ],
+      }),
+    );
+    dashboard.addWidgets(
+      new GraphWidget({
+        title: 'Erros',
+        width: 12,
+        left: [
+          apiMetric('IntegrationError', Stats.SUM, 'IntegrationError'),
+          apiMetric('ClientError', Stats.SUM, 'ClientError'),
+          apiMetric('ExecutionError', Stats.SUM, 'ExecutionError'),
+          connect.metricErrors({ period, label: 'connect errors' }),
+          disconnect.metricErrors({ period, label: 'disconnect errors' }),
+          fallback.metricErrors({ period, label: 'default errors' }),
+          app.metricErrors({ period, label: 'app errors' }),
+          sweeper.metricErrors({ period, label: 'presenceSweeper errors' }),
+        ],
+      }),
+      new GraphWidget({
+        title: 'Latência (ms)',
+        width: 12,
+        left: [
+          apiMetric('IntegrationLatency', Stats.AVERAGE, 'IntegrationLatency (avg)'),
+          apiMetric('IntegrationLatency', 'p95', 'IntegrationLatency (p95)'),
+          app.metricDuration({ period, statistic: Stats.AVERAGE, label: 'Lambda app (avg)' }),
+          app.metricDuration({ period, statistic: 'p95', label: 'Lambda app (p95)' }),
+        ],
+      }),
+    );
+
     new cdk.CfnOutput(this, 'WebSocketUrl', { value: stage.url });
+    new cdk.CfnOutput(this, 'DashboardName', { value: dashboard.dashboardName });
+    new cdk.CfnOutput(this, 'LogHmacSecretParam', { value: hmacParamName });
   }
 }

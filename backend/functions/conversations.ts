@@ -215,7 +215,10 @@ export async function handleOpenDirect(ctx: RequestContext): Promise<Outcome> {
 
   // Read member states after writing membership so subsequent presence changes are never missed (architecture, section 4.2).
   const users = await getUsers([me, target]);
-  return ctx.reply({ conversation: buildConversationPayload(conv, joinedAt, users) });
+  const outcome = await ctx.reply({
+    conversation: buildConversationPayload(conv, joinedAt, users),
+  });
+  return { ...outcome, conversationId: conv.conversationId };
 }
 
 export async function handleCreateGroup(ctx: RequestContext): Promise<Outcome> {
@@ -294,7 +297,8 @@ export async function handleCreateGroup(ctx: RequestContext): Promise<Outcome> {
   const users = await getUsers(allMembers);
   const conversation = buildConversationPayload(conv, now, users);
   await fanOut(allMembers, { type: 'conversationAdded', conversation }, users);
-  return ctx.reply({ conversation });
+  const outcome = await ctx.reply({ conversation });
+  return { ...outcome, conversationId: conv.conversationId };
 }
 
 export async function handleAddMember(ctx: RequestContext): Promise<Outcome> {
