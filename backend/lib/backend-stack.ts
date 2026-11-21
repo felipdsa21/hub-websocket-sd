@@ -1,18 +1,25 @@
 import { WebSocketApi, WebSocketStage } from 'aws-cdk-lib/aws-apigatewayv2';
 import { WebSocketLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import { CachePolicy, Distribution, ViewerProtocolPolicy } from 'aws-cdk-lib/aws-cloudfront';
+import { S3BucketOrigin } from 'aws-cdk-lib/aws-cloudfront-origins';
 import { Dashboard, GraphWidget, Metric, Stats } from 'aws-cdk-lib/aws-cloudwatch';
 import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
+import { BucketDeployment, Source } from 'aws-cdk-lib/aws-s3-deployment';
 import { Schedule, ScheduleExpression } from 'aws-cdk-lib/aws-scheduler';
 import { LambdaInvoke } from 'aws-cdk-lib/aws-scheduler-targets';
 import * as cdk from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 export interface BackendStackProps extends cdk.StackProps {
   stage: 'dev' | 'prod';
+  /** Path to the built Angular browser bundle; if present, deployed to S3 alongside config.json. */
+  frontendDistPath?: string;
 }
 
 // Application routes served by the app Lambda (architecture, section 4.1).
@@ -208,7 +215,68 @@ export class BackendStack extends cdk.Stack {
       }),
     );
 
+    // Static frontend hosted in a private S3 bucket behind CloudFront with OAC (D08, RNF07).
+    const frontendBucket = new Bucket(this, 'FrontendBucket', {
+      blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+      encryption: BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      removalPolicy,
+      autoDeleteObjects: props.stage !== 'prod',
+    });
+    const frontendOrigin = S3BucketOrigin.withOriginAccessControl(frontendBucket);
+    const distribution = new Distribution(this, 'FrontendDistribution', {
+      defaultRootObject: 'index.html',
+      defaultBehavior: {
+        origin: frontendOrigin,
+        viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        cachePolicy: CachePolicy.CACHING_OPTIMIZED,
+      },
+      additionalBehaviors: {
+        'config.json': {
+          origin: frontendOrigin,
+          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          cachePolicy: CachePolicy.CACHING_DISABLED,
+        },
+      },
+      // SPA fallback so deep links like /entrar or /c/<id> serve index.html.
+      errorResponses: [
+        {
+          httpStatus: 403,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+          ttl: cdk.Duration.seconds(0),
+        },
+        {
+          httpStatus: 404,
+          responseHttpStatus: 200,
+          responsePagePath: '/index.html',
+          ttl: cdk.Duration.seconds(0),
+        },
+      ],
+    });
+
+    const frontendDistPath =
+      props.frontendDistPath ??
+      path.join(__dirname, '..', '..', 'frontend', 'dist', 'hub-websocket-sd-frontend', 'browser');
+    const hasFrontendDist = fs.existsSync(frontendDistPath);
+    new BucketDeployment(this, 'FrontendDeployment', {
+      sources: [
+        ...(hasFrontendDist ? [Source.asset(frontendDistPath)] : []),
+        Source.jsonData('config.json', { websocketUrl: stage.url }),
+      ],
+      destinationBucket: frontendBucket,
+      distribution,
+      distributionPaths: ['/*'],
+      // Keep existing static assets in S3 when deploying backend changes without a local frontend build.
+      prune: hasFrontendDist,
+    });
+
     new cdk.CfnOutput(this, 'WebSocketUrl', { value: stage.url });
+    new cdk.CfnOutput(this, 'FrontendUrl', {
+      value: `https://${distribution.distributionDomainName}`,
+    });
+    new cdk.CfnOutput(this, 'FrontendBucketName', { value: frontendBucket.bucketName });
+    new cdk.CfnOutput(this, 'DistributionId', { value: distribution.distributionId });
     new cdk.CfnOutput(this, 'DashboardName', { value: dashboard.dashboardName });
     new cdk.CfnOutput(this, 'LogHmacSecretParam', { value: hmacParamName });
   }
