@@ -18,6 +18,8 @@
 | `ClientError` | 41 | 8,20 | 17 | Recusas intencionais dos testes de segurança (`$connect` 400 e `$default`) |
 | `ExecutionError` | 8 | 1,60 | 8 | Throttling por cota `ConcurrentExecutions = 10` da conta nova, recuperado por RF12 |
 
+> **Nota sobre médias de janela:** para métricas de contagem (`ConnectCount`, `MessageCount`, `ClientError`, `ExecutionError`), `Média/min` representa a média entre os minutos com datapoints no CloudWatch (`4` ou `5` minutos ativos dentro da janela de 9 minutos). Para `IntegrationLatency` e `OpenConnections`, a coluna mostra a média simples das janelas de 1 minuto (ponderada por `MessageCount`, a `IntegrationLatency` média global nas `1.915` entregas foi de `455,81 ms`, já que o minuto de cold start `00:53` teve apenas `27` mensagens a `2.362,40 ms` e o minuto de pico `00:56` teve `1.278` mensagens a `475,38 ms`).
+
 ## 2. Funções Lambda
 
 Todas as funções rodaram com memória padrão de `128 MB` (`Node.js 22.x`) e **zero erros de execução** (`Errors = 0`).
@@ -30,7 +32,7 @@ Todas as funções rodaram com memória padrão de `128 MB` (`Node.js 22.x`) e *
 | `default` | 4 | 0 | 386,81 | 674,32 | 1.236,22 |
 | `presenceSweeper` | 5 | 0 | 30.141,72 | 30.141,72 | 30.159,04 |
 
-A duração estável de ~`30,14 s` do `presenceSweeper` corresponde exatamente à espera configurada de `30 s` entre a primeira e a segunda varredura de `Connections` (seção 3.4 da arquitetura).
+Os valores de `Duração média` e `Duração p95` na tabela correspondem à média simples das séries de 1 minuto exportadas pelo CloudWatch (sem ponderação pelo volume de invocações por minuto; ponderada por invocações, a duração média de `app` foi de `393,82 ms`, com pico de p95 em 1 minuto de `1.011,83 ms`). A duração estável de ~`30,14 s` do `presenceSweeper` corresponde exatamente à espera configurada de `30 s` entre a primeira e a segunda varredura de `Connections` (seção 3.4 da arquitetura).
 
 ## 3. DynamoDB (modo on-demand)
 

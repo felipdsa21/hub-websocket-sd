@@ -13,13 +13,33 @@ import { writeFileSync } from 'node:fs';
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 ? process.argv[i + 1] : fallback;
+  return i >= 0 && i + 1 < process.argv.length && !process.argv[i + 1].startsWith('--')
+    ? process.argv[i + 1]
+    : fallback;
 }
 
 const selfTest = process.argv.includes('--self-test');
 const sanitize = process.argv.includes('--sanitize');
 
-function summarizeMetricResult(r) {
+function mergeMetricResults(results) {
+  const byId = new Map();
+  for (const r of results ?? []) {
+    const existing = byId.get(r.Id);
+    if (!existing) {
+      byId.set(r.Id, {
+        ...r,
+        Timestamps: [...(r.Timestamps ?? [])],
+        Values: [...(r.Values ?? [])],
+      });
+    } else {
+      existing.Timestamps.push(...(r.Timestamps ?? []));
+      existing.Values.push(...(r.Values ?? []));
+    }
+  }
+  return [...byId.values()];
+}
+
+function summarizeMetricResult(r, stat = 'Sum') {
   const values = r.Values ?? [];
   const total = values.reduce((a, b) => a + b, 0);
   const avg = values.length ? total / values.length : null;
@@ -27,8 +47,10 @@ function summarizeMetricResult(r) {
   return {
     id: r.Id,
     label: r.Label,
+    stat,
     datapoints: values.length,
-    sum: Number(total.toFixed(2)),
+    // Sum is only meaningful for additive Sum metrics, not Average/p95/Maximum stats.
+    sum: stat === 'Sum' ? Number(total.toFixed(2)) : null,
     avg: avg !== null ? Number(avg.toFixed(2)) : null,
     max: max !== null ? Number(max.toFixed(2)) : null,
     timestamps: r.Timestamps ?? [],
@@ -38,11 +60,34 @@ function summarizeMetricResult(r) {
 
 if (selfTest) {
   const s = summarizeMetricResult({ Id: 'x', Label: 'Test', Values: [10, 20, 30], Timestamps: ['t1', 't2', 't3'] });
-  if (s.datapoints !== 3 || s.sum !== 60 || s.avg !== 20 || s.max !== 30) {
-    console.error('Self-test failed:', s);
+  const a = summarizeMetricResult(
+    { Id: 'y', Label: 'Latency', Values: [100, 200], Timestamps: ['t1', 't2'] },
+    'Average',
+  );
+  const emptyAvg = summarizeMetricResult({ Id: 'z', Label: 'Empty', Values: [], Timestamps: [] }, 'p95');
+  const merged = mergeMetricResults([
+    { Id: 'm', Label: 'Paged', Timestamps: ['t2'], Values: [2] },
+    { Id: 'm', Label: 'Paged', Timestamps: ['t1'], Values: [1] },
+  ]);
+  if (
+    s.stat !== 'Sum' ||
+    s.datapoints !== 3 ||
+    s.sum !== 60 ||
+    s.avg !== 20 ||
+    s.max !== 30 ||
+    a.stat !== 'Average' ||
+    a.sum !== null ||
+    a.avg !== 150 ||
+    a.max !== 200 ||
+    emptyAvg.sum !== null ||
+    emptyAvg.avg !== null ||
+    merged.length !== 1 ||
+    merged[0].Values.length !== 2
+  ) {
+    console.error('Self-test failed:', { s, a, emptyAvg, merged });
     process.exit(1);
   }
-  console.log('Self-test passed:', s);
+  console.log('Self-test passed:', { sumExample: s, avgExample: a });
   process.exit(0);
 }
 
@@ -50,10 +95,17 @@ const stage = arg('stage', 'dev');
 const region = arg('region', 'sa-east-1');
 const stackName = `HubWebSocket-${stage}`;
 const endIso = arg('end', new Date().toISOString());
-const startIso = arg(
-  'start',
-  new Date(new Date(endIso).getTime() - 15 * 60 * 1000).toISOString(),
-);
+const endMs = Date.parse(endIso);
+if (Number.isNaN(endMs)) {
+  console.error(`Invalid --end timestamp: ${endIso}`);
+  process.exit(1);
+}
+const startIso = arg('start', new Date(endMs - 15 * 60 * 1000).toISOString());
+const startMs = Date.parse(startIso);
+if (Number.isNaN(startMs) || startMs >= endMs) {
+  console.error(`Invalid time window: start=${startIso}, end=${endIso}`);
+  process.exit(1);
+}
 const outPath = arg('out', undefined);
 
 function awsJson(args) {
@@ -134,7 +186,10 @@ const response = awsJson([
   JSON.stringify(queries),
 ]);
 
-const summary = response.MetricDataResults.map(summarizeMetricResult);
+const statById = new Map(queries.map((q) => [q.Id, q.MetricStat.Stat]));
+const summary = mergeMetricResults(response.MetricDataResults).map((r) =>
+  summarizeMetricResult(r, statById.get(r.Id)),
+);
 
 const report = {
   stackName,
