@@ -14,7 +14,7 @@ async function render(scenarios: readonly Scenario[] = []) {
   await fixture.whenStable();
   const element = fixture.nativeElement as HTMLElement;
   const inputs = element.querySelectorAll('input');
-  const button = element.querySelector('button')!;
+  const button = element.querySelector<HTMLButtonElement>('button[type="submit"]')!;
   const type = async (index: number, value: string) => {
     const input = inputs[index]!;
     input.value = value;
@@ -63,5 +63,21 @@ describe('LoginPage', () => {
       'Não foi possível conectar. Tente de novo.',
     );
     expect(TestBed.inject(SessionStore).user()).toBeNull();
+  });
+
+  it('toggles dark mode from the entry screen', async () => {
+    localStorage.clear();
+    document.documentElement.classList.remove('theme-dark', 'theme-light');
+    const { element, fixture } = await render();
+    const toggle = element.querySelector<HTMLButtonElement>('button[aria-pressed]')!;
+
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    toggle.click();
+    await fixture.whenStable();
+
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(document.documentElement.classList.contains('theme-dark')).toBe(true);
+    document.documentElement.classList.remove('theme-dark', 'theme-light');
+    localStorage.clear();
   });
 });

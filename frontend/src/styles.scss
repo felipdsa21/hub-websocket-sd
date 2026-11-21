@@ -3,6 +3,7 @@
 
 html {
   height: 100%;
+  color-scheme: light dark;
   @include mat.theme(
     (
       color: (
@@ -51,6 +52,14 @@ html {
   );
 
   --hub-presence-online: light-dark(#2e7d32, #7fd88f);
+}
+
+html.theme-light {
+  color-scheme: only light;
+}
+
+html.theme-dark {
+  color-scheme: only dark;
 }
 
 // The kit draws supporting text in on-surface-variant; Material's hint inherits on-surface.
@@ -140,7 +149,6 @@ mat-hint {
 }
 
 body {
-  color-scheme: light dark;
   background-color: var(--mat-sys-surface);
   color: var(--mat-sys-on-surface);
   font: var(--mat-sys-body-medium);
