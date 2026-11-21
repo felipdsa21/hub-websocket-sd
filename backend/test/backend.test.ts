@@ -1,5 +1,8 @@
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as cdk from 'aws-cdk-lib/core';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { BackendStack } from '../lib/backend-stack';
 
 const template = Template.fromStack(
@@ -124,18 +127,44 @@ test('creates the CloudWatch dashboard with all 4 widgets and allows sweeper to 
 });
 
 test('hosts the static frontend in a private S3 bucket behind CloudFront with OAC (D08, RNF07)', () => {
-  template.hasResourceProperties('AWS::S3::Bucket', {
-    PublicAccessBlockConfiguration: {
-      BlockPublicAcls: true,
-      BlockPublicPolicy: true,
-      IgnorePublicAcls: true,
-      RestrictPublicBuckets: true,
+  template.hasResource('AWS::S3::Bucket', {
+    DeletionPolicy: 'Delete',
+    Properties: {
+      BucketEncryption: {
+        ServerSideEncryptionConfiguration: [
+          { ServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } },
+        ],
+      },
+      PublicAccessBlockConfiguration: {
+        BlockPublicAcls: true,
+        BlockPublicPolicy: true,
+        IgnorePublicAcls: true,
+        RestrictPublicBuckets: true,
+      },
+    },
+  });
+  template.hasResourceProperties('AWS::S3::BucketPolicy', {
+    PolicyDocument: {
+      Statement: Match.arrayWith([
+        Match.objectLike({
+          Effect: 'Deny',
+          Action: 's3:*',
+          Condition: { Bool: { 'aws:SecureTransport': 'false' } },
+        }),
+        Match.objectLike({
+          Effect: 'Allow',
+          Action: 's3:GetObject',
+          Principal: { Service: 'cloudfront.amazonaws.com' },
+          Condition: { StringEquals: { 'AWS:SourceArn': Match.anyValue() } },
+        }),
+      ]),
     },
   });
   template.hasResourceProperties('AWS::CloudFront::OriginAccessControl', {
     OriginAccessControlConfig: Match.objectLike({
       OriginAccessControlOriginType: 's3',
       SigningBehavior: 'always',
+      SigningProtocol: 'sigv4',
     }),
   });
   template.hasResourceProperties('AWS::CloudFront::Distribution', {
@@ -144,11 +173,53 @@ test('hosts the static frontend in a private S3 bucket behind CloudFront with OA
       DefaultCacheBehavior: Match.objectLike({
         ViewerProtocolPolicy: 'redirect-to-https',
       }),
+      CacheBehaviors: Match.arrayWith([
+        Match.objectLike({
+          PathPattern: 'config.json',
+          ViewerProtocolPolicy: 'redirect-to-https',
+          // Managed CachingDisabled policy ID.
+          CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
+        }),
+      ]),
       CustomErrorResponses: Match.arrayWith([
         Match.objectLike({ ErrorCode: 403, ResponseCode: 200, ResponsePagePath: '/index.html' }),
         Match.objectLike({ ErrorCode: 404, ResponseCode: 200, ResponsePagePath: '/index.html' }),
       ]),
     }),
   });
+  template.hasResourceProperties('Custom::CDKBucketDeployment', {
+    Prune: false,
+    DistributionPaths: ['/*'],
+  });
+  const deployments = template.findResources('Custom::CDKBucketDeployment');
+  const markersStr = JSON.stringify(Object.values(deployments)[0]!.Properties.SourceMarkers);
+  expect(markersStr).toContain('wss://');
+  expect(markersStr).toContain('/dev');
   template.hasOutput('FrontendUrl', {});
+  template.hasOutput('FrontendBucketName', {});
+  template.hasOutput('DistributionId', {});
+});
+
+test('prunes stale assets only when frontendDistPath exists and retains frontend bucket in prod', () => {
+  const distDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-frontend-dist-'));
+  try {
+    fs.writeFileSync(path.join(distDir, 'index.html'), '<!doctype html>');
+    const prodTemplate = Template.fromStack(
+      new BackendStack(new cdk.App(), 'ProdTest', {
+        stage: 'prod',
+        frontendDistPath: distDir,
+      }),
+    );
+    prodTemplate.hasResource('AWS::S3::Bucket', {
+      DeletionPolicy: 'Retain',
+      UpdateReplacePolicy: 'Retain',
+    });
+    prodTemplate.resourceCountIs('Custom::S3AutoDeleteObjects', 0);
+    prodTemplate.hasResourceProperties('Custom::CDKBucketDeployment', {
+      Prune: true,
+      DistributionPaths: ['/*'],
+    });
+  } finally {
+    fs.rmSync(distDir, { recursive: true, force: true });
+  }
 });

@@ -258,15 +258,17 @@ export class BackendStack extends cdk.Stack {
     const frontendDistPath =
       props.frontendDistPath ??
       path.join(__dirname, '..', '..', 'frontend', 'dist', 'hub-websocket-sd-frontend', 'browser');
-    const frontendSources = [
-      ...(fs.existsSync(frontendDistPath) ? [Source.asset(frontendDistPath)] : []),
-      Source.jsonData('config.json', { websocketUrl: stage.url }),
-    ];
+    const hasFrontendDist = fs.existsSync(frontendDistPath);
     new BucketDeployment(this, 'FrontendDeployment', {
-      sources: frontendSources,
+      sources: [
+        ...(hasFrontendDist ? [Source.asset(frontendDistPath)] : []),
+        Source.jsonData('config.json', { websocketUrl: stage.url }),
+      ],
       destinationBucket: frontendBucket,
       distribution,
       distributionPaths: ['/*'],
+      // Keep existing static assets in S3 when deploying backend changes without a local frontend build.
+      prune: hasFrontendDist,
     });
 
     new cdk.CfnOutput(this, 'WebSocketUrl', { value: stage.url });
