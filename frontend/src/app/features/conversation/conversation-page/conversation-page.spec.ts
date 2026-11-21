@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { provideTestFixtures } from '@/core/fixtures/testing';
 import {
   ALICE_BRUNO,
@@ -162,5 +162,25 @@ describe('ConversationPage', () => {
     await pageFixture.whenStable();
     expect(root.querySelector('app-screen-header h1')?.textContent?.trim()).toBe('Bruno Lima');
     expect(root.querySelector('app-screen-header h2')).toBeNull();
+  });
+
+  it('does not redirect to / while signing out so /entrar navigation is not cancelled', async () => {
+    TestBed.resetTestingModule();
+    await TestBed.configureTestingModule({
+      imports: [ConversationPage],
+      providers: [provideRouter([]), ...provideTestFixtures()],
+    }).compileComponents();
+
+    const session = TestBed.inject(SessionStore);
+    await session.enter('marina', 'Marina Alves');
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    const pageFixture = TestBed.createComponent(ConversationPage);
+    pageFixture.componentRef.setInput('conversationId', 'd:bruno:marina');
+    await pageFixture.whenStable();
+
+    session.leave();
+    await pageFixture.whenStable();
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

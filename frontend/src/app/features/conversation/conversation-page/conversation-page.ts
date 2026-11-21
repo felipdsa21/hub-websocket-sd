@@ -163,9 +163,10 @@ export class ConversationPage {
       });
     });
 
-    // A conversation the user left or never had goes back to the list.
+    // A conversation the user left or never had goes back to the list (skip while signing out so
+    // `navigateByUrl('/')` doesn't cancel the redirect to `/entrar`).
     effect(() => {
-      if (!this.conversation() && !this.conversations.loading()) {
+      if (this.currentUser.user() && !this.conversation() && !this.conversations.loading()) {
         void this.router.navigateByUrl('/');
       }
     });
