@@ -3,6 +3,7 @@
 import json
 import pathlib
 import sys
+import xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "docs" / "dados"
@@ -27,6 +28,7 @@ def grouped_bar_svg(
     y_unit: str,
     y_max: float,
     ref_line: tuple[float, str, str] | None = None,
+    val_fmt: str = ".0f",
 ) -> str:
     w, h = 780, 420
     ml, mr, mt, mb = 74, 30, 82, 76
@@ -34,6 +36,11 @@ def grouped_bar_svg(
 
     def y_pos(v: float) -> float:
         return mt + ph - (min(v, y_max) / y_max) * ph
+
+    def fmt_val(v: float) -> str:
+        if val_fmt == ".0f":
+            return str(int(v + 0.5))
+        return format(v, val_fmt).replace(".", ",")
 
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img" aria-label="{esc(title)}">',
@@ -43,6 +50,7 @@ def grouped_bar_svg(
         ".sub { font-size: 12px; fill: #4b5563; }",
         ".axis { font-size: 11px; fill: #4b5563; }",
         ".val { font-size: 10px; font-weight: 600; fill: #111827; }",
+        ".ref { font-size: 10px; font-weight: 600; }",
         ".legend { font-size: 11px; }",
         "</style>",
         f'<rect width="{w}" height="{h}" rx="8" fill="#ffffff" stroke="#e5e7eb"/>',
@@ -58,6 +66,17 @@ def grouped_bar_svg(
         parts.append(f'<line x1="{ml}" y1="{yp:.1f}" x2="{w - mr}" y2="{yp:.1f}" stroke="#e5e7eb"/>')
         parts.append(
             f'<text x="{ml - 10}" y="{yp + 4:.1f}" text-anchor="end" class="axis">{val:.0f} {esc(y_unit)}</text>'
+        )
+
+    # Optional reference line behind bars; label placed on the left over the low-load group
+    if ref_line:
+        rv, rlabel, rcolor = ref_line
+        ry = y_pos(rv)
+        parts.append(
+            f'<line x1="{ml}" y1="{ry:.1f}" x2="{w - mr}" y2="{ry:.1f}" stroke="{rcolor}" stroke-width="1.8" stroke-dasharray="6,4"/>'
+        )
+        parts.append(
+            f'<text x="{ml + 6}" y="{ry - 6:.1f}" text-anchor="start" class="ref" fill="{rcolor}">{esc(rlabel)}</text>'
         )
 
     # Axes
@@ -83,22 +102,11 @@ def grouped_bar_svg(
                 f'<rect x="{bx:.1f}" y="{by:.1f}" width="{bar_w:.1f}" height="{bh:.1f}" rx="3" fill="{color}"/>'
             )
             parts.append(
-                f'<text x="{bx + bar_w / 2:.1f}" y="{by - 5:.1f}" text-anchor="middle" class="val">{val:.0f}</text>'
+                f'<text x="{bx + bar_w / 2:.1f}" y="{by - 5:.1f}" text-anchor="middle" class="val">{esc(fmt_val(val))}</text>'
             )
         cx = ml + gi * group_w + group_w / 2
         parts.append(
             f'<text x="{cx:.1f}" y="{mt + ph + 20}" text-anchor="middle" class="axis" font-weight="600">{esc(glabel)}</text>'
-        )
-
-    # Optional reference line
-    if ref_line:
-        rv, rlabel, rcolor = ref_line
-        ry = y_pos(rv)
-        parts.append(
-            f'<line x1="{ml}" y1="{ry:.1f}" x2="{w - mr}" y2="{ry:.1f}" stroke="{rcolor}" stroke-width="1.8" stroke-dasharray="6,4"/>'
-        )
-        parts.append(
-            f'<text x="{w - mr - 4}" y="{ry - 6:.1f}" text-anchor="end" class="val" fill="{rcolor}">{esc(rlabel)}</text>'
         )
 
     # Legend
@@ -115,8 +123,12 @@ def grouped_bar_svg(
 
 def main() -> None:
     if "--self-test" in sys.argv:
-        svg = grouped_bar_svg("T", "S", ["A"], [("X", "#2563eb", [10.0])], "ms", 100.0)
-        assert svg.startswith("<svg") and svg.strip().endswith("</svg>")
+        svg = grouped_bar_svg(
+            "T", "S", ["A"], [("X", "#2563eb", [10.5])], "ms", 100.0, ref_line=(50.0, "Meta", "#b91c1c"), val_fmt=".1f"
+        )
+        root = ET.fromstring(svg)
+        assert root.tag.endswith("svg")
+        assert "10,5" in svg and 'class="ref" fill="#b91c1c"' in svg
         print("Self-test passed")
         return
 
@@ -174,6 +186,7 @@ def main() -> None:
         ],
         "/s",
         180.0,
+        val_fmt=".1f",
     )
     (OUT / "t8-vazao-por-carga.svg").write_text(thr_svg)
 
