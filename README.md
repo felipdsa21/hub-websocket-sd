@@ -15,7 +15,7 @@ O cliente web, em Angular, abre uma conexão WebSocket persistente com o API Gat
 - [Sessão](docs/sessao.md): ciclo de vida da sessão, com o handshake, os frames e o diretório de conexões.
 - [Sincronização e consistência](docs/sincronizacao.md): ordenação de mensagens, deduplicação, consistência no DynamoDB e ciclo de vida das conversas.
 - [Tolerância a falhas](docs/tolerancia-falhas.md): conexões órfãs (`410 Gone`), isolamento de falhas na difusão, expiração por inatividade e recuperação de estado.
-- [Observabilidade e implantação](docs/observabilidade-implantacao.md): logs anonimizados via HMAC, métricas e painel no CloudWatch e pipeline de empacotamento/deploy (CDK, S3 e CloudFront).
+- [Observabilidade e implantação](docs/observabilidade-implantacao.md): logs anonimizados via HMAC, métricas e painel no CloudWatch e processo de empacotamento e implantação (CDK, S3 e CloudFront).
 - [Design no Figma](https://www.figma.com/design/ThG8NUReHI5c9tYzXdaU6z/Hub-Colaborativo-WebSocket): telas e componentes da interface.
 
 ## Estrutura
