@@ -21,6 +21,20 @@
   </mat-chip-set>
 }
 
+@switch (status()) {
+  @case ('loading') {
+    <div class="state">
+      <mat-progress-spinner mode="indeterminate" diameter="32" aria-label="Pesquisando pessoas" />
+    </div>
+  }
+  @case ('error') {
+    <div class="state error" role="alert">
+      <span>Não foi possível pesquisar.</span>
+      <button matButton (click)="retry()">Tentar de novo</button>
+    </div>
+  }
+}
+
 <ul class="plain-list" aria-label="Pessoas encontradas">
   @for (user of results(); track user.username) {
     <li>

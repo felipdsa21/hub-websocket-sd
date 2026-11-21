@@ -14,3 +14,16 @@ mat-chip-set {
 ul {
   margin: 8px -16px 0;
 }
+
+.state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0 0;
+  font: var(--mat-sys-body-medium);
+  color: var(--mat-sys-on-surface-variant);
+
+  &.error {
+    justify-content: space-between;
+  }
+}

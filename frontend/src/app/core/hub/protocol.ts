@@ -40,6 +40,12 @@ export interface HistoryPage {
   readonly hasMore: boolean;
 }
 
+/** The answer of `search`: people with a visible direct chat come only as that chat (4.5). */
+export interface SearchData {
+  readonly conversations: readonly ServerConversation[];
+  readonly people: readonly UserState[];
+}
+
 /** Events that aren't the answer to a request. */
 export type HubEvent =
   | ({ readonly type: 'message' } & Message)
