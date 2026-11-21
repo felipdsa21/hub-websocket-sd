@@ -34,13 +34,14 @@ aws ssm put-parameter \
   --value "$(openssl rand -hex 32)"
 ```
 
-Depois, a cada mudança:
+Depois, compile o frontend (para que o `BucketDeployment` publique os arquivos estáticos junto com o `config.json` gerado automaticamente a partir de `WebSocketUrl`) e implante o stack:
 
 ```sh
+(cd ../frontend && npm ci && npm run build)
 npx cdk deploy HubWebSocket-dev
 ```
 
-A saída `WebSocketUrl` traz o endereço `wss://` do estágio.
+As saídas trazem `WebSocketUrl` (endereço `wss://` do estágio), `FrontendUrl` (URL HTTPS pública do CloudFront) e `DashboardName` (painel no CloudWatch).
 
 ## Teste manual
 

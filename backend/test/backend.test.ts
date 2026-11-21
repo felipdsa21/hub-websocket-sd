@@ -2,7 +2,13 @@ import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as cdk from 'aws-cdk-lib/core';
 import { BackendStack } from '../lib/backend-stack';
 
-const template = Template.fromStack(new BackendStack(new cdk.App(), 'Test', { stage: 'dev' }));
+const template = Template.fromStack(
+  new BackendStack(new cdk.App(), 'Test', {
+    stage: 'dev',
+    // Avoid depending on whether frontend/dist has been built locally when running backend unit tests.
+    frontendDistPath: '__nonexistent_for_unit_test__',
+  }),
+);
 
 test('creates the five on-demand tables, with TTL only on Connections', () => {
   template.resourceCountIs('AWS::DynamoDB::Table', 5);
@@ -115,4 +121,34 @@ test('creates the CloudWatch dashboard with all 4 widgets and allows sweeper to 
       ]),
     },
   });
+});
+
+test('hosts the static frontend in a private S3 bucket behind CloudFront with OAC (D08, RNF07)', () => {
+  template.hasResourceProperties('AWS::S3::Bucket', {
+    PublicAccessBlockConfiguration: {
+      BlockPublicAcls: true,
+      BlockPublicPolicy: true,
+      IgnorePublicAcls: true,
+      RestrictPublicBuckets: true,
+    },
+  });
+  template.hasResourceProperties('AWS::CloudFront::OriginAccessControl', {
+    OriginAccessControlConfig: Match.objectLike({
+      OriginAccessControlOriginType: 's3',
+      SigningBehavior: 'always',
+    }),
+  });
+  template.hasResourceProperties('AWS::CloudFront::Distribution', {
+    DistributionConfig: Match.objectLike({
+      DefaultRootObject: 'index.html',
+      DefaultCacheBehavior: Match.objectLike({
+        ViewerProtocolPolicy: 'redirect-to-https',
+      }),
+      CustomErrorResponses: Match.arrayWith([
+        Match.objectLike({ ErrorCode: 403, ResponseCode: 200, ResponsePagePath: '/index.html' }),
+        Match.objectLike({ ErrorCode: 404, ResponseCode: 200, ResponsePagePath: '/index.html' }),
+      ]),
+    }),
+  });
+  template.hasOutput('FrontendUrl', {});
 });
