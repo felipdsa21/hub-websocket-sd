@@ -5,6 +5,7 @@ text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .sub { font-size: 12px; fill: #4b5563; }
 .axis { font-size: 11px; fill: #4b5563; }
 .val { font-size: 10px; font-weight: 600; fill: #111827; }
+.ref { font-size: 10px; font-weight: 600; }
 .legend { font-size: 11px; }
 </style>
 <rect width="780" height="420" rx="8" fill="#ffffff" stroke="#e5e7eb"/>
