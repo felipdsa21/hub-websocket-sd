@@ -4,7 +4,7 @@
     <button
       matIconButton
       type="button"
-      [attr.aria-label]="theme.isDark() ? 'Ativar modo claro' : 'Ativar modo escuro'"
+      aria-label="Modo escuro"
       [attr.aria-pressed]="theme.isDark()"
       (click)="theme.toggle()"
     >

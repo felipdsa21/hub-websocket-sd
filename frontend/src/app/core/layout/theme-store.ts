@@ -17,9 +17,10 @@ function parsePreference(value: string | null): ThemePreference {
 export class ThemeStore {
   private readonly document = inject(DOCUMENT);
   private readonly window = this.document.defaultView;
+  private readonly darkMedia = this.window?.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
 
   private readonly preferenceSignal = signal<ThemePreference>(this.readStored());
-  private readonly systemDark = signal<boolean>(this.readSystemDark());
+  private readonly systemDark = signal(this.darkMedia?.matches ?? false);
 
   public readonly preference = this.preferenceSignal.asReadonly();
   public readonly isDark = computed(() => {
@@ -33,15 +34,23 @@ export class ThemeStore {
     const win = this.window;
     const destroyRef = inject(DestroyRef);
 
-    const media = win?.matchMedia?.('(prefers-color-scheme: dark)');
+    const media = this.darkMedia;
     if (media) {
       const onMediaChange = (event: MediaQueryListEvent) => this.systemDark.set(event.matches);
-      media.addEventListener('change', onMediaChange);
-      destroyRef.onDestroy(() => media.removeEventListener('change', onMediaChange));
+      if (typeof media.addEventListener === 'function') {
+        media.addEventListener('change', onMediaChange);
+        destroyRef.onDestroy(() => media.removeEventListener?.('change', onMediaChange));
+      } else if (typeof media.addListener === 'function') {
+        media.addListener(onMediaChange);
+        destroyRef.onDestroy(() => media.removeListener?.(onMediaChange));
+      }
     }
 
     if (win) {
       const onStorage = (event: StorageEvent) => {
+        if (event.storageArea && event.storageArea !== this.localStorageOrNull()) {
+          return;
+        }
         if (event.key === THEME_STORAGE_KEY || event.key === null) {
           const next = parsePreference(event.key === null ? this.readStoredRaw() : event.newValue);
           this.preferenceSignal.set(next);
@@ -70,17 +79,21 @@ export class ThemeStore {
     root.classList.toggle('theme-light', preference === 'light');
   }
 
-  private readSystemDark(): boolean {
-    return this.window?.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
-  }
-
   private readStored(): ThemePreference {
     return parsePreference(this.readStoredRaw());
   }
 
+  private localStorageOrNull(): Storage | null {
+    try {
+      return this.window?.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   private readStoredRaw(): string | null {
     try {
-      return this.window?.localStorage.getItem(THEME_STORAGE_KEY) ?? null;
+      return this.localStorageOrNull()?.getItem(THEME_STORAGE_KEY) ?? null;
     } catch {
       return null;
     }
@@ -88,7 +101,7 @@ export class ThemeStore {
 
   private writeStored(preference: ThemePreference): void {
     try {
-      const storage = this.window?.localStorage;
+      const storage = this.localStorageOrNull();
       if (!storage) {
         return;
       }

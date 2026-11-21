@@ -71,10 +71,12 @@ describe('LoginPage', () => {
     const { element, fixture } = await render();
     const toggle = element.querySelector<HTMLButtonElement>('button[aria-pressed]')!;
 
+    expect(toggle.getAttribute('aria-label')).toBe('Modo escuro');
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
     toggle.click();
     await fixture.whenStable();
 
+    expect(toggle.getAttribute('aria-label')).toBe('Modo escuro');
     expect(toggle.getAttribute('aria-pressed')).toBe('true');
     expect(document.documentElement.classList.contains('theme-dark')).toBe(true);
     document.documentElement.classList.remove('theme-dark', 'theme-light');

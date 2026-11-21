@@ -16,8 +16,28 @@ describe('ShellPage', () => {
     await fixture.whenStable();
   });
 
+  afterEach(() => {
+    localStorage.clear();
+    document.documentElement.classList.remove('theme-dark', 'theme-light');
+  });
+
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('toggles dark mode from the header with constant aria-label', async () => {
+    const root = fixture.nativeElement as HTMLElement;
+    const toggle = root.querySelector<HTMLButtonElement>('button[aria-pressed]')!;
+
+    expect(toggle.getAttribute('aria-label')).toBe('Modo escuro');
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+
+    toggle.click();
+    await fixture.whenStable();
+
+    expect(toggle.getAttribute('aria-label')).toBe('Modo escuro');
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(document.documentElement.classList.contains('theme-dark')).toBe(true);
   });
 
   it('shows the RTT badge only when showLatency is enabled and a sample exists', async () => {
