@@ -27,32 +27,32 @@ text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 <text x="80" y="228.8" text-anchor="start" class="ref" fill="#b91c1c">Meta RNF02: 500 ms</text>
 <line x1="74" y1="82" x2="74" y2="344" stroke="#9ca3af"/>
 <line x1="74" y1="344" x2="750" y2="344" stroke="#9ca3af"/>
-<rect x="105.5" y="249.9" width="37.6" height="94.1" rx="3" fill="#94a3b8"/>
-<text x="124.3" y="244.9" text-anchor="middle" class="val">431</text>
-<rect x="147.1" y="279.2" width="37.6" height="64.8" rx="3" fill="#2563eb"/>
-<text x="165.9" y="274.2" text-anchor="middle" class="val">297</text>
-<rect x="188.7" y="247.8" width="37.6" height="96.2" rx="3" fill="#fb923c"/>
-<text x="207.4" y="242.8" text-anchor="middle" class="val">441</text>
-<rect x="230.2" y="254.0" width="37.6" height="90.0" rx="3" fill="#0d9488"/>
-<text x="249.0" y="249.0" text-anchor="middle" class="val">412</text>
+<rect x="105.5" y="307.5" width="37.6" height="36.5" rx="3" fill="#94a3b8"/>
+<text x="124.3" y="302.5" text-anchor="middle" class="val">167</text>
+<rect x="147.1" y="316.0" width="37.6" height="28.0" rx="3" fill="#2563eb"/>
+<text x="165.9" y="311.0" text-anchor="middle" class="val">128</text>
+<rect x="188.7" y="302.1" width="37.6" height="41.9" rx="3" fill="#fb923c"/>
+<text x="207.4" y="297.1" text-anchor="middle" class="val">192</text>
+<rect x="230.2" y="310.4" width="37.6" height="33.6" rx="3" fill="#0d9488"/>
+<text x="249.0" y="305.4" text-anchor="middle" class="val">154</text>
 <text x="186.7" y="364" text-anchor="middle" class="axis" font-weight="600">2 usuários</text>
-<rect x="330.9" y="227.4" width="37.6" height="116.6" rx="3" fill="#94a3b8"/>
-<text x="349.7" y="222.4" text-anchor="middle" class="val">534</text>
-<rect x="372.4" y="275.1" width="37.6" height="68.9" rx="3" fill="#2563eb"/>
-<text x="391.2" y="270.1" text-anchor="middle" class="val">315</text>
-<rect x="414.0" y="135.0" width="37.6" height="209.0" rx="3" fill="#fb923c"/>
-<text x="432.8" y="130.0" text-anchor="middle" class="val">957</text>
-<rect x="455.6" y="242.4" width="37.6" height="101.6" rx="3" fill="#0d9488"/>
-<text x="474.3" y="237.4" text-anchor="middle" class="val">466</text>
+<rect x="330.9" y="298.2" width="37.6" height="45.8" rx="3" fill="#94a3b8"/>
+<text x="349.7" y="293.2" text-anchor="middle" class="val">210</text>
+<rect x="372.4" y="313.2" width="37.6" height="30.8" rx="3" fill="#2563eb"/>
+<text x="391.2" y="308.2" text-anchor="middle" class="val">141</text>
+<rect x="414.0" y="277.7" width="37.6" height="66.3" rx="3" fill="#fb923c"/>
+<text x="432.8" y="272.7" text-anchor="middle" class="val">304</text>
+<rect x="455.6" y="307.4" width="37.6" height="36.6" rx="3" fill="#0d9488"/>
+<text x="474.3" y="302.4" text-anchor="middle" class="val">168</text>
 <text x="412.0" y="364" text-anchor="middle" class="axis" font-weight="600">5 usuários</text>
-<rect x="556.2" y="159.6" width="37.6" height="184.4" rx="3" fill="#94a3b8"/>
-<text x="575.0" y="154.6" text-anchor="middle" class="val">845</text>
-<rect x="597.8" y="263.6" width="37.6" height="80.4" rx="3" fill="#2563eb"/>
-<text x="616.6" y="258.6" text-anchor="middle" class="val">368</text>
-<rect x="639.3" y="110.5" width="37.6" height="233.5" rx="3" fill="#fb923c"/>
-<text x="658.1" y="105.5" text-anchor="middle" class="val">1070</text>
-<rect x="680.9" y="223.7" width="37.6" height="120.3" rx="3" fill="#0d9488"/>
-<text x="699.7" y="218.7" text-anchor="middle" class="val">551</text>
+<rect x="556.2" y="237.3" width="37.6" height="106.7" rx="3" fill="#94a3b8"/>
+<text x="575.0" y="232.3" text-anchor="middle" class="val">489</text>
+<rect x="597.8" y="308.9" width="37.6" height="35.1" rx="3" fill="#2563eb"/>
+<text x="616.6" y="303.9" text-anchor="middle" class="val">161</text>
+<rect x="639.3" y="125.2" width="37.6" height="218.8" rx="3" fill="#fb923c"/>
+<text x="658.1" y="120.2" text-anchor="middle" class="val">1002</text>
+<rect x="680.9" y="307.7" width="37.6" height="36.3" rx="3" fill="#0d9488"/>
+<text x="699.7" y="302.7" text-anchor="middle" class="val">166</text>
 <text x="637.3" y="364" text-anchor="middle" class="axis" font-weight="600">10 usuários (T8)</text>
 <rect x="74" y="388" width="12" height="12" rx="2" fill="#94a3b8"/>
 <text x="91" y="398" class="legend">Aquecimento (média)</text>

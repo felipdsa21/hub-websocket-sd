@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Generate clean, dependency-free SVG charts from the T8 benchmark and CloudWatch JSON files."""
+import datetime
 import json
+import math
 import pathlib
 import sys
 import xml.etree.ElementTree as ET
+
+
+def nice_ceil(value: float, step: float) -> float:
+    return max(step, math.ceil(value * 1.12 / step) * step)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "docs" / "dados"
@@ -142,50 +148,56 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
 
     # 1. Latency by load
+    lat_series = [
+        ("Média", "#2563eb", [r["measured"]["allDeliveries"]["avgMs"] for r in runs]),
+        ("p50", "#0891b2", [r["measured"]["allDeliveries"]["p50Ms"] for r in runs]),
+        ("p95", "#f59e0b", [r["measured"]["allDeliveries"]["p95Ms"] for r in runs]),
+        ("p99", "#dc2626", [r["measured"]["allDeliveries"]["p99Ms"] for r in runs]),
+    ]
+    lat_max = nice_ceil(max([500.0] + [v for _, _, vals in lat_series for v in vals]), 100.0)
     lat_svg = grouped_bar_svg(
         "Latência ponta a ponta por carga de usuários simultâneos (rodada medida)",
-        "HubWebSocket-dev (sa-east-1) — todas as entregas (confirmações + destinatários)",
+        "HubWebSocket-dev (sa-east-1, Lambdas ARM64 512 MB) — confirmações + destinatários",
         labels,
-        [
-            ("Média", "#2563eb", [r["measured"]["allDeliveries"]["avgMs"] for r in runs]),
-            ("p50", "#0891b2", [r["measured"]["allDeliveries"]["p50Ms"] for r in runs]),
-            ("p95", "#f59e0b", [r["measured"]["allDeliveries"]["p95Ms"] for r in runs]),
-            ("p99", "#dc2626", [r["measured"]["allDeliveries"]["p99Ms"] for r in runs]),
-        ],
+        lat_series,
         "ms",
-        1000.0,
+        lat_max,
         ref_line=(500.0, "Meta RNF02: p95 < 500 ms", "#b91c1c"),
     )
     (OUT / "t8-latencia-por-carga.svg").write_text(lat_svg)
 
     # 2. Warm-up vs measured (R05)
+    warm_series = [
+        ("Aquecimento (média)", "#94a3b8", [r["warmup"]["allDeliveries"]["avgMs"] for r in runs]),
+        ("Medido (média)", "#2563eb", [r["measured"]["allDeliveries"]["avgMs"] for r in runs]),
+        ("Aquecimento (p95)", "#fb923c", [r["warmup"]["allDeliveries"]["p95Ms"] for r in runs]),
+        ("Medido (p95)", "#0d9488", [r["measured"]["allDeliveries"]["p95Ms"] for r in runs]),
+    ]
+    warm_max = nice_ceil(max([500.0] + [v for _, _, vals in warm_series for v in vals]), 200.0)
     warm_svg = grouped_bar_svg(
         "Efeito do início a frio (R05): rodada de aquecimento vs. rodada medida",
         "Comparação da latência média e p95 com e sem aquecimento prévio das Lambdas",
         ["2 usuários", "5 usuários", "10 usuários (T8)"],
-        [
-            ("Aquecimento (média)", "#94a3b8", [r["warmup"]["allDeliveries"]["avgMs"] for r in runs]),
-            ("Medido (média)", "#2563eb", [r["measured"]["allDeliveries"]["avgMs"] for r in runs]),
-            ("Aquecimento (p95)", "#fb923c", [r["warmup"]["allDeliveries"]["p95Ms"] for r in runs]),
-            ("Medido (p95)", "#0d9488", [r["measured"]["allDeliveries"]["p95Ms"] for r in runs]),
-        ],
+        warm_series,
         "ms",
-        1200.0,
+        warm_max,
         ref_line=(500.0, "Meta RNF02: 500 ms", "#b91c1c"),
     )
     (OUT / "t8-warmup-vs-medido.svg").write_text(warm_svg)
 
     # 3. Throughput (deliveries/s and messages/s)
+    thr_series = [
+        ("Mensagens/s", "#2563eb", [r["measured"]["throughputMessagesPerSec"] for r in runs]),
+        ("Entregas fan-out/s", "#16a34a", [r["measured"]["throughputDeliveriesPerSec"] for r in runs]),
+    ]
+    thr_max = nice_ceil(max(v for _, _, vals in thr_series for v in vals), 50.0)
     thr_svg = grouped_bar_svg(
         "Vazão observada por carga (mensagens enviadas/s e entregas fan-out/s)",
         "10 mensagens sequenciais por cliente em paralelo no mesmo grupo (R06)",
         ["2 usuários", "5 usuários", "10 usuários (T8)"],
-        [
-            ("Mensagens/s", "#2563eb", [r["measured"]["throughputMessagesPerSec"] for r in runs]),
-            ("Entregas fan-out/s", "#16a34a", [r["measured"]["throughputDeliveriesPerSec"] for r in runs]),
-        ],
+        thr_series,
         "/s",
-        180.0,
+        thr_max,
         val_fmt=".1f",
     )
     (OUT / "t8-vazao-por-carga.svg").write_text(thr_svg)
@@ -193,16 +205,21 @@ def main() -> None:
     # 4. DynamoDB RCU/WCU consumption
     by_label = {m["label"]: m["sum"] for m in cw["metrics"]}
     tables = ["Users", "Conversations", "Connections", "Memberships", "Messages"]
+    t0 = datetime.datetime.fromisoformat(cw["startTime"].replace("Z", "+00:00"))
+    t1 = datetime.datetime.fromisoformat(cw["endTime"].replace("Z", "+00:00"))
+    win_min = max(1, round((t1 - t0).total_seconds() / 60))
+    ddb_series = [
+        ("RCU consumidas", "#2563eb", [by_label.get(f"DynamoDB {t} RCU", 0.0) or 0.0 for t in tables]),
+        ("WCU consumidas", "#7c3aed", [by_label.get(f"DynamoDB {t} WCU", 0.0) or 0.0 for t in tables]),
+    ]
+    ddb_max = nice_ceil(max(v for _, _, vals in ddb_series for v in vals), 200.0)
     ddb_svg = grouped_bar_svg(
-        "Consumo de capacidade do DynamoDB durante a bateria de testes",
-        "Total de RCU e WCU consumidas na janela de 9 minutos (ThrottledRequests = 0 em todas)",
+        "Consumo de capacidade do DynamoDB durante a bateria T8",
+        f"Total de RCU e WCU consumidas na janela de {win_min} minutos (ThrottledRequests = 0 em todas)",
         tables,
-        [
-            ("RCU consumidas", "#2563eb", [by_label.get(f"DynamoDB {t} RCU", 0.0) for t in tables]),
-            ("WCU consumidas", "#7c3aed", [by_label.get(f"DynamoDB {t} WCU", 0.0) for t in tables]),
-        ],
+        ddb_series,
         "un",
-        1500.0,
+        ddb_max,
     )
     (OUT / "t8-consumo-dynamodb.svg").write_text(ddb_svg)
     print("Generated 4 SVG charts in", OUT)
