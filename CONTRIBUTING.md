@@ -52,5 +52,5 @@ Uma mudança de comportamento atualiza a documentação no mesmo pull request.
 - **Design no Figma:** telas, layout, componentes e decisões visuais. Uma nota no arquivo indica o commit de `docs/` que o design segue e é atualizada quando o design é ajustado a uma mudança em `docs/`.
 - **Sessão:** ciclo de vida da sessão (handshake, frames, `$connect` e `$disconnect`). Ilustra os nomes e procedimentos da arquitetura, que continua sendo a referência.
 - **Sincronização e consistência:** ordenação temporal, deduplicação, consistência no DynamoDB e ciclo de vida das conversas. Ilustra e aprofunda os mecanismos da arquitetura, que continua sendo a referência.
-- **Tolerância a falhas:** conexões órfãs (`410 Gone`), isolamento de falhas na difusão, expiração por inatividade (`presenceSweeper`), recuperação após falhas parciais e reenvio sem duplicação. Ilustra os mecanismos da arquitetura, que continua sendo a referência.
+- **Tolerância a falhas:** conexões órfãs (`410 Gone`), isolamento de falhas na difusão, expiração por inatividade (`presenceSweeper`), recuperação após falhas parciais, reenvio sem duplicação, heartbeat, reconexão com backoff e recuperação de estado no cliente. Ilustra os mecanismos da arquitetura, que continua sendo a referência.
 - **README:** visão geral do projeto e links para os documentos.
