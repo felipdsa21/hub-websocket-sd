@@ -208,7 +208,7 @@ async function handleResend(
     }),
   );
   if (!Item) {
-    throw new Error(`Missing message ${existingRef} referenced by idempotency marker`);
+    throw new Error('Missing message referenced by idempotency marker');
   }
   const msg = Item as MessageRecord;
   if (!(await finalizeMessageState(conv, msg.sentAt, msg.sender))) {

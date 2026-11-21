@@ -3,6 +3,7 @@ import {
   PostToConnectionCommand,
 } from '@aws-sdk/client-apigatewaymanagementapi';
 import { CloudWatchClient, PutMetricDataCommand } from '@aws-sdk/client-cloudwatch';
+import { TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import {
   BatchGetCommand,
@@ -173,6 +174,88 @@ describe('HMAC log anonymization (RNF03, section 5)', () => {
     expect(serialized).not.toContain('c-leak');
     expect(serialized).not.toContain('bob');
     expect(logs[0]).toMatchObject({ route: '$connect', result: 'ok' });
+  });
+
+  test('retries SSM on the next request after a transient failure and then caches', async () => {
+    ssmMock
+      .on(GetParameterCommand)
+      .rejectsOnce(new Error('SSM transient'))
+      .resolves({ Parameter: { Value: SECRET } });
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(UpdateCommand).resolves({ Attributes: {} });
+
+    await connect(wsEvent('$connect', { connectionId: 'c1', query: { username: 'alice' } }));
+    await connect(wsEvent('$connect', { connectionId: 'c2', query: { username: 'alice' } }));
+    await connect(wsEvent('$connect', { connectionId: 'c3', query: { username: 'alice' } }));
+
+    expect(ssmMock.commandCalls(GetParameterCommand)).toHaveLength(2);
+    expect(logs[0]).not.toHaveProperty('connectionId');
+    expect(logs[0]).not.toHaveProperty('username');
+    expect(logs[1]).toMatchObject({
+      connectionId: anonymize('c2', SECRET),
+      username: anonymize('alice', SECRET),
+    });
+    expect(logs[2]).toMatchObject({
+      connectionId: anonymize('c3', SECRET),
+      username: anonymize('alice', SECRET),
+    });
+  });
+
+  test('logs result duplicate with anonymized identifiers on idempotent sendMessage resend', async () => {
+    const origSk = `m#1700000000000#alice#${MSG_ID}`;
+    ddbMock.on(UpdateCommand).resolves({ Attributes: { username: 'alice' } });
+    ddbMock
+      .on(GetCommand)
+      .resolvesOnce({
+        Item: {
+          conversationId: CONV_ID,
+          type: 'group',
+          members: new Set(['alice', 'bruno']),
+          started: true,
+        },
+      })
+      .resolvesOnce({ Item: { conversationId: CONV_ID, sk: `id#alice#${MSG_ID}`, ref: origSk } })
+      .resolvesOnce({
+        Item: {
+          conversationId: CONV_ID,
+          sk: origSk,
+          messageId: MSG_ID,
+          sender: 'alice',
+          text: 'segredo-reenvio',
+          sentAt: 1_700_000_000_000,
+        },
+      });
+    ddbMock.on(TransactWriteCommand).rejects(
+      new TransactionCanceledException({
+        message: 'canceled',
+        $metadata: {},
+        CancellationReasons: [{ Code: 'ConditionalCheckFailed' }, { Code: 'None' }],
+      }),
+    );
+
+    await app(
+      wsEvent('sendMessage', {
+        connectionId: 'conn-resend',
+        body: {
+          action: 'sendMessage',
+          requestId: REQ_ID,
+          conversationId: CONV_ID,
+          messageId: MSG_ID,
+          text: 'segredo-reenvio',
+        },
+      }),
+    );
+
+    const serialized = JSON.stringify(logs[0]);
+    expect(serialized).not.toContain('segredo-reenvio');
+    expect(serialized).not.toContain('alice');
+    expect(logs[0]).toMatchObject({
+      route: 'sendMessage',
+      result: 'duplicate',
+      connectionId: anonymize('conn-resend', SECRET),
+      username: anonymize('alice', SECRET),
+      conversationId: anonymize(CONV_ID, SECRET),
+    });
   });
 });
 
