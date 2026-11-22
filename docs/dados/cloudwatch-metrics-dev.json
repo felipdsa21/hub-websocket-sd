@@ -1,0 +1,1036 @@
+{
+  "stackName": "HubWebSocket-dev",
+  "region": "sa-east-1",
+  "apiId": "<api-id>",
+  "startTime": "2026-11-21T16:44:00Z",
+  "endTime": "2026-11-21T16:46:00Z",
+  "lambdas": [
+    {
+      "logical": "app735A5B53"
+    },
+    {
+      "logical": "connectEB2081F1"
+    },
+    {
+      "logical": "defaultC974F9E3"
+    },
+    {
+      "logical": "disconnect829B70D0"
+    },
+    {
+      "logical": "presenceSweeper08124294"
+    }
+  ],
+  "tables": [
+    {
+      "logical": "Connections827CEF2F"
+    },
+    {
+      "logical": "ConversationsBC91B70D"
+    },
+    {
+      "logical": "MembershipsEEFE540A"
+    },
+    {
+      "logical": "Messages804FA4EB"
+    },
+    {
+      "logical": "Users0A0EEA89"
+    }
+  ],
+  "metrics": [
+    {
+      "id": "apigw_connect",
+      "label": "APIGW ConnectCount",
+      "stat": "Sum",
+      "datapoints": 1,
+      "sum": 17,
+      "avg": 17,
+      "max": 17,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00"
+      ],
+      "values": [
+        17
+      ]
+    },
+    {
+      "id": "apigw_messages",
+      "label": "APIGW MessageCount",
+      "stat": "Sum",
+      "datapoints": 1,
+      "sum": 1707,
+      "avg": 1707,
+      "max": 1707,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00"
+      ],
+      "values": [
+        1707
+      ]
+    },
+    {
+      "id": "apigw_lat_avg",
+      "label": "APIGW IntegrationLatency avg",
+      "stat": "Average",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 146.17,
+      "max": 146.17,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00"
+      ],
+      "values": [
+        146.1688888888889
+      ]
+    },
+    {
+      "id": "apigw_lat_p95",
+      "label": "APIGW IntegrationLatency p95",
+      "stat": "p95",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 559.04,
+      "max": 559.04,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00"
+      ],
+      "values": [
+        559.0356157830985
+      ]
+    },
+    {
+      "id": "apigw_lat_avg_win",
+      "label": "APIGW IntegrationLatency avg (window)",
+      "stat": "Average",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 146.17,
+      "max": 146.17,
+      "timestamps": [
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        146.1688888888889
+      ]
+    },
+    {
+      "id": "apigw_lat_p95_win",
+      "label": "APIGW IntegrationLatency p95 (window)",
+      "stat": "p95",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 559.04,
+      "max": 559.04,
+      "timestamps": [
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        559.0356157830985
+      ]
+    },
+    {
+      "id": "apigw_err_int",
+      "label": "APIGW IntegrationError",
+      "stat": "Sum",
+      "datapoints": 1,
+      "sum": 0,
+      "avg": 0,
+      "max": 0,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00"
+      ],
+      "values": [
+        0
+      ]
+    },
+    {
+      "id": "apigw_err_cli",
+      "label": "APIGW ClientError",
+      "stat": "Sum",
+      "datapoints": 1,
+      "sum": 42,
+      "avg": 42,
+      "max": 42,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00"
+      ],
+      "values": [
+        42
+      ]
+    },
+    {
+      "id": "apigw_err_exe",
+      "label": "APIGW ExecutionError",
+      "stat": "Sum",
+      "datapoints": 1,
+      "sum": 2,
+      "avg": 2,
+      "max": 2,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00"
+      ],
+      "values": [
+        2
+      ]
+    },
+    {
+      "id": "custom_open_conn",
+      "label": "OpenConnections",
+      "stat": "Maximum",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 0.5,
+      "max": 1,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        1,
+        0
+      ]
+    },
+    {
+      "id": "fn_0_inv",
+      "label": "Lambda app Invocations",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 190,
+      "avg": 95,
+      "max": 121,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        121,
+        69
+      ]
+    },
+    {
+      "id": "fn_0_err",
+      "label": "Lambda app Errors",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 0,
+      "avg": 0,
+      "max": 0,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "fn_0_thr",
+      "label": "Lambda app Throttles",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 1,
+      "avg": 0.5,
+      "max": 1,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        1,
+        0
+      ]
+    },
+    {
+      "id": "fn_0_dur_avg",
+      "label": "Lambda app Duration avg",
+      "stat": "Average",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 101.7,
+      "max": 113.78,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        113.77809916528929,
+        89.62072463768115
+      ]
+    },
+    {
+      "id": "fn_0_dur_p95",
+      "label": "Lambda app Duration p95",
+      "stat": "p95",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 152.63,
+      "max": 166.23,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        166.23312099001205,
+        139.02928013058784
+      ]
+    },
+    {
+      "id": "fn_0_dur_max",
+      "label": "Lambda app Duration max",
+      "stat": "Maximum",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 524.65,
+      "max": 574.19,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        574.19,
+        475.11
+      ]
+    },
+    {
+      "id": "fn_0_dur_avg_win",
+      "label": "Lambda app Duration avg (window)",
+      "stat": "Average",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 105.01,
+      "max": 105.01,
+      "timestamps": [
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        105.0051578894737
+      ]
+    },
+    {
+      "id": "fn_0_dur_p95_win",
+      "label": "Lambda app Duration p95 (window)",
+      "stat": "p95",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 163.87,
+      "max": 163.87,
+      "timestamps": [
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        163.87347227383358
+      ]
+    },
+    {
+      "id": "fn_1_inv",
+      "label": "Lambda connect Invocations",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 17,
+      "avg": 8.5,
+      "max": 10,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        10,
+        7
+      ]
+    },
+    {
+      "id": "fn_1_err",
+      "label": "Lambda connect Errors",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 0,
+      "avg": 0,
+      "max": 0,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "fn_1_thr",
+      "label": "Lambda connect Throttles",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 0,
+      "avg": 0,
+      "max": 0,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "fn_1_dur_avg",
+      "label": "Lambda connect Duration avg",
+      "stat": "Average",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 93.61,
+      "max": 104.65,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        82.56500000000003,
+        104.64571428571428
+      ]
+    },
+    {
+      "id": "fn_1_dur_p95",
+      "label": "Lambda connect Duration p95",
+      "stat": "p95",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 247.11,
+      "max": 253.81,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        253.81444471558348,
+        240.4061886552507
+      ]
+    },
+    {
+      "id": "fn_1_dur_max",
+      "label": "Lambda connect Duration max",
+      "stat": "Maximum",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 251.46,
+      "max": 256.01,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        256.01,
+        246.92
+      ]
+    },
+    {
+      "id": "fn_1_dur_avg_win",
+      "label": "Lambda connect Duration avg (window)",
+      "stat": "Average",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 91.66,
+      "max": 91.66,
+      "timestamps": [
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        91.65705882352941
+      ]
+    },
+    {
+      "id": "fn_1_dur_p95_win",
+      "label": "Lambda connect Duration p95 (window)",
+      "stat": "p95",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 252.29,
+      "max": 252.29,
+      "timestamps": [
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        252.28876902432225
+      ]
+    },
+    {
+      "id": "fn_2_inv",
+      "label": "Lambda default Invocations",
+      "stat": "Sum",
+      "datapoints": 0,
+      "sum": 0,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "fn_2_err",
+      "label": "Lambda default Errors",
+      "stat": "Sum",
+      "datapoints": 0,
+      "sum": 0,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "fn_2_thr",
+      "label": "Lambda default Throttles",
+      "stat": "Sum",
+      "datapoints": 0,
+      "sum": 0,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "fn_2_dur_avg",
+      "label": "Lambda default Duration avg",
+      "stat": "Average",
+      "datapoints": 0,
+      "sum": null,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "fn_2_dur_p95",
+      "label": "Lambda default Duration p95",
+      "stat": "p95",
+      "datapoints": 0,
+      "sum": null,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "fn_2_dur_max",
+      "label": "Lambda default Duration max",
+      "stat": "Maximum",
+      "datapoints": 0,
+      "sum": null,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "fn_2_dur_avg_win",
+      "label": "Lambda default Duration avg (window)",
+      "stat": "Average",
+      "datapoints": 0,
+      "sum": null,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "fn_2_dur_p95_win",
+      "label": "Lambda default Duration p95 (window)",
+      "stat": "p95",
+      "datapoints": 0,
+      "sum": null,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "fn_3_inv",
+      "label": "Lambda disconnect Invocations",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 16,
+      "avg": 8,
+      "max": 14,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        14,
+        2
+      ]
+    },
+    {
+      "id": "fn_3_err",
+      "label": "Lambda disconnect Errors",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 0,
+      "avg": 0,
+      "max": 0,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "fn_3_thr",
+      "label": "Lambda disconnect Throttles",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 1,
+      "avg": 0.5,
+      "max": 1,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        1,
+        0
+      ]
+    },
+    {
+      "id": "fn_3_dur_avg",
+      "label": "Lambda disconnect Duration avg",
+      "stat": "Average",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 229.17,
+      "max": 298.4,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        298.4042857142858,
+        159.945
+      ]
+    },
+    {
+      "id": "fn_3_dur_p95",
+      "label": "Lambda disconnect Duration p95",
+      "stat": "p95",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 303.58,
+      "max": 406.19,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        406.1880884269732,
+        200.9799140795935
+      ]
+    },
+    {
+      "id": "fn_3_dur_max",
+      "label": "Lambda disconnect Duration max",
+      "stat": "Maximum",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 305.35,
+      "max": 408.35,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        408.35,
+        202.35
+      ]
+    },
+    {
+      "id": "fn_3_dur_avg_win",
+      "label": "Lambda disconnect Duration avg (window)",
+      "stat": "Average",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 281.1,
+      "max": 281.1,
+      "timestamps": [
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        281.09687500000007
+      ]
+    },
+    {
+      "id": "fn_3_dur_p95_win",
+      "label": "Lambda disconnect Duration p95 (window)",
+      "stat": "p95",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 405.88,
+      "max": 405.88,
+      "timestamps": [
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        405.8801796782255
+      ]
+    },
+    {
+      "id": "fn_4_inv",
+      "label": "Lambda presenceSweeper Invocations",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 2,
+      "avg": 1,
+      "max": 1,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        1,
+        1
+      ]
+    },
+    {
+      "id": "fn_4_err",
+      "label": "Lambda presenceSweeper Errors",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 0,
+      "avg": 0,
+      "max": 0,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "fn_4_thr",
+      "label": "Lambda presenceSweeper Throttles",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 0,
+      "avg": 0,
+      "max": 0,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "fn_4_dur_avg",
+      "label": "Lambda presenceSweeper Duration avg",
+      "stat": "Average",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 104.77,
+      "max": 123.2,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        86.33,
+        123.2
+      ]
+    },
+    {
+      "id": "fn_4_dur_p95",
+      "label": "Lambda presenceSweeper Duration p95",
+      "stat": "p95",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 104.77,
+      "max": 123.2,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        86.33,
+        123.2
+      ]
+    },
+    {
+      "id": "fn_4_dur_max",
+      "label": "Lambda presenceSweeper Duration max",
+      "stat": "Maximum",
+      "datapoints": 2,
+      "sum": null,
+      "avg": 104.77,
+      "max": 123.2,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        86.33,
+        123.2
+      ]
+    },
+    {
+      "id": "fn_4_dur_avg_win",
+      "label": "Lambda presenceSweeper Duration avg (window)",
+      "stat": "Average",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 104.77,
+      "max": 104.77,
+      "timestamps": [
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        104.765
+      ]
+    },
+    {
+      "id": "fn_4_dur_p95_win",
+      "label": "Lambda presenceSweeper Duration p95 (window)",
+      "stat": "p95",
+      "datapoints": 1,
+      "sum": null,
+      "avg": 122.61,
+      "max": 122.61,
+      "timestamps": [
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        122.60637800289756
+      ]
+    },
+    {
+      "id": "ddb_0_rcu",
+      "label": "DynamoDB Connections RCU",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 66,
+      "avg": 33,
+      "max": 59,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        59,
+        7
+      ]
+    },
+    {
+      "id": "ddb_0_wcu",
+      "label": "DynamoDB Connections WCU",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 229,
+      "avg": 114.5,
+      "max": 151,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        151,
+        78
+      ]
+    },
+    {
+      "id": "ddb_0_thr",
+      "label": "DynamoDB Connections Throttled",
+      "stat": "Sum",
+      "datapoints": 0,
+      "sum": 0,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "ddb_1_rcu",
+      "label": "DynamoDB Conversations RCU",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 390,
+      "avg": 195,
+      "max": 258,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        258,
+        132
+      ]
+    },
+    {
+      "id": "ddb_1_wcu",
+      "label": "DynamoDB Conversations WCU",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 193,
+      "avg": 96.5,
+      "max": 124,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        124,
+        69
+      ]
+    },
+    {
+      "id": "ddb_1_thr",
+      "label": "DynamoDB Conversations Throttled",
+      "stat": "Sum",
+      "datapoints": 0,
+      "sum": 0,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "ddb_2_rcu",
+      "label": "DynamoDB Memberships RCU",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 33,
+      "avg": 16.5,
+      "max": 24,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        24,
+        9
+      ]
+    },
+    {
+      "id": "ddb_2_wcu",
+      "label": "DynamoDB Memberships WCU",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 34,
+      "avg": 17,
+      "max": 20,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        20,
+        14
+      ]
+    },
+    {
+      "id": "ddb_2_thr",
+      "label": "DynamoDB Memberships Throttled",
+      "stat": "Sum",
+      "datapoints": 0,
+      "sum": 0,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "ddb_3_rcu",
+      "label": "DynamoDB Messages RCU",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 0,
+      "avg": 0,
+      "max": 0,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "ddb_3_wcu",
+      "label": "DynamoDB Messages WCU",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 748,
+      "avg": 374,
+      "max": 484,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        484,
+        264
+      ]
+    },
+    {
+      "id": "ddb_3_thr",
+      "label": "DynamoDB Messages Throttled",
+      "stat": "Sum",
+      "datapoints": 0,
+      "sum": 0,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    },
+    {
+      "id": "ddb_4_rcu",
+      "label": "DynamoDB Users RCU",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 1561,
+      "avg": 780.5,
+      "max": 1289,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        1289,
+        272
+      ]
+    },
+    {
+      "id": "ddb_4_wcu",
+      "label": "DynamoDB Users WCU",
+      "stat": "Sum",
+      "datapoints": 2,
+      "sum": 72,
+      "avg": 36,
+      "max": 54,
+      "timestamps": [
+        "2026-11-21T13:45:00-03:00",
+        "2026-11-21T13:44:00-03:00"
+      ],
+      "values": [
+        54,
+        18
+      ]
+    },
+    {
+      "id": "ddb_4_thr",
+      "label": "DynamoDB Users Throttled",
+      "stat": "Sum",
+      "datapoints": 0,
+      "sum": 0,
+      "avg": null,
+      "max": null,
+      "timestamps": [],
+      "values": []
+    }
+  ]
+}

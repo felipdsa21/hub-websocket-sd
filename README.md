@@ -14,14 +14,21 @@ O cliente web, em Angular, abre uma conexão WebSocket persistente com o API Gat
 - [Arquitetura](docs/arquitetura.md): serviços da AWS, esquema de nomeação, dados, rotas e eventos, comportamento do cliente, logs e métricas.
 - [Sessão](docs/sessao.md): ciclo de vida da sessão, com o handshake, os frames e o diretório de conexões.
 - [Sincronização e consistência](docs/sincronizacao.md): ordenação de mensagens, deduplicação, consistência no DynamoDB e ciclo de vida das conversas.
-- [Tolerância a falhas](docs/tolerancia-falhas.md): conexões órfãs (`410 Gone`), isolamento de falhas na difusão, expiração por inatividade e recuperação de estado.
+- [Tolerância a falhas](docs/tolerancia-falhas.md): conexões órfãs (`410 Gone`), isolamento de falhas na difusão, expiração por inatividade, heartbeat, reconexão e recuperação no cliente.
+- [Observabilidade e implantação](docs/observabilidade-implantacao.md): logs estruturados com anonimização HMAC-SHA256, métricas/painel/alarmes no CloudWatch, IAM de menor privilégio e hospedagem S3 + CloudFront (OAC) via CDK.
+- [Evidências de teste](docs/testes.md): evidências T1–T8, bateria automatizada de integração na AWS (`12/12`, incluindo `410 Gone` e `presenceSweeper`) e validação E2E em Chromium sobre CloudFront.
+- [Avaliação de desempenho](docs/avaliacao-desempenho.md): metodologia do experimento T8, latências (média, p50, p95, p99), vazão, consumo do DynamoDB e gráficos comparativos.
+- [Métricas de infraestrutura](docs/metricas-infraestrutura.md): métricas exportadas do CloudWatch (API Gateway, Lambdas ARM64, DynamoDB e `OpenConnections`) durante o experimento T8.
+- [Relatório técnico consolidado](docs/relatorio-tecnico.md): documento unificando fundamentação científica, arquitetura, decisões, tolerância a falhas, observabilidade e avaliação experimental.
+- [Roteiro de demonstração ao vivo](docs/roteiro-demonstracao.md): guia passo a passo para a apresentação prática com múltiplos clientes e painel CloudWatch.
 - [Design no Figma](https://www.figma.com/design/ThG8NUReHI5c9tYzXdaU6z/Hub-Colaborativo-WebSocket): telas e componentes da interface.
 
 ## Estrutura
 
 - `backend/`: stack do CDK (`lib/`) e código das Lambdas (`functions/`). Detalhes de desenvolvimento e implantação estão no [README do backend](backend/README.md).
 - `frontend/`: cliente web em Angular, com Angular Material.
-- `docs/`: especificação, arquitetura, sessão, sincronização e tolerância a falhas.
+- `scripts/`: scripts de benchmark T8, coleta de métricas no CloudWatch, geração de gráficos SVG e testes de integração no `dev` ([README dos scripts](scripts/README.md)).
+- `docs/`: especificação, arquitetura, sessão, sincronização, tolerância a falhas, observabilidade, evidências de teste, avaliação de desempenho, métricas, relatório técnico, roteiro de demo, dados e imagens.
 
 ## Estado atual
 
@@ -61,7 +68,7 @@ A implantação e o teste manual com o `wscat` estão no [README do backend](bac
 - Antônio Rodrigo: arquitetura e documentação.
 - Wellington Cezario: cloud e backend.
 - Felipe da Silva: frontend.
-- Wallysson Maciel: testes e integração.
+- Wallyson Maciel: testes e integração.
 
 ## Contribuindo
 

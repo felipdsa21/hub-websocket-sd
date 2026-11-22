@@ -48,7 +48,7 @@ Se um cliente reconectado solicitasse apenas mensagens posteriores ao instante e
 
 Redes móveis e conexões WebSocket estão sujeitas a quedas silenciosas entre o envio do frame pelo cliente e o recebimento da confirmação pelo servidor. Se o cliente reenviar uma mensagem cuja primeira tentativa já foi persistida, o sistema deve impedir a duplicação no histórico sem retornar erro ao usuário.
 
-A partição `PK = conversationId` na tabela `Messages` guarda, para cada mensagem, o item da mensagem, com o `sk` `m#…`, e um marcador `id#<sender>#<messageId>`, cujo `ref` aponta para o `sk` da mensagem. O prefixo `id#` inclui explicitamente `<sender>` para garantir que dois usuários distintos que eventualmente gerem o mesmo UUID (`messageId`) não colidam entre si (T7).
+A partição `PK = conversationId` na tabela `Messages` guarda, para cada mensagem, o item da mensagem, com o `sk` `m#…`, e um marcador `id#<sender>#<messageId>`, cujo `ref` aponta para o `sk` da mensagem. O marcador recebe TTL de 7 dias (`expiresAt`, em segundos) para limitar seu acúmulo sem remover os itens `m#…`, que permanecem permanentemente no histórico. O prefixo `id#` inclui explicitamente `<sender>` para garantir que dois usuários distintos que eventualmente gerem o mesmo UUID (`messageId`) não colidam entre si (T7).
 
 ### 3.2 Fluxo transacional de escrita e tratamento de reenvios
 
@@ -122,7 +122,7 @@ Os conflitos de transação seguem a seção 3.3 da arquitetura, e os do `sendMe
 
 ### 5.2 Grupos e gestão de membros (createGroup, addMember, leaveGroup — RF04)
 
-* **Identificador Único:** Grupos recebem `conversationId` no formato `g:<UUID v4>` e suportam até **99 membros** na criação (respeitando o limite rígido de 100 operações por `TransactWriteItems` do DynamoDB: 1 item em `Conversations` + até 99 itens em `Memberships`).
+* **Identificador Único e limite de membros:** Grupos recebem `conversationId` no formato `g:<UUID v4>` e suportam até **99 membros** tanto na criação (`createGroup`, respeitando o limite de 100 operações por `TransactWriteItems` do DynamoDB: 1 item em `Conversations` + até 99 itens em `Memberships`) quanto em inclusões posteriores (`addMember`, via condição `size(members) < 99`), garantindo que os payloads de `conversationAdded` e `sync` permaneçam abaixo de 128 KB.
 * **Proteção contra Abandono Simultâneo (`lastMember`):** Na rota `leaveGroup`, a transação exige `contains(members, :username)` e, quando `confirm` não é verdadeiro, aplica também a condição `size(members) > 1` no item da conversa. Se os dois últimos membros de um grupo clicarem em sair ao mesmo tempo sem confirmar, a primeira transação conclui a remoção e a segunda falha na condição, retornando o erro `lastMember` para que o último integrante confirme explicitamente o encerramento do grupo (`confirm: true`).
 * **Eventos de Ciclo de Vida:** Toda alteração de topologia do grupo notifica os membros conectados por meio de eventos dedicados (`conversationAdded`, `conversationRemoved`, `memberJoined` e `memberLeft`).
 

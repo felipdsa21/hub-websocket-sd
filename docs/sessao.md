@@ -42,7 +42,7 @@ Toda mensagem WebSocket viaja em um ou mais frames. Cada frame tem um cabeçalho
 - **opcode:** o tipo do frame, de dados (texto `0x1`, binário `0x2`, continuação `0x0`) ou de controle (fechamento `0x8`, ping `0x9`, pong `0xA`).
 - **máscara e tamanho:** os frames do cliente são mascarados, e o cabeçalho traz o tamanho do conteúdo; o navegador e o API Gateway cuidam dos dois.
 
-As requisições do cliente web e os eventos do backend são texto com JSON, nunca binários. O API Gateway impõe limites próprios: 32 KB por frame e 128 KB por mensagem WebSocket, e fecha a conexão ao receber algo acima disso (L03). Por isso o cliente limita o tamanho das mensagens de chat (RF11) e o histórico é enviado em páginas (seção 4.4 da arquitetura).
+As requisições do cliente web e os eventos do backend são texto com JSON, nunca binários. O API Gateway impõe limites próprios: 32 KB por frame e 128 KB por mensagem WebSocket, e fecha a conexão ao receber algo acima disso (L03), fragmentando automaticamente envios por `postToConnection` acima de 32 KB até 128 KB (validado em T2.5 e T5.3). Por isso o cliente e o backend limitam o tamanho das mensagens de chat a 32 KB (RF11) e o histórico é enviado em páginas (seção 4.4 da arquitetura).
 
 Os frames de ping e pong existem no protocolo, mas a API WebSocket do navegador não permite enviá-los nem observá-los. Por isso o heartbeat é uma requisição de aplicação (`heartbeat` → `pong`), que, além de manter a conexão ativa, passa pela Lambda e atualiza o `lastSeenAt` usado na expiração por inatividade (RF07, RF08).
 
@@ -80,7 +80,7 @@ Uma falha da Lambda `connect` depois de gravar o vínculo, como um tempo limite,
 
 Uma conexão encerrada nem sempre gera o `$disconnect`, porque a AWS o entrega em regime de melhor esforço (R01). O registro que sobra é removido pelo `410 Gone` no próximo envio a essa conexão, exceto nos primeiros 30 s (seção 7, RF08), ou pelo `presenceSweeper` depois de 10 minutos sem requisições (RF07).
 
-Do lado do cliente, qualquer encerramento que ele não pediu leva à reconexão com backoff exponencial, que abre uma sessão nova com outro `connectionId` (RF08). Nem toda queda chega ao cliente como um encerramento: se um `heartbeat` fica 10 s sem `pong`, o cliente também considera a conexão perdida. Na sessão nova, o `sync` com `since` e o `getHistory` recuperam o que chegou durante a queda, e as mensagens pendentes são reenviadas (seção 4.4 da arquitetura). Já para trocar o nome de exibição, o cliente abre uma conexão nova com o nome novo antes de fechar a antiga, e os contatos não veem o usuário offline (RF01, seção 4.6 da arquitetura).
+Do lado do cliente, qualquer encerramento que ele não pediu leva à reconexão com backoff exponencial, que abre uma sessão nova com outro `connectionId` (RF08). Nem toda queda chega ao cliente como um encerramento: se um `heartbeat` fica 10 s sem `pong` — ou se o evento `offline` da `window` dispara uma sondagem sem resposta —, o cliente também considera a conexão perdida, e o evento `online` acorda o backoff imediatamente. Na sessão nova, o `sync` com `since` e o `getHistory` recuperam o que chegou durante a queda, e as mensagens pendentes são reenviadas (seção 4.4 da arquitetura). Já para trocar o nome de exibição, o cliente abre uma conexão nova com o nome novo antes de fechar a antiga, e os contatos não veem o usuário offline (RF01, seção 4.6 da arquitetura).
 
 ## 6. `$connect`
 
@@ -158,6 +158,7 @@ sequenceDiagram
     else com registro
         D-->>L: username = ana
         L->>D: Users[ana]: DELETE connections c1, version + 1, se contém c1
+        L->>D: apaga Connections[c1]
         alt condição atendida
             D-->>L: estado novo do usuário
             L->>G: POST @connections dos contatos (presence)
@@ -165,7 +166,6 @@ sequenceDiagram
         else condição falhou
             D-->>L: o id já tinha saído do conjunto
         end
-        L->>D: apaga Connections[c1]
     end
 ```
 

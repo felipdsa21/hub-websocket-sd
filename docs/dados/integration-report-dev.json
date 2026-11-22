@@ -1,0 +1,161 @@
+{
+  "executedAt": "2026-11-21T16:58:34.625Z",
+  "endpoint": "wss://<api-id>.execute-api.sa-east-1.amazonaws.com/dev",
+  "stage": "dev",
+  "region": "sa-east-1",
+  "passed": 12,
+  "total": 12,
+  "results": [
+    {
+      "id": "S4-T3-1",
+      "name": "Chat privado oculto até 1ª mensagem e isolamento entre usuários",
+      "status": "PASS",
+      "durationMs": 463.5,
+      "detail": {
+        "directId": "d:qa_mwqni5xe_a:qa_mwqni5xe_b"
+      }
+    },
+    {
+      "id": "S4-T3-2",
+      "name": "Grupo, isolamento, histórico, adição, saída e aviso lastMember",
+      "status": "PASS",
+      "durationMs": 1950.5,
+      "detail": {
+        "groupId": "g:6d688045-daec-4a90-86cc-67121f7fde38",
+        "concurrentVerified": 3
+      }
+    },
+    {
+      "id": "S5-T7-1",
+      "name": "Reenvio idempotente (RF12) e mesmo messageId por outro remetente",
+      "status": "PASS",
+      "durationMs": 784.7,
+      "detail": {
+        "sharedId": "7eebbb97-e001-4a1d-98d8-038363beabb5"
+      }
+    },
+    {
+      "id": "S5-T7-2",
+      "name": "Desconexão, presença offline em tempo real e recuperação via sync + getHistory(after)",
+      "status": "PASS",
+      "durationMs": 1068.9,
+      "detail": {
+        "missedId": "3798800f-350b-4c94-bf5a-e463bf50b7a8",
+        "offlineVersion": 2,
+        "onlineVersion": 3
+      }
+    },
+    {
+      "id": "S4-T2-SIZE",
+      "name": "Mensagem perto do limite de 32 KB (RF11) entregue e paginada em getHistory",
+      "status": "PASS",
+      "durationMs": 306.1,
+      "detail": {
+        "utf8Bytes": 31600
+      }
+    },
+    {
+      "id": "S4-T4-SEARCH",
+      "name": "Pesquisa normalizada pt-BR (sem acento encontra com acento) e presença (RF05)",
+      "status": "PASS",
+      "durationMs": 105.5,
+      "detail": {
+        "matchedUsername": "qa_mwqni5xe_b",
+        "displayName": "João Antônio mwqni5xe",
+        "online": false
+      }
+    },
+    {
+      "id": "S4-T5-HISTORY",
+      "name": "Histórico > 128 KB paginado em múltiplas páginas via getHistory(before) (RF06, T5)",
+      "status": "PASS",
+      "durationMs": 1326.5,
+      "detail": {
+        "totalBytes": 140010,
+        "pages": 5,
+        "messagesRecovered": 5
+      }
+    },
+    {
+      "id": "S5-T6-MULTITAB",
+      "name": "Presença multi-aba: fechar 1ª mantém online; fechar 2ª anuncia offline (T6, RF07)",
+      "status": "PASS",
+      "durationMs": 852.1,
+      "detail": {
+        "stillOnlineVersion": 7,
+        "offlineVersion": 8
+      }
+    },
+    {
+      "id": "S5-T7-410-GONE",
+      "name": "Tratamento real de 410 Gone (GoneException): desvínculo e confirmação ao remetente (T7.1, RF08)",
+      "status": "PASS",
+      "durationMs": 5715.7,
+      "detail": {
+        "staleRemoved": true,
+        "offlineVersion": 12
+      }
+    },
+    {
+      "id": "S5-T7-SWEEPER",
+      "name": "Expiração real por inatividade no presenceSweeper (>10 min) e anúncio offline (T7.2, RF07)",
+      "status": "PASS",
+      "durationMs": 48012.1,
+      "detail": {
+        "idleRemoved": true,
+        "offlineVersion": 4,
+        "sweeperLogGroup": "HubWebSocket-dev-presenceSweeperLogs-<id>"
+      }
+    },
+    {
+      "id": "S6-SEC-1",
+      "name": "Rejeição de conexões inválidas ($connect, incl. controle/bidi) e rotas desconhecidas / não-JSON ($default)",
+      "status": "PASS",
+      "durationMs": 1338.8,
+      "detail": {
+        "handshakeCasesRejected": 5
+      }
+    },
+    {
+      "id": "S6-LOGS-1",
+      "name": "Logs estruturados e anonimizados no CloudWatch (app e presenceSweeper, RNF03)",
+      "status": "PASS",
+      "durationMs": 6812.9,
+      "detail": {
+        "logGroup": "HubWebSocket-dev-appLogs-<id>",
+        "sweeperLogGroup": "HubWebSocket-dev-presenceSweeperLogs-<id>",
+        "structuredLines": 45,
+        "sample": {
+          "route": "sendMessage",
+          "result": "ok",
+          "connectionId": "fba1f768139c",
+          "username": "97e128a955a0",
+          "conversationId": "ecf218703221",
+          "durationMs": 127
+        },
+        "dupLog": {
+          "route": "sendMessage",
+          "result": "duplicate",
+          "connectionId": "fba1f768139c",
+          "username": "97e128a955a0",
+          "conversationId": "ecf218703221",
+          "durationMs": 64
+        },
+        "forbLog": {
+          "route": "sendMessage",
+          "result": "error",
+          "code": "forbidden",
+          "connectionId": "8ce56bead886",
+          "username": "a4471b23417f",
+          "conversationId": "a4610d84ee9d",
+          "durationMs": 37
+        },
+        "sweeperLog": {
+          "route": "presenceSweeper",
+          "result": "ok",
+          "durationMs": 104
+        }
+      }
+    }
+  ]
+}
