@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideTestFixtures } from '@/core/fixtures/testing';
-import { REQUEST_TIMEOUT_MS } from '@/core/hub/hub-socket';
+import { PONG_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from '@/core/hub/hub-socket';
 import {
   ALICE_BRUNO,
   BRUNO,
@@ -344,5 +344,38 @@ describe('SessionStore reconnection and retry queue (RF08, RF12)', () => {
     answer(third, { messages: [m1, m2], hasMore: false });
     await vi.advanceTimersByTimeAsync(0);
     expect(messages.history(ALICE_BRUNO)?.messages).toEqual([m1, m2]);
+  });
+
+  it('probes on window offline and wakes reconnect backoff immediately on window online (B4)', async () => {
+    const { sockets, socket, connection } = await setUp();
+    vi.useFakeTimers();
+
+    // Window goes offline -> immediate heartbeat probe without waiting 30 s.
+    window.dispatchEvent(new Event('offline'));
+    expect(socket.last()).toMatchObject({ action: 'heartbeat' });
+
+    // No pong within 10 s -> marks lost and starts attempt #1 (immediate).
+    await vi.advanceTimersByTimeAsync(PONG_TIMEOUT_MS);
+    expect(connection.connected()).toBe(false);
+    expect(sockets).toHaveLength(2);
+
+    // Attempt #1 fails, attempt #2 waits 1 s, fails, attempt #3 enters 2 s backoff.
+    sockets[1]!.drop();
+    await vi.advanceTimersByTimeAsync(RECONNECT_INITIAL_DELAY_MS);
+    expect(sockets).toHaveLength(3);
+    sockets[2]!.drop();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets).toHaveLength(3);
+
+    // Window comes back online -> wakes up from 2 s backoff immediately without waiting.
+    window.dispatchEvent(new Event('online'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets).toHaveLength(4);
+
+    sockets[3]!.open();
+    await vi.advanceTimersByTimeAsync(0);
+    answer(sockets[3]!, { serverTime: 120_000, updated: [], conversations: [aliceBrunoChat()] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(connection.connected()).toBe(true);
   });
 });

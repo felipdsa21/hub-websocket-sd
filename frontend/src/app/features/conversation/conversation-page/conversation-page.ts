@@ -85,6 +85,7 @@ export class ConversationPage {
   protected readonly compact = this.breakpoints.compact;
 
   protected readonly conversation = computed(() => this.conversations.get(this.conversationId()));
+  private readonly hasConversation = computed(() => this.conversation() !== undefined);
   protected readonly history = computed(() => this.messages.history(this.conversationId()));
 
   /** On desktop, the members sit next to a group's conversation and can be hidden. */
@@ -143,6 +144,7 @@ export class ConversationPage {
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
   private readonly olderSentinel = viewChild<ElementRef<HTMLElement>>('olderSentinel');
   private readonly timelineElement = viewChild<ElementRef<HTMLElement>>('timelineList');
+  private readonly olderIntersecting = signal(false);
   private followLatest = true;
   /** Distance from the bottom to restore after older messages are added on top. */
   private anchorFromBottom: number | null = null;
@@ -150,16 +152,21 @@ export class ConversationPage {
   constructor() {
     effect(() => {
       const id = this.conversationId();
+      if (!this.hasConversation()) {
+        return;
+      }
       untracked(() => {
         this.followLatest = true;
+        this.olderIntersecting.set(false);
         this.conversations.open(id);
         this.messages.open(id);
       });
     });
 
-    // A conversation the user left or never had goes back to the list.
+    // A conversation the user left or never had goes back to the list (skip while signing out so
+    // `navigateByUrl('/')` doesn't cancel the redirect to `/entrar`).
     effect(() => {
-      if (!this.conversation() && !this.conversations.loading()) {
+      if (this.currentUser.user() && !this.conversation() && !this.conversations.loading()) {
         void this.router.navigateByUrl('/');
       }
     });
@@ -178,18 +185,35 @@ export class ConversationPage {
       }
     });
 
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) {
-        this.loadOlder();
-      }
-    });
-    afterRenderEffect(() => {
-      observer.disconnect();
+    afterRenderEffect((onCleanup) => {
+      this.conversationId();
+      const root = this.scroller()?.nativeElement;
       const sentinel = this.olderSentinel()?.nativeElement;
-      if (sentinel) {
-        observer.observe(sentinel);
+      if (!root || !sentinel) {
+        this.olderIntersecting.set(false);
+        return;
+      }
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const intersecting = entries.some((e) => e.isIntersecting);
+          this.olderIntersecting.set(intersecting);
+          if (intersecting) {
+            this.loadOlder();
+          }
+        },
+        { root },
+      );
+      observer.observe(sentinel);
+      onCleanup(() => observer.disconnect());
+    });
+
+    // If the sentinel stayed visible while offline, resume loading older history on reconnect.
+    effect(() => {
+      if (this.connected() && this.olderIntersecting()) {
+        untracked(() => this.loadOlder());
       }
     });
+
     // Sizes still change after rendering, as when the web font loads: lines wrap again and the
     // message field resizes. Following the latest messages keeps the view at the bottom.
     const resizeObserver = new ResizeObserver(() => {
@@ -208,7 +232,6 @@ export class ConversationPage {
     });
     this.destroyRef.onDestroy(() => {
       this.conversations.close(this.conversationId());
-      observer.disconnect();
       resizeObserver.disconnect();
     });
   }

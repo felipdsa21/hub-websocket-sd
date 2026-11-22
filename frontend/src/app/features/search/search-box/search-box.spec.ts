@@ -1,4 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { provideTestFixtures } from '@/core/fixtures/testing';
+import { SessionStore } from '@/core/state/session-store';
 import { SearchBox } from './search-box';
 
 describe('SearchBox', () => {
@@ -8,8 +11,10 @@ describe('SearchBox', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [SearchBox],
+      providers: [provideRouter([]), ...provideTestFixtures()],
     }).compileComponents();
 
+    await TestBed.inject(SessionStore).enter('marina', 'Marina Alves');
     fixture = TestBed.createComponent(SearchBox);
     component = fixture.componentInstance;
     await fixture.whenStable();
@@ -17,5 +22,57 @@ describe('SearchBox', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('stays open when clicking non-focusable panel areas and closes on outside click, Escape or Tab out (M1)', async () => {
+    const host = fixture.nativeElement as HTMLElement;
+    const input = host.querySelector<HTMLInputElement>('input')!;
+
+    input.dispatchEvent(new FocusEvent('focus'));
+    input.value = 'a';
+    input.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+
+    expect(host.classList.contains('open')).toBe(true);
+    const heading = host.querySelector('h2')!;
+    expect(heading).not.toBeNull();
+
+    // Clicking a non-focusable heading inside the panel causes focusout with relatedTarget === null.
+    heading.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    host.dispatchEvent(new FocusEvent('focusout', { relatedTarget: null }));
+    heading.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await fixture.whenStable();
+    expect(host.classList.contains('open')).toBe(true);
+
+    // Escape closes even when focus left the input for a non-focusable panel area.
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await fixture.whenStable();
+    expect(host.classList.contains('open')).toBe(false);
+
+    // Reopen and close via clicking outside the host.
+    input.dispatchEvent(new FocusEvent('focus'));
+    input.value = 'a';
+    input.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    expect(host.classList.contains('open')).toBe(true);
+
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    try {
+      outside.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+      await fixture.whenStable();
+      expect(host.classList.contains('open')).toBe(false);
+
+      // Reopen and close via tabbing focus outside the host.
+      input.dispatchEvent(new FocusEvent('focus'));
+      await fixture.whenStable();
+      expect(host.classList.contains('open')).toBe(true);
+
+      host.dispatchEvent(new FocusEvent('focusout', { relatedTarget: outside }));
+      await fixture.whenStable();
+      expect(host.classList.contains('open')).toBe(false);
+    } finally {
+      outside.remove();
+    }
   });
 });

@@ -24,4 +24,13 @@ export class UsersStore {
     }
     this.states.update((states) => new Map(states).set(state.username, state));
   }
+
+  /** Updates the display name locally without incrementing `version`, so server `presence` wins. */
+  public setDisplayName(username: string, displayName: string): void {
+    const known = this.states().get(username);
+    if (!known || known.displayName === displayName) {
+      return;
+    }
+    this.states.update((states) => new Map(states).set(username, { ...known, displayName }));
+  }
 }

@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { Breakpoints } from '@/core/layout/breakpoints';
 import { ConnectionStore } from '@/core/state/connection-store';
 import { ConversationsStore } from '@/core/state/conversations-store';
+import { CurrentUser } from '@/core/state/current-user';
 import { ConnectionBanner } from '@/shared/ui/connection-banner/connection-banner';
 import { ScreenHeader } from '@/shared/ui/screen-header/screen-header';
 import { GroupDialogs } from '../group-dialogs';
@@ -17,6 +18,7 @@ import { MembersPanel } from '../members-panel/members-panel';
 })
 export class MembersPage {
   private readonly conversations = inject(ConversationsStore);
+  private readonly currentUser = inject(CurrentUser);
   private readonly router = inject(Router);
   private readonly breakpoints = inject(Breakpoints);
   protected readonly groupDialogs = inject(GroupDialogs);
@@ -24,14 +26,19 @@ export class MembersPage {
 
   public readonly conversationId = input.required<string>();
 
-  protected readonly groupName = computed(
-    () => this.conversations.get(this.conversationId())?.name ?? '',
-  );
+  protected readonly conversation = computed(() => this.conversations.get(this.conversationId()));
+  protected readonly groupName = computed(() => this.conversation()?.name ?? '');
 
   constructor() {
-    // Wider screens show the members next to the conversation instead.
+    // A group the user left or was removed from goes back to the list (skip while signing out);
+    // wider screens show members next to the conversation instead.
     effect(() => {
-      if (!this.breakpoints.compact()) {
+      if (!this.currentUser.user()) {
+        return;
+      }
+      if (!this.conversation() && !this.conversations.loading()) {
+        void this.router.navigateByUrl('/');
+      } else if (!this.breakpoints.compact()) {
         void this.router.navigate(['/c', this.conversationId()]);
       }
     });

@@ -180,4 +180,160 @@ describe('HubSocket', () => {
     await expect(opening).rejects.toThrow();
     expect(hub.status()).toBe('closed');
   });
+
+  it('clears a pending sendMessage and its 15 s timer when the confirming message arrives', async () => {
+    vi.useFakeTimers();
+    const { hub, socket } = await connected();
+    const events: unknown[] = [];
+    hub.events.subscribe((e) => events.push(e));
+
+    const sending = hub.request('sendMessage', {
+      conversationId: 'd:bruno:marina',
+      messageId: 'm-1',
+      text: 'oi',
+    });
+
+    // Another sender reusing the same messageId must not clear our pending request.
+    socket.receive({
+      type: 'message',
+      conversationId: 'd:bruno:marina',
+      sk: 'm#0000000001000#bruno#m-1',
+      messageId: 'm-1',
+      sender: 'bruno',
+      text: 'oi',
+      sentAt: 1000,
+    });
+    // Our own confirming message resolves the pending send and clears its timeout.
+    socket.receive({
+      type: 'message',
+      conversationId: 'd:bruno:marina',
+      sk: 'm#0000000002000#marina#m-1',
+      messageId: 'm-1',
+      sender: 'marina',
+      text: 'oi',
+      sentAt: 2000,
+    });
+
+    await expect(sending).resolves.toBeUndefined();
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS * 2);
+    expect(events).toHaveLength(2);
+  });
+
+  it('handles error events with messageId even when requestId is absent', async () => {
+    const { hub, socket } = await connected();
+    const events: unknown[] = [];
+    hub.events.subscribe((e) => events.push(e));
+
+    const sending = hub.request('sendMessage', {
+      conversationId: 'd:bruno:marina',
+      messageId: 'm-1',
+      text: 'oi',
+    });
+    socket.receive({
+      type: 'error',
+      messageId: 'm-1',
+      code: 'invalidRequest',
+      message: 'too large',
+    });
+    expect((await failure(sending)).reason).toEqual({
+      code: 'invalidRequest',
+      message: 'too large',
+    });
+
+    // When no matching pending request exists, forwards the message error to events.
+    socket.receive({
+      type: 'error',
+      messageId: 'm-late',
+      code: 'forbidden',
+      message: 'not a member',
+    });
+    expect(events).toEqual([
+      {
+        type: 'error',
+        messageId: 'm-late',
+        code: 'forbidden',
+        message: 'not a member',
+      },
+    ]);
+  });
+
+  it('probes with an immediate heartbeat on checkConnection and drops if pong misses', async () => {
+    vi.useFakeTimers();
+    const { hub, socket } = await connected();
+    const dropped = vi.fn();
+    hub.dropped.subscribe(dropped);
+
+    hub.checkConnection();
+    expect(socket.last()).toMatchObject({ action: 'heartbeat' });
+
+    await vi.advanceTimersByTimeAsync(PONG_TIMEOUT_MS);
+    expect(hub.status()).toBe('lost');
+    expect(dropped).toHaveBeenCalledOnce();
+  });
+
+  it('switches to a parallel socket on open and drains pending requests on the old one', async () => {
+    const { hub, socket: first, sockets } = await connected();
+    const dropped = vi.fn();
+    hub.dropped.subscribe(dropped);
+
+    const pendingReq = hub.request<{ ok: boolean }>('search', { query: 'bru' });
+    const switching = hub.reconnectInParallel('marina', 'Marina Nova');
+    const second = sockets[1]!;
+
+    expect(new URL(second.url).searchParams.get('displayName')).toBe('Marina Nova');
+    expect(first.closed).toBe(false);
+    expect(hub.status()).toBe('open');
+
+    second.open();
+    await expect(switching).resolves.toBeUndefined();
+    // Old socket stays open while its pending request is still waiting.
+    expect(first.closed).toBe(false);
+    expect(hub.status()).toBe('open');
+    expect(dropped).not.toHaveBeenCalled();
+
+    // New requests go through the new active socket.
+    const nextReq = hub.request<{ ok: boolean }>('search', { query: 'ana' });
+    expect(second.last()).toMatchObject({ action: 'search', query: 'ana' });
+
+    // Once the pending request on the old socket answers, the old socket closes immediately.
+    first.receive({
+      type: 'response',
+      requestId: first.last().requestId,
+      data: { ok: true },
+    });
+    await expect(pendingReq).resolves.toEqual({ ok: true });
+    expect(first.closed).toBe(true);
+    expect(second.closed).toBe(false);
+    expect(dropped).not.toHaveBeenCalled();
+
+    second.receive({
+      type: 'response',
+      requestId: second.last().requestId,
+      data: { ok: true },
+    });
+    await expect(nextReq).resolves.toEqual({ ok: true });
+  });
+
+  it('closes the old socket immediately on parallel switch when nothing is pending', async () => {
+    const { hub, socket: first, sockets } = await connected();
+    const switching = hub.reconnectInParallel('marina', 'Marina Nova');
+    sockets[1]!.open();
+    await expect(switching).resolves.toBeUndefined();
+    expect(first.closed).toBe(true);
+    expect(hub.status()).toBe('open');
+  });
+
+  it('keeps the active connection open if the parallel replacement fails to open', async () => {
+    const { hub, socket: first, sockets } = await connected();
+    const dropped = vi.fn();
+    hub.dropped.subscribe(dropped);
+
+    const switching = hub.reconnectInParallel('marina', 'Marina Nova');
+    sockets[1]!.drop();
+
+    await expect(switching).rejects.toThrow();
+    expect(first.closed).toBe(false);
+    expect(hub.status()).toBe('open');
+    expect(dropped).not.toHaveBeenCalled();
+  });
 });

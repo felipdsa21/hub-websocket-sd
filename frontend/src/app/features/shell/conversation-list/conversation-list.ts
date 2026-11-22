@@ -65,4 +65,11 @@ export class ConversationList {
       time: this.clock.context(),
     }),
   );
+
+  protected preventIfDimmed(event: Event, dimmed: boolean): void {
+    if (dimmed) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }
 }

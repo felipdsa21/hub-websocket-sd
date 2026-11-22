@@ -1,0 +1,49 @@
+<h2 mat-dialog-title>Telemetria e eventos</h2>
+<mat-dialog-content>
+  <dl class="metrics">
+    <div class="metric">
+      <dt>Conexão</dt>
+      <dd>{{ connected() ? 'Conectado' : 'Sem conexão' }}</dd>
+    </div>
+    <div class="metric">
+      <dt>Último RTT</dt>
+      <dd>{{ telemetry.lastRttMs() !== null ? telemetry.lastRttMs() + ' ms' : '—' }}</dd>
+    </div>
+    <div class="metric">
+      <dt>RTT médio</dt>
+      <dd>{{ telemetry.averageRttMs() !== null ? telemetry.averageRttMs() + ' ms' : '—' }}</dd>
+    </div>
+    <div class="metric">
+      <dt>Fila pendente</dt>
+      <dd>{{ pendingCount() }}</dd>
+    </div>
+  </dl>
+
+  <mat-slide-toggle
+    class="toggle"
+    [checked]="telemetry.showLatency()"
+    (change)="toggleLatency($event.checked)"
+  >
+    Exibir latência (RTT) na barra superior
+  </mat-slide-toggle>
+
+  <div class="events" role="log" aria-label="Eventos recentes de telemetria" tabindex="0">
+    @if (telemetry.events().length === 0) {
+      <p class="empty">Nenhum evento registrado ainda nesta sessão.</p>
+    } @else {
+      <ul class="event-list">
+        @for (event of telemetry.events(); track event.id) {
+          <li class="event-row">
+            <span class="time">{{ formatTime(event.timestamp) }}</span>
+            <span class="kind">{{ kindLabel(event.kind) }}</span>
+            <span class="summary">{{ event.summary }}</span>
+          </li>
+        }
+      </ul>
+    }
+  </div>
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button matButton [disabled]="telemetry.events().length === 0" (click)="clear()">Limpar</button>
+  <button matButton mat-dialog-close>Fechar</button>
+</mat-dialog-actions>

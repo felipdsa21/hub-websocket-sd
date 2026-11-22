@@ -18,4 +18,5 @@ export class ResultRow {
   public readonly selected = input(false);
   /** For toggles, as choosing people; null for plain actions. */
   public readonly pressed = input<boolean | null>(null);
+  public readonly disabled = input(false);
 }

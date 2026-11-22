@@ -21,4 +21,17 @@ describe('DisplayNameDialog', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('disables saving when displayName contains control or bidi characters (B6)', async () => {
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector<HTMLInputElement>('input')!;
+    const submit = root.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+
+    input.value = 'Ana\u202eBia';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new FocusEvent('blur'));
+    await fixture.whenStable();
+
+    expect(submit.disabled).toBe(true);
+  });
 });

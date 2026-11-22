@@ -20,4 +20,18 @@ describe('NewGroupDialog', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('invalidates group names containing control or bidi characters (B6)', async () => {
+    const root = fixture.nativeElement as HTMLElement;
+    const input = root.querySelector<HTMLInputElement>('input')!;
+
+    for (const invalid of ['Grupo\u202eSD', 'Grupo\tSD']) {
+      input.value = invalid;
+      input.dispatchEvent(new Event('input'));
+      input.dispatchEvent(new FocusEvent('blur'));
+      await fixture.whenStable();
+
+      expect(root.querySelector('mat-error')?.textContent).toContain('Dê um nome ao grupo');
+    }
+  });
 });

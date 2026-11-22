@@ -43,7 +43,9 @@ import { ResultRow } from '../result-row/result-row';
 })
 export class PeoplePicker {
   private readonly directory = inject(DirectoryStore);
-  private readonly presenceVisible = inject(ConnectionStore).presenceVisible;
+  private readonly connection = inject(ConnectionStore);
+  protected readonly connected = this.connection.connected;
+  private readonly presenceVisible = this.connection.presenceVisible;
 
   public readonly label = input('Pessoa');
   public readonly multiple = input(false);
@@ -63,12 +65,25 @@ export class PeoplePicker {
       ? this.found().filter((u) => !this.exclude().has(u.username))
       : this.directory.searchPeople(this.query(), this.exclude()),
   );
+  protected readonly empty = computed(() => {
+    if (!this.query().trim() || this.results().length > 0) {
+      return false;
+    }
+    return this.directory.live() ? this.status() === 'done' : true;
+  });
 
   constructor() {
     effect((onCleanup) => {
       const query = this.query();
+      const connected = this.connected();
       this.attempt();
       if (!this.directory.live()) {
+        return;
+      }
+      if (!connected) {
+        if (this.status() === 'loading') {
+          this.status.set('idle');
+        }
         return;
       }
       // The people of an older query can't be chosen while the new one waits for its answer.
@@ -123,6 +138,9 @@ export class PeoplePicker {
   }
 
   protected choose(user: UserState): void {
+    if (!this.connected()) {
+      return;
+    }
     if (this.multiple()) {
       this.toggle(user);
     } else {
@@ -137,10 +155,14 @@ export class PeoplePicker {
   }
 
   protected retry(): void {
-    this.attempt.update((n) => n + 1);
+    if (this.connected()) {
+      this.attempt.update((n) => n + 1);
+    }
   }
 
   protected onQuery(event: Event): void {
-    this.query.set((event.target as HTMLInputElement).value);
+    if (this.connected()) {
+      this.query.set((event.target as HTMLInputElement).value);
+    }
   }
 }

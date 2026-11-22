@@ -19,4 +19,6 @@ export class ScreenHeader {
   public readonly detail = input('');
   public readonly backLink = input<string | readonly unknown[] | null>(null);
   public readonly backLabel = input('Voltar');
+  /** Heading level: `1` on standalone phone screens, `2` when shown next to the shell title. */
+  public readonly headingLevel = input<1 | 2>(1);
 }

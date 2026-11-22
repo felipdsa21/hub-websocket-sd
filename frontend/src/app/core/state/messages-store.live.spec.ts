@@ -153,6 +153,24 @@ describe('MessagesStore with the backend', () => {
     expect(socket.last()).toMatchObject({ action: 'sendMessage', messageId: ID2 });
   });
 
+  it('marks a refused message as not sent even when error has messageId without requestId (B4)', async () => {
+    const { socket, messages } = await setUp();
+    messages.send(ALICE_BRUNO, 'um', ID1);
+    messages.send(ALICE_BRUNO, 'dois', ID2);
+    socket.receive({
+      type: 'error',
+      messageId: ID1,
+      code: 'forbidden',
+      message: 'not a member',
+    });
+    await settle();
+
+    const [refused, next] = messages.outgoingIn(ALICE_BRUNO);
+    expect(refused).toMatchObject({ messageId: ID1, error: { code: 'forbidden' } });
+    expect(next?.error).toBeUndefined();
+    expect(socket.last()).toMatchObject({ action: 'sendMessage', messageId: ID2 });
+  });
+
   it('puts received messages in sk order, once each, whatever the arrival order', async () => {
     const { socket, messages } = await setUp();
     messages.open(ALICE_BRUNO);

@@ -18,6 +18,7 @@ import { Clock } from '@/core/time/clock';
 import { ConnectionStore } from './connection-store';
 import { ConversationsStore } from './conversations-store';
 import { CurrentUser } from './current-user';
+import { TelemetryStore } from './telemetry-store';
 
 /** The error of a message the "nao-enviada" scenario rejects. */
 const REJECTED_TEXT: HubError = {
@@ -50,10 +51,13 @@ export class MessagesStore {
   private readonly clock = inject(Clock);
   private readonly config = inject(HubConfig);
   private readonly socket = inject(HubSocket);
+  private readonly telemetry = inject(TelemetryStore);
   private readonly window = inject(DOCUMENT).defaultView;
 
   /** Messages with a `sendMessage` waiting for confirmation; one per conversation (section 4.4). */
   private readonly inFlight = new Set<string>();
+  /** Timestamp (`performance.now()`) of each in-flight send, to measure confirmation RTT. */
+  private readonly sentAtPerf = new Map<string, number>();
   /** Loaded conversations whose reconnect catch-up did not finish and must retry next reconnect. */
   private readonly pendingSync = new Set<string>();
   /** Latest `sentAt` received from the backend, used to compute `sync` `since` (section 4.4). */
@@ -82,6 +86,7 @@ export class MessagesStore {
 
   public reset(data: Fixtures | null): void {
     this.inFlight.clear();
+    this.sentAtPerf.clear();
     this.pendingSync.clear();
     this.lastReceived = 0;
     this.backend = data ? [...data.messages].sort(compareMessages) : [];
@@ -213,8 +218,26 @@ export class MessagesStore {
 
   public discard(messageId: string): void {
     const message = this.outgoing().find((m) => m.messageId === messageId);
+    this.inFlight.delete(messageId);
+    this.sentAtPerf.delete(messageId);
     this.outgoing.update((list) => list.filter((m) => m.messageId !== messageId));
     if (message && this.config.live()) {
+      this.sendNext(message.conversationId);
+    }
+  }
+
+  /** Marks an outgoing message as rejected by the backend and advances the conversation queue. */
+  public failOutgoing(messageId: string, error: HubError): void {
+    const message = this.outgoing().find((m) => m.messageId === messageId);
+    if (!message || message.error) {
+      return;
+    }
+    this.inFlight.delete(messageId);
+    this.sentAtPerf.delete(messageId);
+    this.outgoing.update((list) =>
+      list.map((m) => (m.messageId === messageId ? { ...m, error } : m)),
+    );
+    if (this.config.live()) {
       this.sendNext(message.conversationId);
     }
   }
@@ -237,6 +260,11 @@ export class MessagesStore {
     }
     this.conversations.updateLastMessage(conversationId, sentAt, sender);
     if (sender === me) {
+      const started = this.sentAtPerf.get(message.messageId);
+      if (started !== undefined) {
+        this.sentAtPerf.delete(message.messageId);
+        this.telemetry.recordRtt(performance.now() - started, 'message');
+      }
       this.inFlight.delete(message.messageId);
       this.outgoing.update((list) => list.filter((m) => m.messageId !== message.messageId));
       this.sendNext(conversationId);
@@ -252,6 +280,7 @@ export class MessagesStore {
       return;
     }
     this.inFlight.clear();
+    this.sentAtPerf.clear();
     const conversationIds = new Set(
       this.outgoing()
         .filter((m) => !m.error)
@@ -394,6 +423,7 @@ export class MessagesStore {
       this.conversations.updateLastMessage(conversationId, message.sentAt, message.sender);
       if (message.sender === me && this.outgoing().some((m) => m.messageId === message.messageId)) {
         this.inFlight.delete(message.messageId);
+        this.sentAtPerf.delete(message.messageId);
         this.outgoing.update((list) => list.filter((m) => m.messageId !== message.messageId));
         confirmedOwn = true;
       }
@@ -430,23 +460,23 @@ export class MessagesStore {
     const { messageId, text } = next;
     if (resend) {
       console.info(`Resending message ${messageId} from the queue.`);
+      this.telemetry.record('retry', `Reenvio da fila (${messageId.slice(0, 8)})`);
     }
     this.inFlight.add(messageId);
+    this.sentAtPerf.set(messageId, performance.now());
     // The confirmation is the `message` event itself; the request only ends with an error or
     // without an answer in 15 s.
     this.socket
       .request('sendMessage', { conversationId, messageId, text })
       .catch((error: unknown) => {
         this.inFlight.delete(messageId);
+        this.sentAtPerf.delete(messageId);
         if (!this.outgoing().some((m) => m.messageId === messageId)) {
           return; // Already confirmed or discarded.
         }
         const reason = error instanceof RequestFailure ? error.reason : 'noResponse';
         if (reason !== 'noResponse') {
-          this.outgoing.update((list) =>
-            list.map((m) => (m.messageId === messageId ? { ...m, error: reason } : m)),
-          );
-          this.sendNext(conversationId);
+          this.failOutgoing(messageId, reason);
         } else if (this.connection.connected()) {
           this.sendNext(conversationId, true);
         }

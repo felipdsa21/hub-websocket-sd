@@ -6,7 +6,11 @@
   <ng-content select="[leading]" />
 }
 <div class="title">
-  <h1>{{ title() }}</h1>
+  @if (headingLevel() === 1) {
+    <h1 class="heading">{{ title() }}</h1>
+  } @else {
+    <h2 class="heading">{{ title() }}</h2>
+  }
   @if (detail()) {
     <span class="detail">{{ detail() }}</span>
   }
