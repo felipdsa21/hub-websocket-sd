@@ -57,11 +57,26 @@ describe('connect', () => {
       { username: 'ana', displayName: 'Ana S' },
       { username: 'ana', displayName: 'Ana S' },
     ],
+    [
+      { username: 'ana', displayName: ' Ana ' },
+      { username: 'ana', displayName: 'Ana' },
+    ],
+    [
+      { username: 'ana', displayName: ` ${'x'.repeat(50)} ` },
+      { username: 'ana', displayName: 'x'.repeat(50) },
+    ],
     [{}, undefined],
     [{ username: 'an' }, undefined],
     [{ username: 'a:b' }, undefined],
-    [{ username: 'ana', displayName: ' Ana' }, undefined],
+    [{ username: 'ana', displayName: '' }, undefined],
+    [{ username: 'ana', displayName: '   ' }, undefined],
     [{ username: 'ana', displayName: 'x'.repeat(51) }, undefined],
+    [{ username: 'ana', displayName: 'Ana\u0000' }, undefined],
+    [{ username: 'ana', displayName: 'Ana\nSilva' }, undefined],
+    [{ username: 'ana', displayName: '\tAna' }, undefined],
+    [{ username: 'ana', displayName: 'Ana\u007f' }, undefined],
+    [{ username: 'ana', displayName: 'Ana\u202e' }, undefined],
+    [{ username: 'ana', displayName: '\u2066Ana' }, undefined],
   ])('parseIdentity(%j)', (query, expected) => {
     expect(connect.parseIdentity(query)).toEqual(expected);
   });

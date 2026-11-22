@@ -6,9 +6,11 @@ import {
 import { DynamoDBClient, TransactionCanceledException } from '@aws-sdk/client-dynamodb';
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import {
+  BatchGetCommand,
   DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
+  QueryCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
@@ -20,6 +22,52 @@ export const ssm = new SSMClient({});
 
 // A connection id enters Users.connections before the handshake ends, and a postToConnection in that window also answers 410.
 const HANDSHAKE_GRACE_MS = 30_000;
+// Wait 1 minute before re-announcing stale presence so an in-flight Lambda is not duplicated (section 3.5).
+export const REANNOUNCE_DELAY_MS = 60_000;
+
+export interface PresenceUserRecord {
+  username: string;
+  displayName: string;
+  connections?: Set<string> | string[];
+  version: number;
+  changedAt?: number;
+  announcedVersion?: number;
+}
+
+export function toStringSet(value: unknown): Set<string> {
+  if (value instanceof Set) return new Set(Array.from(value, String));
+  if (Array.isArray(value)) return new Set(value.map(String));
+  return new Set();
+}
+
+export async function batchGet<T>(
+  tableName: string,
+  keys: Record<string, unknown>[],
+): Promise<T[]> {
+  const items: T[] = [];
+  for (let i = 0; i < keys.length; i += 100) {
+    let pending: Record<string, unknown>[] | undefined = keys.slice(i, i + 100);
+    for (let attempt = 0; pending && pending.length > 0; attempt++) {
+      const res = await db.send(
+        new BatchGetCommand({
+          RequestItems: { [tableName]: { Keys: pending, ConsistentRead: true } },
+        }),
+      );
+      const responses = res?.Responses;
+      if (responses?.[tableName]) {
+        items.push(...(responses[tableName] as T[]));
+      }
+      pending = res?.UnprocessedKeys?.[tableName]?.Keys as Record<string, unknown>[] | undefined;
+      if (pending && pending.length > 0) {
+        if (attempt >= 5) {
+          throw new Error(`BatchGet exhausted retries on ${tableName}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 15 * 2 ** attempt));
+      }
+    }
+  }
+  return items;
+}
 
 export type ErrorCode =
   | 'invalidRequest'
@@ -79,6 +127,7 @@ export type LogResult = 'ok' | 'duplicate' | 'error' | 'rejected' | 'gone';
 export interface Outcome {
   result: LogResult;
   code?: ErrorCode;
+  error?: string;
   statusCode?: number;
   username?: string;
   conversationId?: string;
@@ -89,16 +138,18 @@ export function anonymize(value: string, secret: string): string {
   return createHmac('sha256', secret).update(value).digest('hex').slice(0, 12);
 }
 
-let hmacSecretPromise: Promise<string> | undefined;
+let hmacSecretPromise: Promise<string | undefined> | undefined;
+let hmacWarned = false;
 
 /** Clears the cached SSM secret (for unit tests). */
 export function resetHmacSecretCache() {
   hmacSecretPromise = undefined;
+  hmacWarned = false;
 }
 
-async function getHmacSecret(): Promise<string | undefined> {
+function getHmacSecret(): Promise<string | undefined> {
   const paramName = process.env.LOG_HMAC_SECRET_PARAM;
-  if (!paramName) return undefined;
+  if (!paramName) return Promise.resolve(undefined);
   if (!hmacSecretPromise) {
     hmacSecretPromise = ssm
       .send(new GetParameterCommand({ Name: paramName, WithDecryption: true }))
@@ -108,10 +159,24 @@ async function getHmacSecret(): Promise<string | undefined> {
       })
       .catch((err) => {
         hmacSecretPromise = undefined;
-        throw err;
+        if (!hmacWarned) {
+          hmacWarned = true;
+          console.warn(
+            JSON.stringify({
+              event: 'hmacSecretUnavailable',
+              error: errorName(err),
+            }),
+          );
+        }
+        return undefined;
       });
   }
   return hmacSecretPromise;
+}
+
+// Start fetching the SSM secret during Lambda cold start without blocking handler logic.
+if (process.env.LOG_HMAC_SECRET_PARAM) {
+  void getHmacSecret();
 }
 
 export function log(entry: {
@@ -162,9 +227,10 @@ export function withRequestLog(
 ) {
   return async (event: APIGatewayProxyWebsocketEventV2) => {
     const { routeKey: route, requestTimeEpoch, connectionId } = event.requestContext;
-    const secret = await getHmacSecret().catch(() => undefined);
+    const secretPromise = getHmacSecret();
     try {
       const { statusCode = 200, username, conversationId, ...outcome } = await handle(event);
+      const secret = await secretPromise;
       log({
         route,
         ...outcome,
@@ -173,6 +239,7 @@ export function withRequestLog(
       });
       return { statusCode };
     } catch (err) {
+      const secret = await secretPromise;
       log({
         route,
         result: 'error',
@@ -185,8 +252,96 @@ export function withRequestLog(
   };
 }
 
+/**
+ * Announces a user's current presence and displayName to all contacts (members of visible or hidden
+ * conversations) and advances `announcedVersion` conditionally (architecture, section 3.5; D10, D11).
+ */
+export async function announcePresence(user: PresenceUserRecord): Promise<void> {
+  const membershipsTable = process.env.MEMBERSHIPS_TABLE;
+  const conversationsTable = process.env.CONVERSATIONS_TABLE;
+  const usersTable = process.env.USERS_TABLE;
+  if (!membershipsTable || !conversationsTable || !usersTable) return;
+
+  const conversationIds: string[] = [];
+  let ExclusiveStartKey: Record<string, unknown> | undefined;
+  do {
+    const res = await db.send(
+      new QueryCommand({
+        TableName: membershipsTable,
+        KeyConditionExpression: 'username = :username',
+        ExpressionAttributeValues: { ':username': user.username },
+        ConsistentRead: true,
+        ExclusiveStartKey,
+      }),
+    );
+    for (const item of (res?.Items ?? []) as { conversationId?: string }[]) {
+      if (typeof item.conversationId === 'string') conversationIds.push(item.conversationId);
+    }
+    ExclusiveStartKey = res?.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+
+  if (conversationIds.length > 0) {
+    const uniqueConvIds = [...new Set(conversationIds)];
+    const convs = await batchGet<{ members?: Set<string> | string[] }>(
+      conversationsTable,
+      uniqueConvIds.map((conversationId) => ({ conversationId })),
+    );
+    const contacts = new Set<string>();
+    for (const conv of convs) {
+      for (const member of toStringSet(conv.members)) {
+        if (member !== user.username) contacts.add(member);
+      }
+    }
+
+    if (contacts.size > 0) {
+      const contactRecords = await batchGet<PresenceUserRecord>(
+        usersTable,
+        [...contacts].map((username) => ({ username })),
+      );
+      const event = {
+        type: 'presence',
+        username: user.username,
+        displayName: user.displayName,
+        online: toStringSet(user.connections).size > 0,
+        version: user.version,
+      };
+      const deliveries: Promise<boolean>[] = [];
+      for (const contact of contactRecords) {
+        for (const connId of toStringSet(contact.connections)) {
+          // Do not recurse presence announcements on 410; presenceSweeper catches up any dropped contact.
+          deliveries.push(send(connId, contact.username, event, false));
+        }
+      }
+      await settle(deliveries);
+    }
+  }
+
+  try {
+    await db.send(
+      new UpdateCommand({
+        TableName: usersTable,
+        Key: { username: user.username },
+        UpdateExpression: 'SET announcedVersion = :v',
+        ConditionExpression: 'attribute_not_exists(announcedVersion) OR announcedVersion < :v',
+        ExpressionAttributeValues: { ':v': user.version },
+      }),
+    );
+  } catch (err) {
+    if (!isConditionFailure(err)) throw err;
+  }
+}
+
+export interface UnbindResult {
+  owner?: string;
+  announced: boolean;
+}
+
 /** Unbinds a connection from its user (architecture, section 3.4). `username` is passed when a post to the connection answered 410. */
-export async function unbind(connectionId: string, username?: string): Promise<string | undefined> {
+export async function unbind(
+  connectionId: string,
+  username?: string,
+  announce = true,
+): Promise<UnbindResult> {
   const { Item } = await db.send(
     new GetCommand({
       TableName: process.env.CONNECTIONS_TABLE,
@@ -194,12 +349,15 @@ export async function unbind(connectionId: string, username?: string): Promise<s
       ConsistentRead: true,
     }),
   );
-  if (!Item && !username) return undefined;
-  if (Item && username && Date.now() - Item.connectedAt < HANDSHAKE_GRACE_MS) return Item.username;
+  if (!Item && !username) return { announced: false };
+  if (Item && username && Date.now() - Item.connectedAt < HANDSHAKE_GRACE_MS) {
+    return { owner: Item.username, announced: false };
+  }
   const owner: string = Item?.username ?? username;
 
+  let updatedUser: PresenceUserRecord | undefined;
   try {
-    await db.send(
+    const res = await db.send(
       new UpdateCommand({
         TableName: process.env.USERS_TABLE,
         Key: { username: owner },
@@ -214,7 +372,9 @@ export async function unbind(connectionId: string, username?: string): Promise<s
         ReturnValues: 'ALL_NEW',
       }),
     );
-    // shortcut: presence is not announced to contacts yet (section 3.5); announcedVersion stays behind, week 5.
+    if (res?.Attributes && typeof res.Attributes.version === 'number') {
+      updatedUser = res.Attributes as PresenceUserRecord;
+    }
   } catch (err) {
     if (!isConditionFailure(err)) throw err;
   }
@@ -222,7 +382,11 @@ export async function unbind(connectionId: string, username?: string): Promise<s
   await db.send(
     new DeleteCommand({ TableName: process.env.CONNECTIONS_TABLE, Key: { connectionId } }),
   );
-  return owner;
+  if (announce && updatedUser) {
+    await announcePresence(updatedUser);
+    return { owner, announced: true };
+  }
+  return { owner, announced: false };
 }
 
 /** Refreshes lastSeenAt and resolves the connection's user; undefined when the connection has no record. */
@@ -276,6 +440,7 @@ export async function send(
   connectionId: string,
   username: string | undefined,
   event: object,
+  announceOnGone = true,
 ): Promise<boolean> {
   try {
     await api.send(
@@ -284,7 +449,7 @@ export async function send(
     return true;
   } catch (err) {
     if (!isGone(err)) throw err;
-    await unbind(connectionId, username);
+    await unbind(connectionId, username, announceOnGone);
     return false;
   }
 }
@@ -353,4 +518,31 @@ export function parseUsername(value: unknown): string | undefined {
 export function isValidNameLength(name: string): boolean {
   const length = [...name].length;
   return length >= 1 && length <= 50;
+}
+
+function hasDisallowedNameChar(value: string): boolean {
+  for (const ch of value) {
+    const code = ch.codePointAt(0)!;
+    if (
+      code <= 0x1f ||
+      code === 0x7f ||
+      (code >= 0x202a && code <= 0x202e) ||
+      (code >= 0x2066 && code <= 0x2069)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Validates and normalizes a display or group name (architecture, sections 3.1 and 4.5):
+ * rejects ASCII control and bidi override/isolate characters, trims outer whitespace,
+ * and requires 1 to 50 Unicode code points.
+ */
+export function parseDisplayName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (hasDisallowedNameChar(value)) return undefined;
+  const trimmed = value.trim();
+  return isValidNameLength(trimmed) ? trimmed : undefined;
 }

@@ -32,6 +32,10 @@ import {
 
 const HISTORY_MAX_MESSAGES = 50;
 const HISTORY_MAX_BYTES = 28 * 1024;
+// Blocks multi-frame WebSocket payloads (up to 128 KB) that would break getHistory pagination (A1).
+export const MAX_TEXT_BYTES = 32 * 1024;
+// Idempotency markers are only needed for short-term resends; messages themselves never expire (M7).
+export const MARKER_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 interface SendMessageInput {
   conversationId: string;
@@ -83,6 +87,14 @@ async function parseSendMessageInput(ctx: RequestContext): Promise<SendMessageIn
     return ctx.fail(
       'invalidRequest',
       'text must be a non-empty string.',
+      { field: 'text' },
+      body.messageId,
+    );
+  }
+  if (Buffer.byteLength(body.text, 'utf8') > MAX_TEXT_BYTES) {
+    return ctx.fail(
+      'invalidRequest',
+      'text exceeds the maximum allowed size.',
       { field: 'text' },
       body.messageId,
     );
@@ -230,7 +242,12 @@ async function persistMessage(
             {
               Put: {
                 TableName: table('MESSAGES_TABLE'),
-                Item: { conversationId: message.conversationId, sk: markerKey, ref: message.sk },
+                Item: {
+                  conversationId: message.conversationId,
+                  sk: markerKey,
+                  ref: message.sk,
+                  expiresAt: Math.floor(message.sentAt / 1000) + MARKER_TTL_SECONDS,
+                },
                 ConditionExpression: 'attribute_not_exists(sk)',
               },
             },

@@ -28,11 +28,21 @@ import {
   isConditionFailure,
   isTransactionConditionFailure,
   isTransactionConflict,
-  isValidNameLength,
+  parseDisplayName,
   parseUsername,
   settle,
   withConflictRetry,
 } from './shared';
+
+export const MAX_GROUP_MEMBERS = 99;
+export const SEARCH_MAX_RESULTS = 50;
+
+function normalizeSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR');
+}
 
 function mapVisibleConversations(
   username: string,
@@ -88,14 +98,10 @@ async function requireGroupMember(
   return conv;
 }
 
-async function isStillMemberAfterFailure(
-  err: unknown,
-  conversationId: string,
-  username: string,
-): Promise<boolean> {
-  const members =
-    membersFromCancellation(err) ?? toStringSet((await getConversation(conversationId))?.members);
-  return members.has(username);
+async function membersAfterFailure(err: unknown, conversationId: string): Promise<Set<string>> {
+  return (
+    membersFromCancellation(err) ?? toStringSet((await getConversation(conversationId))?.members)
+  );
 }
 
 async function revealCallerMembership(
@@ -223,9 +229,9 @@ export async function handleOpenDirect(ctx: RequestContext): Promise<Outcome> {
 
 export async function handleCreateGroup(ctx: RequestContext): Promise<Outcome> {
   const { body, username: me, now } = ctx;
-  const name = typeof body.name === 'string' ? body.name.trim() : '';
-  if (!isValidNameLength(name)) {
-    return ctx.fail('invalidRequest', 'name must be 1 to 50 characters.', { field: 'name' });
+  const name = parseDisplayName(body.name);
+  if (!name) {
+    return ctx.fail('invalidRequest', 'name must be 1 to 50 valid characters.', { field: 'name' });
   }
   if (!Array.isArray(body.members)) {
     return ctx.fail('invalidRequest', 'members must be an array of usernames.', {
@@ -243,10 +249,14 @@ export async function handleCreateGroup(ctx: RequestContext): Promise<Outcome> {
     normalized.push(candidate);
   }
   const others = [...new Set(normalized.filter((u) => u !== me))];
-  if (others.length === 0 || others.length + 1 > 99) {
-    return ctx.fail('invalidRequest', 'A group must have 1 to 98 other members.', {
-      field: 'members',
-    });
+  if (others.length === 0 || others.length + 1 > MAX_GROUP_MEMBERS) {
+    return ctx.fail(
+      'invalidRequest',
+      `A group must have 1 to ${MAX_GROUP_MEMBERS - 1} other members.`,
+      {
+        field: 'members',
+      },
+    );
   }
 
   const existing = await getUsers(others);
@@ -315,6 +325,12 @@ export async function handleAddMember(ctx: RequestContext): Promise<Outcome> {
   if (previousMembers.has(target)) {
     return ctx.fail('invalidOperation', 'User is already a member of this group.');
   }
+  if (previousMembers.size >= MAX_GROUP_MEMBERS) {
+    return ctx.fail(
+      'invalidOperation',
+      `Group has reached the maximum of ${MAX_GROUP_MEMBERS} members.`,
+    );
+  }
   if (!(await getUsers([target])).has(target)) {
     return ctx.fail('notFound', 'User not found.', { usernames: [target] });
   }
@@ -329,11 +345,13 @@ export async function handleAddMember(ctx: RequestContext): Promise<Outcome> {
                 TableName: table('CONVERSATIONS_TABLE'),
                 Key: { conversationId },
                 UpdateExpression: 'ADD members :targetSet',
-                ConditionExpression: 'contains(members, :me) AND NOT contains(members, :target)',
+                ConditionExpression:
+                  'contains(members, :me) AND NOT contains(members, :target) AND size(members) < :maxMembers',
                 ExpressionAttributeValues: {
                   ':targetSet': new Set([target]),
                   ':me': me,
                   ':target': target,
+                  ':maxMembers': MAX_GROUP_MEMBERS,
                 },
                 ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
               },
@@ -354,9 +372,17 @@ export async function handleAddMember(ctx: RequestContext): Promise<Outcome> {
       return ctx.fail('conflict', 'Transaction conflict; retry the request.');
     }
     if (isTransactionConditionFailure(err)) {
-      return (await isStillMemberAfterFailure(err, conversationId, me))
-        ? ctx.fail('invalidOperation', 'User is already a member of this group.')
-        : ctx.fail('forbidden', 'You are not a member of this conversation.');
+      const members = await membersAfterFailure(err, conversationId);
+      if (!members.has(me)) {
+        return ctx.fail('forbidden', 'You are not a member of this conversation.');
+      }
+      if (members.has(target)) {
+        return ctx.fail('invalidOperation', 'User is already a member of this group.');
+      }
+      return ctx.fail(
+        'invalidOperation',
+        `Group has reached the maximum of ${MAX_GROUP_MEMBERS} members.`,
+      );
     }
     throw err;
   }
@@ -431,7 +457,7 @@ export async function handleLeaveGroup(ctx: RequestContext): Promise<Outcome> {
       return ctx.fail('conflict', 'Transaction conflict; retry the request.');
     }
     if (isTransactionConditionFailure(err)) {
-      return (await isStillMemberAfterFailure(err, conversationId, me))
+      return (await membersAfterFailure(err, conversationId)).has(me)
         ? ctx.fail('lastMember', 'You are the last member of this group; confirm to leave.')
         : ctx.fail('forbidden', 'You are not a member of this conversation.');
     }
@@ -452,11 +478,11 @@ export async function handleLeaveGroup(ctx: RequestContext): Promise<Outcome> {
 export async function handleSearch(ctx: RequestContext): Promise<Outcome> {
   const { body, username: me } = ctx;
   const query = typeof body.query === 'string' ? body.query.trim() : '';
-  if (query.length === 0) {
+  const needle = normalizeSearch(query);
+  if (needle.length === 0) {
     return ctx.fail('invalidRequest', 'query must be a non-empty string.', { field: 'query' });
   }
-  const needle = query.toLocaleLowerCase('pt-BR');
-  const matches = (value: string) => value.toLocaleLowerCase('pt-BR').includes(needle);
+  const matches = (value: string) => normalizeSearch(value).includes(needle);
 
   const memberships = await getVisibleMemberships(me);
   const [convRecords, allUsers] = await Promise.all([
@@ -477,11 +503,13 @@ export async function handleSearch(ctx: RequestContext): Promise<Outcome> {
     allUsers,
   );
 
-  const conversations = visible.filter((c) => {
-    if (c.type === 'group') return matches(c.name ?? '');
-    const partner = c.members.find((m) => m.username !== me);
-    return partner !== undefined && (matches(partner.username) || matches(partner.displayName));
-  });
+  const conversations = visible
+    .filter((c) => {
+      if (c.type === 'group') return matches(c.name ?? '');
+      const partner = c.members.find((m) => m.username !== me);
+      return partner !== undefined && (matches(partner.username) || matches(partner.displayName));
+    })
+    .slice(0, SEARCH_MAX_RESULTS);
 
   const people: UserState[] = [];
   for (const user of allUsers.values()) {
@@ -496,5 +524,5 @@ export async function handleSearch(ctx: RequestContext): Promise<Outcome> {
       (a.username < b.username ? -1 : a.username > b.username ? 1 : 0),
   );
 
-  return ctx.reply({ conversations, people });
+  return ctx.reply({ conversations, people: people.slice(0, SEARCH_MAX_RESULTS) });
 }

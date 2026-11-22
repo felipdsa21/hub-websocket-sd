@@ -18,11 +18,7 @@ import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
 import { handler as app } from '../functions/app';
 import { handler as connect } from '../functions/connect';
-import {
-  OPEN_CONNECTIONS_METRIC,
-  SECOND_SCAN_DELAY_MS,
-  handler as presenceSweeper,
-} from '../functions/presenceSweeper';
+import { OPEN_CONNECTIONS_METRIC, handler as presenceSweeper } from '../functions/presenceSweeper';
 import { anonymize, resetHmacSecretCache } from '../functions/shared';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
@@ -163,20 +159,61 @@ describe('HMAC log anonymization (RNF03, section 5)', () => {
     expect(logs[0]!.connectionId).not.toBe(logs[1]!.connectionId);
   });
 
-  test('omits raw identifiers if SSM fails instead of leaking them', async () => {
+  test('omits raw identifiers and warns once per cold start if SSM fails (B10)', async () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     ssmMock.on(GetParameterCommand).rejects(new Error('SSM unavailable'));
     ddbMock.on(PutCommand).resolves({});
     ddbMock.on(UpdateCommand).resolves({ Attributes: {} });
 
-    await connect(wsEvent('$connect', { connectionId: 'c-leak', query: { username: 'bob' } }));
+    await connect(wsEvent('$connect', { connectionId: 'c-leak-1', query: { username: 'bob' } }));
+    await connect(wsEvent('$connect', { connectionId: 'c-leak-2', query: { username: 'bob' } }));
 
-    const serialized = JSON.stringify(logs[0]);
-    expect(serialized).not.toContain('c-leak');
-    expect(serialized).not.toContain('bob');
-    expect(logs[0]).toMatchObject({ route: '$connect', result: 'ok' });
+    for (const entry of logs) {
+      const serialized = JSON.stringify(entry);
+      expect(serialized).not.toContain('c-leak');
+      expect(serialized).not.toContain('bob');
+      expect(entry).toMatchObject({ route: '$connect', result: 'ok' });
+    }
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(warnSpy.mock.calls[0]![0]))).toMatchObject({
+      event: 'hmacSecretUnavailable',
+      error: 'Error',
+    });
+  });
+
+  test('runs handler logic in parallel with getHmacSecret without blocking before log() (B10)', async () => {
+    let resolveSecret!: (value: { Parameter: { Value: string } }) => void;
+    const secretDeferred = new Promise<{ Parameter: { Value: string } }>((resolve) => {
+      resolveSecret = resolve;
+    });
+    ssmMock.on(GetParameterCommand).callsFake(() => secretDeferred);
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(UpdateCommand).resolves({ Attributes: {} });
+
+    const req = connect(
+      wsEvent('$connect', { connectionId: 'c-parallel', query: { username: 'alice' } }),
+    );
+    await new Promise((r) => setImmediate(r));
+
+    // DynamoDB writes ran while SSM was still pending; only the final log waits for the secret.
+    expect(ddbMock.commandCalls(PutCommand)).toHaveLength(1);
+    expect(ddbMock.commandCalls(UpdateCommand)).toHaveLength(1);
+    expect(logs).toHaveLength(0);
+
+    resolveSecret({ Parameter: { Value: SECRET } });
+    await req;
+
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({
+      route: '$connect',
+      result: 'ok',
+      connectionId: anonymize('c-parallel', SECRET),
+      username: anonymize('alice', SECRET),
+    });
   });
 
   test('retries SSM on the next request after a transient failure and then caches', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     ssmMock
       .on(GetParameterCommand)
       .rejectsOnce(new Error('SSM transient'))
@@ -308,7 +345,6 @@ describe('Authorization and validation checks (RF01, RNF01)', () => {
 
 describe('OpenConnections metric in presenceSweeper (RNF06, section 5)', () => {
   test('publishes the active connection count to CloudWatch', async () => {
-    jest.useFakeTimers();
     const now = Date.now();
     ddbMock.on(ScanCommand, { TableName: 'Connections' }).resolves({
       Items: [
@@ -318,10 +354,7 @@ describe('OpenConnections metric in presenceSweeper (RNF06, section 5)', () => {
     });
     ddbMock.on(ScanCommand, { TableName: 'Users' }).resolves({ Items: [] });
 
-    const run = presenceSweeper();
-    await jest.advanceTimersByTimeAsync(SECOND_SCAN_DELAY_MS);
-    await run;
-    jest.useRealTimers();
+    await presenceSweeper();
 
     const calls = cwMock.commandCalls(PutMetricDataCommand);
     expect(calls).toHaveLength(1);

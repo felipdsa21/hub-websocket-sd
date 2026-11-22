@@ -1,5 +1,13 @@
 import { PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
-import { db, isValidNameLength, parseUsername, withRequestLog } from './shared';
+import {
+  PresenceUserRecord,
+  announcePresence,
+  db,
+  errorName,
+  parseDisplayName,
+  parseUsername,
+  withRequestLog,
+} from './shared';
 
 // Only a cleanup for records the presence sweeper missed (D05).
 const RECORD_TTL_S = 3 * 60 * 60;
@@ -8,8 +16,9 @@ const RECORD_TTL_S = 3 * 60 * 60;
 export function parseIdentity(query: Record<string, string | undefined> | undefined) {
   const username = parseUsername(query?.username);
   if (!username) return undefined;
-  const displayName = query?.displayName ?? username;
-  if (!isValidNameLength(displayName) || displayName !== displayName.trim()) return undefined;
+  const displayName =
+    query?.displayName === undefined ? username : parseDisplayName(query.displayName);
+  if (!displayName) return undefined;
   return { username, displayName };
 }
 
@@ -31,7 +40,7 @@ export const handler = withRequestLog(async (event) => {
       },
     }),
   );
-  await db.send(
+  const res = await db.send(
     new UpdateCommand({
       TableName: process.env.USERS_TABLE,
       Key: { username: identity.username },
@@ -47,7 +56,19 @@ export const handler = withRequestLog(async (event) => {
       ReturnValues: 'ALL_NEW',
     }),
   );
-  // shortcut: presence is not announced to contacts yet (section 3.5); the sweeper or week 5 catches up.
+  // Announcement failure is logged without failing the handshake; presenceSweeper catches up (section 3.4).
+  let announceError: string | undefined;
+  if (res?.Attributes && typeof res.Attributes.version === 'number') {
+    try {
+      await announcePresence(res.Attributes as PresenceUserRecord);
+    } catch (err) {
+      announceError = errorName(err);
+    }
+  }
 
-  return { result: 'ok', username: identity.username };
+  return {
+    result: 'ok',
+    username: identity.username,
+    ...(announceError && { error: announceError }),
+  };
 });

@@ -22,6 +22,8 @@ import {
 import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
 import * as app from '../functions/app';
+import { MAX_GROUP_MEMBERS, SEARCH_MAX_RESULTS } from '../functions/conversations';
+import { MARKER_TTL_SECONDS, MAX_TEXT_BYTES } from '../functions/messages';
 
 const db = mockClient(DynamoDBDocumentClient);
 const api = mockClient(ApiGatewayManagementApiClient);
@@ -121,6 +123,7 @@ describe('sendMessage', () => {
       conversationId: DIRECT_ID,
       sk: `id#ana#${MSG_ID}`,
       ref: `m#${NOW}#ana#${MSG_ID}`,
+      expiresAt: Math.floor(NOW / 1000) + MARKER_TTL_SECONDS,
     });
     expect(tx.TransactItems![1]!.Put!.Item).toEqual({
       conversationId: DIRECT_ID,
@@ -130,6 +133,7 @@ describe('sendMessage', () => {
       text: '  olá\nlinha 2  ',
       sentAt: NOW,
     });
+    expect(tx.TransactItems![1]!.Put!.Item).not.toHaveProperty('expiresAt');
 
     const summaryUpdate = db.commandCalls(UpdateCommand)[1]!.args[0].input;
     expect(summaryUpdate.ConditionExpression).toContain('attribute_not_exists(lastMessageAt)');
@@ -194,6 +198,60 @@ describe('sendMessage', () => {
         }),
       },
     ]);
+  });
+
+  test('enforces MAX_TEXT_BYTES UTF-8 limit on sendMessage without writing to DynamoDB (A1)', async () => {
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    // 16384 'á' chars = 32768 UTF-8 bytes; one extra byte exceeds the 32 KB limit.
+    const tooLargeUtf8 = `${'á'.repeat(MAX_TEXT_BYTES / 2)}a`;
+    expect(Buffer.byteLength(tooLargeUtf8, 'utf8')).toBe(MAX_TEXT_BYTES + 1);
+
+    await app.handler(
+      event('sendMessage', {
+        requestId: REQ_ID,
+        conversationId: DIRECT_ID,
+        messageId: MSG_ID,
+        text: tooLargeUtf8,
+      }),
+    );
+
+    expect(db.commandCalls(TransactWriteCommand)).toHaveLength(0);
+    expect(sentTo()).toEqual([
+      {
+        connectionId: 'c1',
+        payload: {
+          type: 'error',
+          requestId: REQ_ID,
+          messageId: MSG_ID,
+          code: 'invalidRequest',
+          message: 'text exceeds the maximum allowed size.',
+          details: { field: 'text' },
+        },
+      },
+    ]);
+
+    api.reset();
+    db.on(GetCommand).resolves({
+      Item: {
+        conversationId: DIRECT_ID,
+        type: 'direct',
+        members: new Set(['ana', 'bia']),
+        started: true,
+      },
+    });
+    db.on(TransactWriteCommand).resolves({});
+    db.on(BatchGetCommand).resolves({ Responses: { Users: [anaUser, biaUser] } });
+
+    const exactLimit = 'a'.repeat(MAX_TEXT_BYTES);
+    await app.handler(
+      event('sendMessage', {
+        requestId: REQ_ID,
+        conversationId: DIRECT_ID,
+        messageId: MSG_ID,
+        text: exactLimit,
+      }),
+    );
+    expect(db.commandCalls(TransactWriteCommand)).toHaveLength(1);
   });
 
   test('rejects non-member with forbidden including messageId (RNF01)', async () => {
@@ -677,6 +735,23 @@ describe('openDirect & createGroup', () => {
       deliveries.find((d) => d.payload.type === 'response')!.payload.data.conversation.name,
     ).toBe('Projeto SD');
   });
+
+  test.each(['Time\nSD', 'Time\u0000', 'Time\u007f', 'Time\u202e', '\u2066Time'])(
+    'createGroup rejects control and bidi characters in group name (%j) (B6)',
+    async (badName) => {
+      db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+      await app.handler(
+        event('createGroup', { requestId: REQ_ID, name: badName, members: ['bia'] }),
+      );
+      expect(sentTo()[0]!.payload).toEqual(
+        expect.objectContaining({
+          type: 'error',
+          code: 'invalidRequest',
+          details: { field: 'name' },
+        }),
+      );
+    },
+  );
 });
 
 describe('addMember & leaveGroup', () => {
@@ -743,6 +818,70 @@ describe('addMember & leaveGroup', () => {
       event('addMember', { requestId: REQ_ID, conversationId: GROUP_ID, username: 'carlos' }),
     );
     expect(sentTo()[0]!.payload.code).toBe('forbidden');
+  });
+
+  test('addMember rejects when group already has 99 members without writing to DynamoDB (M3)', async () => {
+    const fullMembers = new Set([
+      'ana',
+      ...Array.from({ length: MAX_GROUP_MEMBERS - 1 }, (_, i) => `user${i}`),
+    ]);
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(GetCommand).resolves({
+      Item: { conversationId: GROUP_ID, type: 'group', name: 'Cheio', members: fullMembers },
+    });
+
+    await app.handler(
+      event('addMember', { requestId: REQ_ID, conversationId: GROUP_ID, username: 'carlos' }),
+    );
+
+    expect(db.commandCalls(TransactWriteCommand)).toHaveLength(0);
+    expect(sentTo()[0]!.payload).toEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'invalidOperation',
+      }),
+    );
+  });
+
+  test('addMember guards size(members) < :maxMembers in transaction and handles concurrent fill (M3)', async () => {
+    const almostFull = [
+      'ana',
+      ...Array.from({ length: MAX_GROUP_MEMBERS - 2 }, (_, i) => `user${i}`),
+    ];
+    const filledConcurrently = [...almostFull, 'diana'];
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(GetCommand).resolves({
+      Item: {
+        conversationId: GROUP_ID,
+        type: 'group',
+        name: 'Quase',
+        members: new Set(almostFull),
+      },
+    });
+    db.on(BatchGetCommand).resolves({
+      Responses: { Users: [{ username: 'carlos', displayName: 'Carlos', version: 1 }] },
+    });
+    db.on(TransactWriteCommand).rejects(
+      txCanceled(['ConditionalCheckFailed', 'None'], { members: { SS: filledConcurrently } }),
+    );
+
+    await app.handler(
+      event('addMember', { requestId: REQ_ID, conversationId: GROUP_ID, username: 'carlos' }),
+    );
+
+    const tx = db.commandCalls(TransactWriteCommand)[0]!.args[0].input;
+    expect(tx.TransactItems![0]!.Update!.ConditionExpression).toContain(
+      'size(members) < :maxMembers',
+    );
+    expect(tx.TransactItems![0]!.Update!.ExpressionAttributeValues).toMatchObject({
+      ':maxMembers': MAX_GROUP_MEMBERS,
+    });
+    expect(sentTo()[0]!.payload).toEqual(
+      expect.objectContaining({
+        type: 'error',
+        code: 'invalidOperation',
+      }),
+    );
   });
 
   test('leaveGroup returns lastMember on concurrent leave without confirm', async () => {
@@ -976,5 +1115,39 @@ describe('sync & search', () => {
         people: [{ username: 'bianca', displayName: 'Bianca', online: false, version: 1 }],
       },
     });
+  });
+
+  test('search normalizes pt-BR accents and caps conversations and people at 50 each (B8)', async () => {
+    const memberships = Array.from({ length: 60 }, (_, i) => ({
+      username: 'ana',
+      conversationId: `g:00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      joinedAt: 100 + i,
+    }));
+    const conversations = memberships.map((m, i) => ({
+      conversationId: m.conversationId,
+      type: 'group',
+      name: `João Antônio ${i}`,
+      members: new Set(['ana', 'bia']),
+    }));
+    const users = [
+      anaUser,
+      ...Array.from({ length: 60 }, (_, i) => ({
+        username: `joao${String(i).padStart(2, '0')}`,
+        displayName: `João Antônio ${i}`,
+        version: 1,
+      })),
+    ];
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(QueryCommand).resolves({ Items: memberships });
+    db.on(BatchGetCommand).resolves({ Responses: { Conversations: conversations } });
+    db.on(ScanCommand).resolves({ Items: users });
+
+    await app.handler(event('search', { requestId: REQ_ID, query: 'joao antonio' }));
+
+    const data = sentTo()[0]!.payload.data;
+    expect(data.conversations).toHaveLength(SEARCH_MAX_RESULTS);
+    expect(data.people).toHaveLength(SEARCH_MAX_RESULTS);
+    expect(data.conversations[0].name).toContain('João Antônio');
+    expect(data.people[0].displayName).toContain('João Antônio');
   });
 });

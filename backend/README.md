@@ -4,7 +4,7 @@ Infraestrutura e Lambdas do Hub Colaborativo WebSocket, declaradas com o AWS CDK
 
 Há um stack por estágio, `HubWebSocket-dev` e `HubWebSocket-prod`, na região `sa-east-1`. O código das Lambdas fica em `functions/`, e o stack, em `lib/`.
 
-Estão implementadas as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search`, além da Lambda `presenceSweeper` (que expira conexões inativas a cada minuto, remove ids órfãos e publica a métrica `OpenConnections`), logs JSON com identificadores anonimizados via HMAC-SHA256 (segredo no SSM Parameter Store) e o painel do CloudWatch (`HubWebSocket-<estágio>`). Ainda faltam os anúncios de presença (no `$connect`, no desvínculo e a refeitura no `presenceSweeper`).
+Estão implementadas as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search` (em Lambdas ARM64 com IAM de menor privilégio e throttling no estágio), os anúncios de presença em tempo real (no `$connect`, no desvínculo e na refeitura pelo `presenceSweeper`), a Lambda `presenceSweeper` (expiração de conexões inativas em passagem única por minuto, limpeza de ids órfãos e métrica `OpenConnections`), logs JSON com identificadores anonimizados via HMAC-SHA256 (SSM Parameter Store, retenção de 14 dias em `dev` e 30 dias em `prod`), painel e alarmes no CloudWatch (`HubWebSocket-<estágio>`) e hospedagem do frontend em S3 privado com CloudFront (OAC, cabeçalhos de segurança HTTP e `index.html`/`config.json` sem cache).
 
 ## Desenvolvimento
 
@@ -34,13 +34,14 @@ aws ssm put-parameter \
   --value "$(openssl rand -hex 32)"
 ```
 
-Depois, a cada mudança:
+Depois, compile o frontend (para que o `BucketDeployment` publique os arquivos estáticos junto com o `config.json` gerado automaticamente a partir de `WebSocketUrl`) e implante o stack:
 
 ```sh
+(cd ../frontend && npm ci && npm run build)
 npx cdk deploy HubWebSocket-dev
 ```
 
-A saída `WebSocketUrl` traz o endereço `wss://` do estágio.
+As saídas trazem `WebSocketUrl` (endereço `wss://` do estágio), `FrontendUrl` (URL HTTPS pública do CloudFront) e `DashboardName` (painel no CloudWatch).
 
 ## Teste manual
 
