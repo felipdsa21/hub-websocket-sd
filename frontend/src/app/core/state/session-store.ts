@@ -315,7 +315,7 @@ export class SessionStore {
             return;
           }
           if (outcome === 'woken') {
-            attempt = 0;
+            attempt = 1;
           }
         }
         const user = this.currentUser.user();

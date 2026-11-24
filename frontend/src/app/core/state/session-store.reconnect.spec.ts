@@ -372,9 +372,16 @@ describe('SessionStore reconnection and retry queue (RF08, RF12)', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(sockets).toHaveLength(4);
 
-    sockets[3]!.open();
+    // The woken attempt counts as the immediate one: after it fails, the next waits 1 s.
+    sockets[3]!.drop();
+    await vi.advanceTimersByTimeAsync(RECONNECT_INITIAL_DELAY_MS - 1);
+    expect(sockets).toHaveLength(4);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sockets).toHaveLength(5);
+
+    sockets[4]!.open();
     await vi.advanceTimersByTimeAsync(0);
-    answer(sockets[3]!, { serverTime: 120_000, updated: [], conversations: [aliceBrunoChat()] });
+    answer(sockets[4]!, { serverTime: 120_000, updated: [], conversations: [aliceBrunoChat()] });
     await vi.advanceTimersByTimeAsync(0);
     expect(connection.connected()).toBe(true);
   });
