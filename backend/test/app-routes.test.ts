@@ -484,6 +484,9 @@ describe('sendMessage', () => {
 });
 
 describe('getHistory', () => {
+  const historySk = (sentAt: number, sender: string, n: number) =>
+    `m#${String(sentAt).padStart(13, '0')}#${sender}#00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
   test('rejects before and after together', async () => {
     db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
     await app.handler(
@@ -497,6 +500,23 @@ describe('getHistory', () => {
     expect(sentTo()[0]!.payload).toEqual(
       expect.objectContaining({ type: 'error', code: 'invalidRequest' }),
     );
+  });
+
+  test.each([
+    ['before', 'm#' + 'x'.repeat(2000)],
+    ['after', 'm#1'],
+    ['after', 'm#123#'],
+    ['before', 'm#1764000000000#'],
+    ['before', `${historySk(1, 'ana', 1)}#extra`],
+  ])('rejects a %s cursor that is not a message sort key: %#', async (field, cursor) => {
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    await app.handler(
+      event('getHistory', { requestId: REQ_ID, conversationId: DIRECT_ID, [field]: cursor }),
+    );
+    expect(sentTo()[0]!.payload).toEqual(
+      expect.objectContaining({ type: 'error', code: 'invalidRequest', details: { field } }),
+    );
+    expect(db.commandCalls(QueryCommand)).toHaveLength(0);
   });
 
   test('rejects non-members with forbidden (RNF01)', async () => {
@@ -541,7 +561,7 @@ describe('getHistory', () => {
       Items: [
         {
           conversationId: DIRECT_ID,
-          sk: 'm#0000000000300#ana#3',
+          sk: historySk(300, 'ana', 3),
           messageId: '3',
           sender: 'ana',
           text: '3',
@@ -549,7 +569,7 @@ describe('getHistory', () => {
         },
         {
           conversationId: DIRECT_ID,
-          sk: 'm#0000000000200#bia#2',
+          sk: historySk(200, 'bia', 2),
           messageId: '2',
           sender: 'bia',
           text: '2',
@@ -557,7 +577,7 @@ describe('getHistory', () => {
         },
         {
           conversationId: DIRECT_ID,
-          sk: 'm#0000000000100#ana#1',
+          sk: historySk(100, 'ana', 1),
           messageId: '1',
           sender: 'ana',
           text: '1',
@@ -570,7 +590,7 @@ describe('getHistory', () => {
       event('getHistory', {
         requestId: REQ_ID,
         conversationId: DIRECT_ID,
-        before: 'm#0000000000300#ana#3',
+        before: historySk(300, 'ana', 3),
       }),
     );
 
@@ -586,12 +606,42 @@ describe('getHistory', () => {
       requestId: REQ_ID,
       data: {
         messages: [
-          expect.objectContaining({ sk: 'm#0000000000100#ana#1' }),
-          expect.objectContaining({ sk: 'm#0000000000200#bia#2' }),
+          expect.objectContaining({ sk: historySk(100, 'ana', 1) }),
+          expect.objectContaining({ sk: historySk(200, 'bia', 2) }),
         ],
         hasMore: false,
       },
     });
+  });
+
+  test('accepts an instant as the after cursor', async () => {
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(GetCommand).resolves({
+      Item: { conversationId: DIRECT_ID, members: new Set(['ana', 'bia']) },
+    });
+    const later = {
+      conversationId: DIRECT_ID,
+      sk: historySk(1764000000001, 'bia', 1),
+      messageId: '1',
+      sender: 'bia',
+      text: 'oi',
+      sentAt: 1764000000001,
+    };
+    db.on(QueryCommand).resolves({ Items: [later] });
+
+    await app.handler(
+      event('getHistory', {
+        requestId: REQ_ID,
+        conversationId: DIRECT_ID,
+        after: 'm#1764000000000#',
+      }),
+    );
+
+    const q = db.commandCalls(QueryCommand)[0]!.args[0].input;
+    expect(q.ExpressionAttributeValues).toEqual(
+      expect.objectContaining({ ':after': 'm#1764000000000#' }),
+    );
+    expect(sentTo()[0]!.payload.data.messages).toEqual([later]);
   });
 
   test('queries after in ascending order and enforces 28 KB page cap while keeping >= 1 message', async () => {
@@ -604,7 +654,7 @@ describe('getHistory', () => {
       Items: [
         {
           conversationId: DIRECT_ID,
-          sk: 'm#1',
+          sk: historySk(1, 'ana', 1),
           messageId: '1',
           sender: 'ana',
           text: bigText,
@@ -612,7 +662,7 @@ describe('getHistory', () => {
         },
         {
           conversationId: DIRECT_ID,
-          sk: 'm#2',
+          sk: historySk(2, 'bia', 2),
           messageId: '2',
           sender: 'bia',
           text: bigText,
@@ -622,7 +672,11 @@ describe('getHistory', () => {
     });
 
     await app.handler(
-      event('getHistory', { requestId: REQ_ID, conversationId: DIRECT_ID, after: 'm#0' }),
+      event('getHistory', {
+        requestId: REQ_ID,
+        conversationId: DIRECT_ID,
+        after: historySk(0, 'ana', 0),
+      }),
     );
 
     const q = db.commandCalls(QueryCommand)[0]!.args[0].input;

@@ -43,6 +43,12 @@ interface SendMessageInput {
   text: string;
 }
 
+// The shape messageSk produces; history cursors must match it so they stay within DynamoDB's key size.
+const MESSAGE_SK =
+  /^m#\d{13}#[a-z0-9._-]{3,32}#[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// An instant alone sorts before every message sent at it; `after` accepts it to resume from a time.
+const INSTANT_SK = /^m#\d{13}#$/;
+
 function messageSk(sentAt: number, sender: string, messageId: string): string {
   return `m#${String(sentAt).padStart(13, '0')}#${sender}#${messageId}`;
 }
@@ -383,10 +389,13 @@ export async function handleGetHistory(ctx: RequestContext): Promise<Outcome> {
       field: 'before',
     });
   }
-  if (before !== undefined && (typeof before !== 'string' || !before.startsWith('m#'))) {
+  if (before !== undefined && (typeof before !== 'string' || !MESSAGE_SK.test(before))) {
     return ctx.fail('invalidRequest', 'before must be a message sort key.', { field: 'before' });
   }
-  if (after !== undefined && (typeof after !== 'string' || !after.startsWith('m#'))) {
+  if (
+    after !== undefined &&
+    (typeof after !== 'string' || !(MESSAGE_SK.test(after) || INSTANT_SK.test(after)))
+  ) {
     return ctx.fail('invalidRequest', 'after must be a message sort key.', { field: 'after' });
   }
 
