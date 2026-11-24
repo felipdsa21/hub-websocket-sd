@@ -1,8 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { aliceBrunoChat, answer, enterTestSession } from '@/core/hub/testing';
+import { CARLA, aliceBrunoChat, answer, enterTestSession } from '@/core/hub/testing';
 import { DirectoryStore } from './directory-store';
-
-const CARLA = { username: 'carla', displayName: 'Carla', online: false, version: 2 };
 
 describe('DirectoryStore', () => {
   it('finds people to choose, including those with a direct chat', async () => {

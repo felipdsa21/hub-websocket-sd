@@ -17,6 +17,13 @@ import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
 import { createHmac } from 'node:crypto';
 
 export const db = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+/** The name of a DynamoDB table, failing when its environment variable is missing. */
+export function table(envKey: string): string {
+  const name = process.env[envKey];
+  if (!name) throw new Error(`Missing environment variable ${envKey}`);
+  return name;
+}
+
 export const api = new ApiGatewayManagementApiClient({ endpoint: process.env.CALLBACK_URL });
 export const ssm = new SSMClient({});
 
@@ -256,10 +263,9 @@ export function withRequestLog(
  * conversations) and advances `announcedVersion` conditionally (architecture, section 3.5; D10, D11).
  */
 export async function announcePresence(user: PresenceUserRecord): Promise<void> {
-  const membershipsTable = process.env.MEMBERSHIPS_TABLE;
-  const conversationsTable = process.env.CONVERSATIONS_TABLE;
-  const usersTable = process.env.USERS_TABLE;
-  if (!membershipsTable || !conversationsTable || !usersTable) return;
+  const membershipsTable = table('MEMBERSHIPS_TABLE');
+  const conversationsTable = table('CONVERSATIONS_TABLE');
+  const usersTable = table('USERS_TABLE');
 
   const conversationIds: string[] = [];
   let ExclusiveStartKey: Record<string, unknown> | undefined;
@@ -343,7 +349,7 @@ export async function unbind(
 ): Promise<UnbindResult> {
   const { Item } = await db.send(
     new GetCommand({
-      TableName: process.env.CONNECTIONS_TABLE,
+      TableName: table('CONNECTIONS_TABLE'),
       Key: { connectionId },
       ConsistentRead: true,
     }),
@@ -358,7 +364,7 @@ export async function unbind(
   try {
     const res = await db.send(
       new UpdateCommand({
-        TableName: process.env.USERS_TABLE,
+        TableName: table('USERS_TABLE'),
         Key: { username: owner },
         UpdateExpression: 'DELETE connections :c ADD version :one SET changedAt = :now',
         ConditionExpression: 'contains(connections, :id)',
@@ -379,7 +385,7 @@ export async function unbind(
   }
 
   await db.send(
-    new DeleteCommand({ TableName: process.env.CONNECTIONS_TABLE, Key: { connectionId } }),
+    new DeleteCommand({ TableName: table('CONNECTIONS_TABLE'), Key: { connectionId } }),
   );
   if (announce && updatedUser) {
     await announcePresence(updatedUser);
@@ -393,7 +399,7 @@ export async function touch(connectionId: string, now: number): Promise<string |
   try {
     const { Attributes } = await db.send(
       new UpdateCommand({
-        TableName: process.env.CONNECTIONS_TABLE,
+        TableName: table('CONNECTIONS_TABLE'),
         Key: { connectionId },
         UpdateExpression: 'SET lastSeenAt = :now',
         ConditionExpression: 'attribute_exists(connectionId)',
@@ -520,7 +526,7 @@ export function isValidNameLength(name: string): boolean {
 }
 
 // Controls, line and paragraph separators and format characters (bidi controls, zero-width spaces),
-// except the joiners that emoji sequences and some scripts need.
+// except the joiners that most emoji sequences and some scripts need (tag-based subdivision flags stay rejected).
 const DISALLOWED_NAME_CHAR = /[\p{Cc}\p{Zl}\p{Zp}]|(?![\u200c\u200d])\p{Cf}/u;
 // A character that is neither blank nor ignorable, unlike the Hangul filler.
 const VISIBLE_NAME_CHAR = /[^\s\p{Default_Ignorable_Code_Point}]/u;

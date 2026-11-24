@@ -1,17 +1,8 @@
 import { TestBed } from '@angular/core/testing';
-import { ALICE, BRUNO, answer, enterTestSession, refuse } from '@/core/hub/testing';
+import { CARLA, GROUP, answer, enterTestSession, refuse } from '@/core/hub/testing';
 import { ConversationsStore } from '@/core/state/conversations-store';
 import { MessagesStore } from '@/core/state/messages-store';
 import { GroupActions } from './group-actions';
-
-const CARLA = { username: 'carla', displayName: 'Carla', online: false, version: 2 };
-const GROUP = {
-  conversationId: 'g:1',
-  type: 'group',
-  name: 'SD',
-  members: [ALICE, BRUNO],
-  joinedAt: 500,
-};
 
 describe('GroupActions', () => {
   it('adds one person at a time and records each notice once', async () => {

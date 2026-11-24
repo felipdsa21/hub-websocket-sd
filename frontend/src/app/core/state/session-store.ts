@@ -90,7 +90,7 @@ export class SessionStore {
     if (this.config.invalid()) {
       this.enterStatus.set('failed');
     } else {
-      await this.enterLive(user, name);
+      await this.connectAndSync(user, name);
     }
   }
 
@@ -112,8 +112,9 @@ export class SessionStore {
   }
 
   /**
-   * Changes the display name (RF01, section 4.6). Opens a parallel WebSocket with the new name and drains the previous one without going offline; if opening fails, keeps
-   * the current connection active and returns `false`.
+   * Changes the display name (RF01, section 4.6). Opens a parallel WebSocket with the new name and
+   * drains the previous one without going offline; if opening fails, keeps the current connection
+   * active and returns `false`.
    */
   public async changeDisplayName(displayName: string): Promise<boolean> {
     const user = this.currentUser.user();
@@ -163,7 +164,7 @@ export class SessionStore {
     this.enterStatus.set('idle');
   }
 
-  private async enterLive(user: SessionUser, displayName: string): Promise<void> {
+  private async connectAndSync(user: SessionUser, displayName: string): Promise<void> {
     this.cancelReconnect();
     const generation = this.sessionGeneration;
     this.connection.reset();

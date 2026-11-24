@@ -1,6 +1,6 @@
 # Scripts de experimento e validação
 
-Scripts em Node.js puro (Node 24+) usados na validação prática e no benchmark do Hub Colaborativo WebSocket. O endereço `wss://` é passado por argumento para nunca ficar versionado no Git.
+Scripts em Node.js puro (Node 24+), mais um em Python 3 para os gráficos, usados na validação prática e no benchmark do Hub Colaborativo WebSocket. O endereço `wss://` é passado por argumento para nunca ficar versionado no Git.
 
 ## Benchmark de carga (T8)
 

@@ -1,8 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import {
-  ALICE,
   ALICE_BRUNO,
-  BRUNO,
+  GROUP,
   aliceBrunoChat,
   answer,
   enterTestSession,
@@ -13,14 +12,6 @@ import { SEARCH_DELAY_MS } from './directory-store';
 import { SearchStore } from './search-store';
 
 const DIEGO = { username: 'diego', displayName: 'Diego', online: true, version: 4 };
-const GROUP = {
-  conversationId: 'g:1',
-  type: 'group',
-  name: 'SD',
-  members: [ALICE, BRUNO],
-  joinedAt: 500,
-};
-
 describe('SearchStore', () => {
   afterEach(() => vi.useRealTimers());
 
@@ -40,7 +31,7 @@ describe('SearchStore', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     expect(search.status()).toBe('done');
-    // In the order of the list: the group, without messages, comes first.
+    // In the order of the list: the group, joined later, comes first.
     expect(search.results().conversations.map((c) => c.conversationId)).toEqual([
       'g:1',
       ALICE_BRUNO,

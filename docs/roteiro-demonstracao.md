@@ -18,7 +18,7 @@
 
 **Requisitos evidenciados:** RF01, RF07, T1, T6.
 
-1. No **Cliente A**, entrar como `ana` (nome de exibição `Ana Silva`); no **Cliente B**, entrar como `bruno` (`Bruno Costa`). (Opcionalmente demonstrar a escolha do tema (sistema, claro ou escuro) na tela de entrada ou no menu da conta.)
+1. No **Cliente A**, entrar como `ana` (nome de exibição `Ana Silva`); no **Cliente B**, entrar como `bruno` (`Bruno Costa`). (Opcionalmente, demonstrar a escolha do tema — sistema, claro ou escuro — na tela de entrada ou no menu da conta.)
 2. Explicar rapidamente o fluxo de `$connect` → gravação em `Connections` e `Users.connections` → `sync` inicial.
 3. No **Cliente A**, alterar o nome de exibição para `Ana S.` pelo menu da conta e mostrar que o **Cliente B** vê o novo nome imediatamente (reconexão paralela sem nenhum evento `offline`).
 4. Abrir uma segunda aba no mesmo navegador do **Cliente B**: ela restaura automaticamente a sessão pelo usuário atual guardado no navegador; fechar apenas uma das abas mantém Bruno **online** para Ana, e ao clicar em **Sair** em uma aba, a outra também desconecta automaticamente via evento `storage` (anunciando `online: false` em tempo real para Ana).
@@ -58,7 +58,7 @@
 **Requisitos evidenciados:** RNF02, RNF04, RNF05, RNF06.
 
 1. Apresentar os gráficos da [avaliação de desempenho](avaliacao-desempenho.md) (2, 5 e 10 usuários simultâneos, aquecimento vs. rodada medida, consumo DynamoDB e painel CloudWatch).
-2. Destacar: **RNF02 aprovado com folga** em 10 usuários simultâneos (`p95 = 166,05 ms < 500 ms`, média `160,67 ms`, `278,16 entregas/s`), ordenação 100% consistente (110/110 mensagens únicas, RNF04), redução de `67,1%` na média ao aquecer as Lambdas (R05), e ganho de −69,9% no p95 ao migrar para `512 MB` ARM64 + `presenceSweeper` em passagem única (~`105 ms`), em comparação a uma medição anterior sem dados brutos em `docs/dados/`.
+2. Destacar: **RNF02 aprovado com folga** em 10 usuários simultâneos (`p95 = 166,05 ms < 500 ms`, média `160,67 ms`, `278,16 entregas/s`), ordenação 100% consistente (110/110 mensagens únicas, RNF04), redução de `67,1%` na média ao aquecer as Lambdas (R05) e de `69,9%` no p95 ao migrar para `512 MB` ARM64 + `presenceSweeper` em passagem única (~`105 ms`), em comparação a uma medição anterior sem dados brutos em `docs/dados/`.
 
 ## 3. Pontos de atenção durante a demo
 

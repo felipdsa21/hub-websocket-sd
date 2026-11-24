@@ -245,7 +245,7 @@ describe('HMAC log anonymization (RNF03, section 5)', () => {
     });
   });
 
-  test('bounds the SSM read with an abort signal', async () => {
+  test('passes an abort signal to the SSM read', async () => {
     ddbMock.on(PutCommand).resolves({});
     ddbMock.on(UpdateCommand).resolves({ Attributes: {} });
 

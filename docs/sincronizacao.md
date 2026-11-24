@@ -15,7 +15,7 @@ Em sistemas distribuídos baseados em navegadores web, os relógios locais dos c
 Para eliminar essa dependência, o sistema adota a **autoridade temporal centralizada no servidor**:
 
 - **Carimbo de tempo oficial (`sentAt`):** Atribuído exclusivamente pelo backend utilizando `requestContext.requestTimeEpoch` (em milissegundos), registrado pelo Amazon API Gateway no instante em que o frame da requisição chega à borda da infraestrutura.
-- **Imutabilidade temporal:** O cliente nunca envia ou altera o campo `sentAt`. O timestamp retornado pelo servidor no evento `message` torna-se o valor definitivo para todos os participantes e abas conectadas.
+- **Imutabilidade temporal:** O cliente nunca envia nem altera o campo `sentAt`. O timestamp retornado pelo servidor no evento `message` torna-se o valor definitivo para todos os participantes e abas conectadas.
 
 ### 2.2 Chave de ordenação determinística (sk)
 
@@ -39,7 +39,7 @@ Em um ambiente _serverless_ (AWS Lambda), uma requisição recebida pelo API Gat
 
 Se um cliente reconectado solicitasse apenas mensagens posteriores ao instante exato da sua última sincronização, uma mensagem recebida antes da queda, mas persistida depois, poderia ser omitida. Para mitigar esse cenário (RF08):
 
-- O cliente envia `sync` com `since` igual ao maior entre o `sentAt` da última mensagem recebida e o instante do último `sync`, menos 30 segundos, e pede `getHistory` com `after` recuado também em 30 segundos para cada conversa que o `sync` aponta (seção 4.4 da arquitetura).
+- O cliente envia `sync` com `since` igual ao maior entre o `sentAt` da última mensagem recebida e o instante do último `sync`, menos 30 segundos, e, para cada conversa que o `sync` aponta e cujo histórico já carregou, pede `getHistory` com `after` recuado também em 30 segundos; as demais carregam o histórico ao serem abertas (seção 4.4 da arquitetura).
 - As mensagens já conhecidas dentro dessa janela de sobreposição são deduplicadas localmente pelo `sender` e pelo `messageId`, enquanto eventuais mensagens gravadas com atraso são incorporadas na posição cronológica correta.
 
 ## 3. Deduplicação e idempotência (RF12, R07)

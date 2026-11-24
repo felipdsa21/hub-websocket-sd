@@ -10,8 +10,8 @@ export class ConversationsStore {
   private readonly storage = inject(UserStorage);
   private readonly conversations = signal<readonly Conversation[]>([]);
   /**
-   * `sentAt` of the last message seen in each conversation in this browser (RF10). With the
-   * backend, it is kept in `localStorage` (architecture, section 4.6).
+   * `sentAt` of the last message seen in each conversation in this browser (RF10), kept in
+   * `localStorage` (architecture, section 4.6).
    */
   private readonly seen = signal<ReadonlyMap<string, number>>(new Map());
   /** Conversations opened in this session; the others are dimmed while offline. */

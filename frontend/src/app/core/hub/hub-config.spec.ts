@@ -3,7 +3,11 @@ import { DEV_MODE, HubConfig } from './hub-config';
 
 function setUp(devMode = true) {
   TestBed.configureTestingModule({ providers: [{ provide: DEV_MODE, useValue: devMode }] });
-  return TestBed.inject(HubConfig);
+  const config = TestBed.inject(HubConfig);
+  // Starts from a valid address, so each rejection has to clear it.
+  config.use({ websocketUrl: 'wss://hub.example/ok' });
+  expect(config.invalid()).toBe(false);
+  return config;
 }
 
 function serve(body: unknown, ok = true): typeof fetch {
@@ -13,6 +17,7 @@ function serve(body: unknown, ok = true): typeof fetch {
 
 describe('HubConfig', () => {
   beforeEach(() => vi.spyOn(console, 'error').mockImplementation(() => undefined));
+  afterEach(() => vi.restoreAllMocks());
 
   it('takes the address from config.json, accepting ws:// in development', async () => {
     const config = setUp();
@@ -27,6 +32,7 @@ describe('HubConfig', () => {
     expect(config.invalid()).toBe(true);
     expect(console.error).toHaveBeenCalled();
 
+    config.use({ websocketUrl: 'wss://hub.example/ok' });
     await config.load(() => Promise.reject(new Error('offline')));
     expect(config.invalid()).toBe(true);
   });

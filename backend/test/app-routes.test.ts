@@ -22,8 +22,11 @@ import {
 import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
 import * as app from '../functions/app';
-import { MAX_GROUP_MEMBERS, SEARCH_MAX_RESULTS } from '../functions/conversations';
-import { table } from '../functions/data';
+import {
+  MAX_GROUP_MEMBERS,
+  SEARCH_MAX_CONVERSATION_BYTES,
+  SEARCH_MAX_RESULTS,
+} from '../functions/conversations';
 import { MARKER_TTL_SECONDS, MAX_TEXT_BYTES } from '../functions/messages';
 
 const db = mockClient(DynamoDBDocumentClient);
@@ -813,6 +816,20 @@ describe('openDirect & createGroup', () => {
     expect(reply?.payload.data.conversation).toEqual(expect.objectContaining({ name: 'SD' }));
   });
 
+  test('createGroup keeps the fan-out failure when the reply to the creator also fails', async () => {
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(BatchGetCommand).resolves({ Responses: { Users: [anaUser, biaUser] } });
+    db.on(TransactWriteCommand).resolves({});
+    api.on(PostToConnectionCommand).rejects(limitExceeded);
+
+    const error = await app
+      .handler(event('createGroup', { requestId: REQ_ID, name: 'SD', members: ['bia'] }))
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(AggregateError);
+    expect((error as AggregateError).errors).toHaveLength(2);
+  });
+
   test.each(['Time\nSD', 'Time\u0000', 'Time\u007f', 'Time\u202e', '\u2066Time'])(
     'createGroup rejects control and bidi characters in group name (%j)',
     async (badName) => {
@@ -1257,7 +1274,10 @@ describe('sync & search', () => {
     const { conversations } = sentTo()[0]!.payload.data;
     expect(conversations.length).toBeGreaterThan(0);
     expect(conversations.length).toBeLessThan(groups.length);
-    expect(Buffer.byteLength(JSON.stringify(conversations))).toBeLessThanOrEqual(28 * 1024);
+    // The budget counts each conversation and the commas between them, not the array's brackets.
+    expect(Buffer.byteLength(JSON.stringify(conversations)) - 2).toBeLessThanOrEqual(
+      SEARCH_MAX_CONVERSATION_BYTES,
+    );
   });
 
   test('search lists a person whose direct chat was cut by the cap', async () => {
@@ -1294,17 +1314,5 @@ describe('sync & search', () => {
       data.conversations.map((c: { conversationId: string }) => c.conversationId),
     ).not.toContain(DIRECT_ID);
     expect(data.people).toEqual([expect.objectContaining({ username: 'bia' })]);
-  });
-});
-
-describe('table', () => {
-  test('throws when the table variable is missing', () => {
-    const saved = process.env.MESSAGES_TABLE;
-    delete process.env.MESSAGES_TABLE;
-    try {
-      expect(() => table('MESSAGES_TABLE')).toThrow('Missing environment variable MESSAGES_TABLE');
-    } finally {
-      process.env.MESSAGES_TABLE = saved;
-    }
   });
 });

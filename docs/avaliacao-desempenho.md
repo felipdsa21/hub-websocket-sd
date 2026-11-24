@@ -9,7 +9,7 @@
 Seguindo o plano de testes **T8** da [especificação](especificacao.md), o experimento executou múltiplos clientes WebSocket simultâneos na mesma máquina (evitando desvio de relógio entre emissor e receptor) dentro de um único grupo, de modo que cada mensagem dispara o fan-out para todos os membros (R06):
 
 1. **Rodada de aquecimento (R05):** cada usuário envia 1 mensagem para aquecer os contêineres Lambda e o cache do segredo HMAC no SSM; os tempos são reportados à parte.
-2. **Rodada medida:** todos os usuários enviam simultaneamente 10 mensagens em sequência, aguardando a confirmação da anterior antes de enviar a próxima (mesmo protocolo da fila do cliente web, RF12). Em caso de retry, a latência é medida a partir da tentativa inicial e entregas são deduplicadas por `(recipient, sender, messageId)`.
+2. **Rodada medida:** todos os usuários enviam simultaneamente 10 mensagens em sequência, aguardando a confirmação da anterior antes de enviar a próxima (mesmo protocolo da fila do cliente web, RF12). Em caso de retry, a latência é medida a partir da tentativa inicial, e as entregas são deduplicadas por `(recipient, sender, messageId)`.
 3. **Cargas avaliadas:** `2`, `5` e `10` usuários simultâneos no mesmo grupo (`40`, `250` e `1.000` entregas medidas, respectivamente).
 4. **Verificação de ordem (RNF04):** ao final de cada bateria, compara-se a lista ordenada por `sk` de todas as mensagens recebidas por cada cliente.
 

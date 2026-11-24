@@ -6,6 +6,7 @@ import {
   errorName,
   parseDisplayName,
   parseUsername,
+  table,
   withRequestLog,
 } from './shared';
 
@@ -30,7 +31,7 @@ export const handler = withRequestLog(async (event) => {
   // The record is written before the id joins Users.connections, so every id in the set has a record (D09).
   await db.send(
     new PutCommand({
-      TableName: process.env.CONNECTIONS_TABLE,
+      TableName: table('CONNECTIONS_TABLE'),
       Item: {
         connectionId,
         username: identity.username,
@@ -42,7 +43,7 @@ export const handler = withRequestLog(async (event) => {
   );
   const res = await db.send(
     new UpdateCommand({
-      TableName: process.env.USERS_TABLE,
+      TableName: table('USERS_TABLE'),
       Key: { username: identity.username },
       UpdateExpression:
         'ADD connections :c, version :one SET displayName = :name, changedAt = :now, announcedVersion = if_not_exists(announcedVersion, :zero)',

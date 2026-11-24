@@ -1,19 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { REQUEST_TIMEOUT_MS } from '@/core/hub/hub-socket';
-import {
-  ALICE_BRUNO,
-  FakeWebSocket,
-  aliceBrunoChat,
-  answer,
-  enterAsAlice,
-  provideFakeSockets,
-  useTestBackend,
-} from '@/core/hub/testing';
+import { ALICE_BRUNO, aliceBrunoChat, answer, enterTestSession } from '@/core/hub/testing';
 import { Message, messageSk } from '@/core/model/message';
-import { provideTestClock } from '@/core/time/testing';
 import { ConversationsStore } from './conversations-store';
 import { MessagesStore, mergeMessages } from './messages-store';
-import { SessionStore } from './session-store';
 
 const ID1 = '00000000-0000-4000-8000-000000000001';
 const ID2 = '00000000-0000-4000-8000-000000000002';
@@ -30,14 +20,7 @@ function message(sender: string, sentAt: number, messageId: string, text = 'oi')
 }
 
 async function setUp(conversations?: unknown[]) {
-  localStorage.clear();
-  const sockets: FakeWebSocket[] = [];
-  TestBed.configureTestingModule({
-    providers: [...provideTestClock(), ...provideFakeSockets(sockets)],
-  });
-  useTestBackend();
-  const session = TestBed.inject(SessionStore);
-  const socket = await enterAsAlice((u, d) => session.enter(u, d), sockets, conversations);
+  const socket = await enterTestSession(conversations);
   return { socket, messages: TestBed.inject(MessagesStore) };
 }
 
@@ -83,7 +66,7 @@ describe('MessagesStore', () => {
     expect(messages.history(ALICE_BRUNO)?.status).toBe('error');
   });
 
-  it('ignores a history answer that arrives after a reset', async () => {
+  it('ignores a getHistory failure that arrives after a reset', async () => {
     const { socket, messages } = await setUp();
     messages.open(ALICE_BRUNO);
     answer(socket, { messages: [message('bruno', 2000, ID2)], hasMore: true });

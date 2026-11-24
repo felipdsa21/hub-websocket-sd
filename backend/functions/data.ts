@@ -11,10 +11,11 @@ import {
   getCancellationReasons,
   send,
   settle,
+  table,
   toStringSet,
 } from './shared';
 
-export { batchGet, toStringSet };
+export { batchGet, table, toStringSet };
 
 export interface UserState {
   username: string;
@@ -74,12 +75,6 @@ export interface RequestContext {
     messageId?: string,
   ) => Promise<Outcome>;
   reply: (data: object) => Promise<Outcome>;
-}
-
-export function table(envKey: string): string {
-  const name = process.env[envKey];
-  if (!name) throw new Error(`Missing environment variable ${envKey}`);
-  return name;
 }
 
 export function directConversationId(a: string, b: string): string {

@@ -61,7 +61,7 @@ test('routes by action to the four Lambdas', () => {
   }
 });
 
-test('configures ARM64, memory, timeout, log retention and sweeper schedule (D05)', () => {
+test('configures Node.js 24, ARM64, memory, timeout, log retention and sweeper schedule (D05)', () => {
   template.hasResourceProperties('AWS::Scheduler::Schedule', {
     ScheduleExpression: 'rate(1 minute)',
     Target: Match.objectLike({
@@ -74,12 +74,12 @@ test('configures ARM64, memory, timeout, log retention and sweeper schedule (D05
   });
   template.resourcePropertiesCountIs(
     'AWS::Lambda::Function',
-    { Timeout: 30, MemorySize: 256, Architectures: ['arm64'] },
+    { Timeout: 30, MemorySize: 256, Architectures: ['arm64'], Runtime: 'nodejs24.x' },
     1,
   );
   template.resourcePropertiesCountIs(
     'AWS::Lambda::Function',
-    { Timeout: 10, MemorySize: 512, Architectures: ['arm64'] },
+    { Timeout: 10, MemorySize: 512, Architectures: ['arm64'], Runtime: 'nodejs24.x' },
     4,
   );
   template.resourceCountIs('AWS::Logs::LogGroup', 5);

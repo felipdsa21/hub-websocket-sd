@@ -22,6 +22,7 @@ import {
   toStringSet,
   toUserState,
 } from './data';
+import { HISTORY_MAX_BYTES } from './messages';
 import {
   Outcome,
   db,
@@ -36,8 +37,8 @@ import {
 
 export const MAX_GROUP_MEMBERS = 99;
 export const SEARCH_MAX_RESULTS = 50;
-// Same budget as a getHistory page, so a search reply with large groups stays far below the 128 KB postToConnection limit.
-const SEARCH_MAX_CONVERSATION_BYTES = 28 * 1024;
+// Same budget as a getHistory page, so a search reply with large groups stays far below the 128 KB @connections limit.
+export const SEARCH_MAX_CONVERSATION_BYTES = HISTORY_MAX_BYTES;
 
 function normalizeSearch(value: string): string {
   return value
@@ -104,7 +105,10 @@ async function replyAfterFanOut(
   try {
     await delivery;
   } catch (err) {
-    await ctx.reply(data);
+    // A failed reply must not hide the fan-out failure from the request log.
+    await ctx.reply(data).catch((replyErr: unknown) => {
+      throw new AggregateError([err, replyErr]);
+    });
     throw err;
   }
   return ctx.reply(data);

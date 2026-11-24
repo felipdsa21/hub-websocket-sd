@@ -20,6 +20,7 @@ import {
 } from './data';
 import {
   Outcome,
+  USERNAME,
   UUID,
   db,
   getCancellationReasons,
@@ -31,7 +32,7 @@ import {
 } from './shared';
 
 const HISTORY_MAX_MESSAGES = 50;
-const HISTORY_MAX_BYTES = 28 * 1024;
+export const HISTORY_MAX_BYTES = 28 * 1024;
 // Without this cap, another client could store a message near 128 KB whose history page would exceed the @connections limit (RF11).
 export const MAX_TEXT_BYTES = 32 * 1024;
 // Idempotency markers are only needed for short-term resends; messages themselves never expire (architecture, section 3.3).
@@ -44,8 +45,10 @@ interface SendMessageInput {
 }
 
 // The shape messageSk produces; history cursors must match it so they stay within DynamoDB's key size.
-const MESSAGE_SK =
-  /^m#\d{13}#[a-z0-9._-]{3,32}#[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Built from USERNAME and UUID so the rules can't drift; only the UUID ignores case, like messageId does.
+const MESSAGE_SK = new RegExp(
+  `^m#\\d{13}#${USERNAME.source.slice(1, -1)}#(?i:${UUID.source.slice(1, -1)})$`,
+);
 // An instant alone sorts before every message sent at it; `after` accepts it to resume from a time.
 const INSTANT_SK = /^m#\d{13}#$/;
 
@@ -396,7 +399,11 @@ export async function handleGetHistory(ctx: RequestContext): Promise<Outcome> {
     after !== undefined &&
     (typeof after !== 'string' || !(MESSAGE_SK.test(after) || INSTANT_SK.test(after)))
   ) {
-    return ctx.fail('invalidRequest', 'after must be a message sort key.', { field: 'after' });
+    return ctx.fail(
+      'invalidRequest',
+      'after must be a message sort key or an instant (m#<13 digits>#).',
+      { field: 'after' },
+    );
   }
 
   const conv = await getConversation(body.conversationId);

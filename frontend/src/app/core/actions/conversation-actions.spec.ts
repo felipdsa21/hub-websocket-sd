@@ -1,8 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import {
-  ALICE,
   ALICE_BRUNO,
   BRUNO,
+  GROUP,
   aliceBrunoChat,
   answer,
   enterTestSession,
@@ -12,16 +12,8 @@ import { ConversationsStore } from '@/core/state/conversations-store';
 import { UsersStore } from '@/core/state/users-store';
 import { ConversationActions } from './conversation-actions';
 
-const GROUP = {
-  conversationId: 'g:1',
-  type: 'group',
-  name: 'SD',
-  members: [ALICE, BRUNO],
-  joinedAt: 500,
-};
-
 describe('ConversationActions', () => {
-  it('opens a direct chat with openDirect and keeps the members states', async () => {
+  it("opens a direct chat with openDirect and keeps the members' states", async () => {
     const socket = await enterTestSession([]);
     const conversations = TestBed.inject(ConversationsStore);
     const opening = TestBed.inject(ConversationActions).openDirect('bruno');

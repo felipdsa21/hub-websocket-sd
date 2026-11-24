@@ -172,7 +172,9 @@ describe('SessionStore', () => {
       ],
     });
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    TestBed.inject(HubConfig).use({ websocketUrl: 'ws://hub.example/dev' });
+    const config = TestBed.inject(HubConfig);
+    config.use({ websocketUrl: 'wss://hub.example/dev' });
+    config.use({ websocketUrl: 'ws://hub.example/dev' });
     const session = TestBed.inject(SessionStore);
 
     await session.enter('alice', '');
@@ -181,7 +183,7 @@ describe('SessionStore', () => {
     expect(sockets).toEqual([]);
   });
 
-  it('changes displayName via parallel socket without drop, preserving version and deduplicating notices (C2)', async () => {
+  it('changes displayName via parallel socket without drop, preserving version and deduplicating notices (RF01)', async () => {
     const group = {
       conversationId: 'g:1',
       type: 'group',
@@ -254,7 +256,7 @@ describe('SessionStore', () => {
     expect(connection.connected()).toBe(true);
   });
 
-  it('keeps the active session intact when the parallel displayName connection fails (C2)', async () => {
+  it('keeps the active session intact when the parallel displayName connection fails (RF01)', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { session, sockets } = setUp();
     const entering = session.enter('alice', 'Alice');
@@ -275,7 +277,7 @@ describe('SessionStore', () => {
     });
   });
 
-  it('persists current user only after entering succeeds and clears saved displayName when entering blank (C3)', async () => {
+  it('persists current user only after entering succeeds and clears saved displayName when entering blank (RF01)', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { session, sockets } = setUp();
     localStorage.setItem(
@@ -320,7 +322,7 @@ describe('SessionStore', () => {
     expect(localStorage.getItem(CURRENT_USER_STORAGE_KEY)).toBeNull();
   });
 
-  it('restores a persisted session with automatic exponential reconnect and drops invalid displayName (C3)', async () => {
+  it('restores a persisted session with automatic exponential reconnect and drops invalid displayName (RF01)', async () => {
     vi.useFakeTimers();
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -351,7 +353,7 @@ describe('SessionStore', () => {
     expect(TestBed.inject(ConversationsStore).loading()).toBe(false);
   });
 
-  it('synchronizes logout, user switch, seen marks and displayName across tabs via storage (C3)', async () => {
+  it('synchronizes logout, user switch, seen marks and displayName across tabs via storage (RF01)', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
     const { session, sockets } = setUp();
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);

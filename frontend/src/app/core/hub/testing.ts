@@ -68,7 +68,15 @@ export function useTestBackend(): void {
 
 export const ALICE = { username: 'alice', displayName: 'Alice', online: true, version: 3 };
 export const BRUNO = { username: 'bruno', displayName: 'Bruno', online: true, version: 7 };
+export const CARLA = { username: 'carla', displayName: 'Carla', online: false, version: 2 };
 export const ALICE_BRUNO = 'd:alice:bruno';
+export const GROUP = {
+  conversationId: 'g:1',
+  type: 'group',
+  name: 'SD',
+  members: [ALICE, BRUNO],
+  joinedAt: 500,
+};
 
 /** The direct chat between alice and bruno, as `sync` and `conversationAdded` send it. */
 export function aliceBrunoChat(fields: Record<string, unknown> = {}) {

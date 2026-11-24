@@ -16,7 +16,7 @@ O cliente web, em Angular, abre uma conexão WebSocket persistente com o API Gat
 - [Sincronização e consistência](docs/sincronizacao.md): ordenação de mensagens, deduplicação, consistência no DynamoDB e ciclo de vida das conversas.
 - [Tolerância a falhas](docs/tolerancia-falhas.md): conexões órfãs (`410 Gone`), isolamento de falhas na difusão, expiração por inatividade, heartbeat, reconexão e recuperação no cliente.
 - [Observabilidade e implantação](docs/observabilidade-implantacao.md): logs estruturados com anonimização HMAC-SHA256, métricas/painel/alarmes no CloudWatch, IAM de menor privilégio e hospedagem S3 + CloudFront (OAC) via CDK.
-- [Evidências de teste](docs/testes.md): evidências T1–T8, bateria automatizada de integração na AWS (`12/12`, incluindo `410 Gone` e `presenceSweeper`) e validação E2E em Chromium sobre CloudFront.
+- [Evidências de teste](docs/testes.md): evidências do T1, bateria automatizada de integração na AWS (`12/12`, cobrindo partes do T2 ao T7, incluindo `410 Gone` e `presenceSweeper`), painel do T8 e validação E2E em Chromium sobre CloudFront.
 - [Avaliação de desempenho](docs/avaliacao-desempenho.md): metodologia do experimento T8, latências (média, p50, p95, p99), vazão, consumo do DynamoDB e gráficos comparativos.
 - [Métricas de infraestrutura](docs/metricas-infraestrutura.md): métricas exportadas do CloudWatch (API Gateway, Lambdas ARM64, DynamoDB e `OpenConnections`) durante o experimento T8.
 - [Relatório técnico consolidado](docs/relatorio-tecnico.md): documento unificando fundamentação científica, arquitetura, decisões, tolerância a falhas, observabilidade e avaliação experimental.
@@ -38,7 +38,7 @@ O frontend tem todas as telas, incluindo modo escuro persistido e painel de tele
 
 ## Como rodar
 
-É preciso ter o Node.js 24.15.0 ou mais novo (ou o 26).
+É preciso ter o Node.js 24 a partir do 24.15.0, ou o 26 ou mais novo.
 
 Frontend:
 

@@ -9,6 +9,11 @@ describe('AccountMenu', () => {
   let component: AccountMenu;
   let fixture: ComponentFixture<AccountMenu>;
 
+  afterEach(() => {
+    localStorage.clear();
+    document.documentElement.classList.remove('theme-dark', 'theme-light');
+  });
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AccountMenu],
@@ -38,11 +43,9 @@ describe('AccountMenu', () => {
     await fixture.whenStable();
 
     expect(document.documentElement.classList.contains('theme-dark')).toBe(true);
-    localStorage.clear();
-    document.documentElement.classList.remove('theme-dark', 'theme-light');
   });
 
-  it('reports failure via snackbar when changing displayName fails (C2)', async () => {
+  it('reports failure via snackbar when changing displayName fails (RF01)', async () => {
     const dialog = TestBed.inject(MatDialog);
     const snackBar = TestBed.inject(MatSnackBar);
     const session = TestBed.inject(SessionStore);

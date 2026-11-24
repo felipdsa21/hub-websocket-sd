@@ -29,6 +29,11 @@ async function render() {
 }
 
 describe('LoginPage', () => {
+  afterEach(() => {
+    localStorage.clear();
+    document.documentElement.classList.remove('theme-dark', 'theme-light');
+  });
+
   it('shows the spaces error in the field and keeps "Entrar" disabled', async () => {
     const { element, button, type } = await render();
     expect(button.disabled).toBe(true);
@@ -75,8 +80,6 @@ describe('LoginPage', () => {
   });
 
   it('chooses the theme from a menu on the entry screen', async () => {
-    localStorage.clear();
-    document.documentElement.classList.remove('theme-dark', 'theme-light');
     const { element, fixture } = await render();
     const trigger = element.querySelector<HTMLButtonElement>('button[aria-label="Tema"]')!;
     expect(trigger.textContent?.trim()).toBe('brightness_auto');
@@ -94,11 +97,9 @@ describe('LoginPage', () => {
     await fixture.whenStable();
     expect(document.documentElement.classList.contains('theme-dark')).toBe(true);
     expect(trigger.textContent?.trim()).toBe('dark_mode');
-    document.documentElement.classList.remove('theme-dark', 'theme-light');
-    localStorage.clear();
   });
 
-  it('proposes the saved display name for a username without overwriting manual edits (C3)', async () => {
+  it('proposes the saved display name for a username without overwriting manual edits (RF01)', async () => {
     localStorage.clear();
     localStorage.setItem(userStorageKey('alice'), JSON.stringify({ displayName: 'Alice Silva' }));
     localStorage.setItem(userStorageKey('bruno'), JSON.stringify({ displayName: 'Bruno Lima' }));
@@ -132,5 +133,15 @@ describe('LoginPage', () => {
 
     expect(button.disabled).toBe(true);
     expect(element.querySelector('mat-error')?.textContent).toContain('caracteres de controle');
+  });
+
+  it('explains a displayName made only of invisible characters', async () => {
+    const { element, button, type } = await render();
+
+    await type(0, 'marina');
+    await type(1, '\u3164');
+
+    expect(button.disabled).toBe(true);
+    expect(element.querySelector('mat-error')?.textContent).toContain('invisíveis');
   });
 });

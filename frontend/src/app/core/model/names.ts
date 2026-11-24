@@ -13,6 +13,10 @@ export function hasForbiddenNameChars(value: string): boolean {
   return FORBIDDEN_NAME_CHARS.test(value);
 }
 
+export function hasVisibleNameChar(value: string): boolean {
+  return VISIBLE_NAME_CHAR.test(value);
+}
+
 export function normalizeUsername(value: string): string {
   return value.toLowerCase();
 }
@@ -31,5 +35,5 @@ export function isValidDisplayName(value: string): boolean {
     return false;
   }
   const name = normalizeDisplayName(value);
-  return [...name].length <= DISPLAY_NAME_MAX_LENGTH && VISIBLE_NAME_CHAR.test(name);
+  return [...name].length <= DISPLAY_NAME_MAX_LENGTH && hasVisibleNameChar(name);
 }

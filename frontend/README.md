@@ -1,6 +1,6 @@
 # Hub WebSocket SD Frontend
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.3.0.
+This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.2.5 and now uses version 22.3.0.
 
 ## Development server
 

@@ -26,22 +26,21 @@ Conexão do cliente B:
 | **Cliente A** | `<user-a>` | `<connection-id-a>` | `1793928930863` | `1793939730`     |
 | **Cliente B** | `<user-b>` | `<connection-id-b>` | `1793929091228` | `1793939891`     |
 
-Confirmação de itens gravados na DynamoDB:
+Confirmação de itens gravados no DynamoDB:
 ![Conexões ativas dos clientes A e B gravadas no DynamoDB](./imagens/T1-ConexaoDuplaNaDynamoDB.png)
 
 Confirmação dos `displayNames` Conectados na Tabela Users:
 ![displayNames Conectados na Tabela Users](./imagens/T1-TabelaUsers.png)
 
 **Item 2:** Validação de Parâmetros Obrigatórios `($connect)`  
-**Descrição:** Tentar conectar sem nome de usuário e confirmar que a conexão é recusada  
+**Descrição:** Tentar conectar sem nome de usuário e confirmar que a conexão é recusada.  
 **Status:** [x] Aprovado
 
 Confirmação de recusa de conexão no Postman através de `Status Code: "400 Bad Request"`:
 
 ![Recusa de conexão no Postman com Status Code 400 Bad Request por ausência de username](./imagens/T1-ConexaoSemUsuarioRecusada-Postman.png)
 
-Confirmação através da linha 3 `2026-11-06T01:52:07.634Z adaedaf3-3fcb-4c48-ad6c-35a5c64f3335 INFO {"route": "$connect", "result": "rejected", "code": "invalidRequest", "durationMs": 442
-}`do CloudWatch:
+Confirmação através da linha 3 do CloudWatch, `2026-11-06T01:52:07.634Z adaedaf3-3fcb-4c48-ad6c-35a5c64f3335 INFO {"route": "$connect", "result": "rejected", "code": "invalidRequest", "durationMs": 442}`:
 
 ![Log do CloudWatch exibindo o resultado rejected para a rota $connect por requisição inválida](./imagens/T1-ConexaoRecusadaSemUsuario-CloudWatch.png)
 
@@ -67,8 +66,8 @@ Cliente A desconectado com sucesso através da interface do Postman:
 Cliente B desconectado com sucesso através da interface do Postman:
 ![Cliente B desconectado com sucesso através da interface do Postman](./imagens/T1-UsuarioB-Desconectado-Postman.png)
 
-Tabela Connections do DynamoDB sem registos ativos após o encerramento das conexões:
-![Tabela Connections do DynamoDB sem registos ativos após o encerramento das conexões](./imagens/T1-DynamoDB-SemUsuariosAtivos.png)
+Tabela Connections do DynamoDB sem registros ativos após o encerramento das conexões:
+![Tabela Connections do DynamoDB sem registros ativos após o encerramento das conexões](./imagens/T1-DynamoDB-SemUsuariosAtivos.png)
 
 O encerramento da conexão pelo API Gateway é evidenciado na linha 3 pela `"route":"$disconnect"` no CloudWatch (já a expiração ativa de conexões inativas sem `$disconnect` é registrada com `"route":"presenceSweeper"`, validada no caso `S5-T7-SWEEPER` abaixo):
 ![Log do CloudWatch confirmando a execução com sucesso da rota $disconnect](./imagens/T1-Desconexao-CloudWatch.png)
@@ -83,7 +82,7 @@ Executada em `2026-11-21T16:58:34Z` contra `HubWebSocket-dev` (`sa-east-1`) via 
 | `S4-T3-2`        | Grupo (A + C), isolamento contra B, recusa `forbidden` a B (RNF01), entrada de B com histórico anterior, envio concorrente de 3 clientes com ordenação idêntica por `sk` (RNF04), saída e aviso `lastMember`                                                                       | [x] Aprovado |  1.950,5 ms |
 | `S5-T7-1`        | Reenvio idempotente (RF12: mesmo `messageId` pelo mesmo remetente confirma sem duplicar ao destinatário) e reuso do mesmo `messageId` por outro remetente                                                                                                                          | [x] Aprovado |    784,7 ms |
 | `S5-T7-2`        | Desconexão de B com anúncio `presence` (`online: false`, v2) em tempo real para A, envio enquanto offline, reconexão (`online: true`, v3) e recuperação via `sync(since)` + `getHistory(after)`                                                                                    | [x] Aprovado |  1.068,9 ms |
-| `S4-T2-SIZE`     | Mensagem UTF-8 multibyte de `31.600 B` (parte do T2.5 / RF11) entregue íntegra via `@connections` e retornada em `getHistory`; o bloqueio de 40 KB no cliente web não faz parte da bateria                                                                                         | [x] Aprovado |    306,1 ms |
+| `S4-T2-SIZE`     | Mensagem UTF-8 multibyte de `31.600 B` (parte do T2.5 / RF11) entregue íntegra via `@connections` e retornada em `getHistory`; o bloqueio pelo cliente web de uma mensagem de 40 KB (T2.5) não faz parte da bateria                                                                | [x] Aprovado |    306,1 ms |
 | `S4-T4-SEARCH`   | Pesquisa normalizada em `pt-BR` (T4 / RF05): consulta sem acento (`joao antonio`) encontra usuário `João Antônio` com estado de presença                                                                                                                                           | [x] Aprovado |    105,5 ms |
 | `S4-T5-HISTORY`  | Histórico > 128 KB (`140.010 B` em 5 mensagens de ~28 KB) paginado integralmente em 5 páginas via `getHistory(before)` (parte do T5.3 / RF06); o T5.3 pede mensagens perto do limite do RF11, maiores que as usadas aqui                                                           | [x] Aprovado |  1.326,5 ms |
 | `S5-T6-MULTITAB` | Presença multi-aba (T6 / RF07): 2 abas de B recebem mensagens; fechar a 1ª mantém `online: true` (v7); fechar a 2ª anuncia `online: false` (v8)                                                                                                                                    | [x] Aprovado |    852,1 ms |

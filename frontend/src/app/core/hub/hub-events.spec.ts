@@ -5,25 +5,17 @@ import { SessionStore } from '@/core/state/session-store';
 import { UsersStore } from '@/core/state/users-store';
 import { provideTestClock } from '@/core/time/testing';
 import {
-  ALICE,
   ALICE_BRUNO,
   BRUNO,
+  CARLA,
   FakeWebSocket,
+  GROUP,
   aliceBrunoChat,
   answer,
   enterAsAlice,
   provideFakeSockets,
   useTestBackend,
 } from './testing';
-
-const CARLA = { username: 'carla', displayName: 'Carla', online: false, version: 2 };
-const GROUP = {
-  conversationId: 'g:1',
-  type: 'group',
-  name: 'SD',
-  members: [ALICE, BRUNO],
-  joinedAt: 500,
-};
 
 async function setUp(conversations?: unknown[]) {
   localStorage.clear();

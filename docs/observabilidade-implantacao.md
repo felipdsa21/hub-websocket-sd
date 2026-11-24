@@ -8,7 +8,7 @@ Este documento detalha como o sistema expõe seu comportamento em produção (lo
 
 ## 2. Logs estruturados e anonimização
 
-Todas as rotas WebSocket (`connect`, `disconnect`, `default` e `app`) passam pelo mesmo invólucro, que garante exatamente uma linha JSON por requisição no CloudWatch Logs, inclusive quando uma exceção é lançada (RNF03), medindo `durationMs` a partir de `requestTimeEpoch`. Já o `presenceSweeper`, acionado pelo EventBridge Scheduler, grava a própria linha com `route: 'presenceSweeper'` e `durationMs` contado do início da execução.
+Todas as Lambdas de rota (`connect`, `disconnect`, `default` e `app`) passam pelo mesmo invólucro, que garante exatamente uma linha JSON por requisição no CloudWatch Logs, inclusive quando uma exceção é lançada (RNF03), medindo `durationMs` a partir de `requestTimeEpoch`. Já o `presenceSweeper`, acionado pelo EventBridge Scheduler, grava a própria linha com `route: 'presenceSweeper'` e `durationMs` contado do início da execução.
 
 Conforme a seção 5 da [arquitetura](arquitetura.md), o texto das mensagens nunca é registrado e os identificadores (`connectionId`, `username` e `conversationId`) são substituídos pelos 12 primeiros caracteres hexadecimais de `HMAC-SHA256(segredo, valor)`, usando o parâmetro `SecureString` `/hub-websocket/<estágio>/log-hmac-secret` no SSM Parameter Store:
 

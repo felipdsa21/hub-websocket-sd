@@ -5,8 +5,8 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk",
     "lint": "eslint .",
+    "cdk": "cdk",
     "format": "prettier --write ."
   },
   "devDependencies": {
@@ -42,7 +42,8 @@
     "@swc/core": false,
     "esbuild": false
   },
+  "packageManager": "npm@11.20.0",
   "engines": {
-    "node": ">=24"
+    "node": "^24.15.0 || >=26.0.0"
   }
 }

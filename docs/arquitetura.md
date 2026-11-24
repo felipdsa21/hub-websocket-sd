@@ -299,7 +299,7 @@ sequenceDiagram
     Note over L,G: 410 Gone → desvincular a conexão (seção 3.4) e seguir com as demais
 ```
 
-1. A Lambda resolve o remetente pelo `connectionId`, valida o corpo (incluindo o limite de `32 KB` UTF-8 para `text`, que recusa excessos com `invalidRequest` em `field: "text"` e mantém o `messageId`; sem ele, um cliente que não seja o web poderia gravar uma mensagem perto de `128 KB`, cuja página de histórico passaria do limite do `@connections`), lê a conversa e confere se ele é membro dela.
+1. A Lambda resolve o remetente pelo `connectionId`, valida o corpo (incluindo o limite de `32 KB` UTF-8 para `text`, que recusa excessos com `invalidRequest` em `field: "text"` e mantém o `messageId`; sem esse limite, um cliente que não seja o web poderia gravar uma mensagem perto de `128 KB`, cuja página de histórico passaria do limite do `@connections`), lê a conversa e confere se o remetente é membro dela.
 2. Grava, em uma única transação, o marcador `id#<sender>#<messageId>` (com a condição de que ainda não exista) e a mensagem `m#<sentAt>#<sender>#<messageId>`. Como o marcador inclui o remetente, outro usuário pode usar o mesmo `messageId` sem que sua mensagem seja tomada por um reenvio (T7).
 3. Se a transação é cancelada:
    - Por `ConditionalCheckFailed` no marcador, é um reenvio da fila do cliente (RF12, R07). A Lambda lê o marcador e, pelo `ref`, a mensagem original, refaz os passos 4 e 5 com ela, que não têm efeito se já foram feitos, e a envia só à conexão que reenviou, como confirmação.
@@ -320,7 +320,7 @@ Ao reconectar, o cliente envia `sync` com `since` igual ao maior destes dois ins
 
 Uma mensagem sem confirmação 15 s depois de enviada é reenviada (RF12). As pendentes de cada conversa são reenviadas uma por vez, cada uma após a confirmação da anterior; reenviadas juntas, duas mensagens da mesma conversa poderiam ter o mesmo `sentAt`, e o desempate pelo `messageId` inverteria a ordem original. Enquanto há pendentes em uma conversa, uma mensagem nova nessa conversa entra no fim da fila dela e só é enviada depois da confirmação das anteriores.
 
-O histórico é enviado em páginas de até 50 mensagens e até 28 KB, com pelo menos uma mensagem por página, para que uma mensagem grande não trave a paginação. A tabela de cotas diz que uma mensagem acima de 32 KB precisa ser dividida em frames e que isso vale para os comandos `@connections`, mas não diz se o API Gateway faz essa divisão em um `postToConnection`. A bateria automatizada no `dev` só enviou eventos abaixo de 32 KB, então o comportamento real ainda precisa ser mostrado pelo T2.5 e pelo T5.3, com mensagens no limite do RF11 (RF06).
+O histórico é enviado em páginas de até 50 mensagens e até 28 KB, com pelo menos uma mensagem por página, para que uma mensagem grande não trave a paginação. A tabela de cotas da API WebSocket do API Gateway (referências da especificação) diz que uma mensagem acima de 32 KB precisa ser dividida em frames e que isso vale para os comandos `@connections`, mas não diz se o API Gateway faz essa divisão em um `postToConnection`. A bateria automatizada no `dev` só enviou eventos abaixo de 32 KB, então o comportamento real ainda precisa ser mostrado pelo T2.5 e pelo T5.3, com mensagens no limite do RF11 (RF06).
 
 ### 4.5 Demais rotas
 

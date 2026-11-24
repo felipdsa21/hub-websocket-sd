@@ -9,6 +9,7 @@ import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { Router } from '@angular/router';
 import {
   hasForbiddenNameChars,
+  hasVisibleNameChar,
   isValidDisplayName,
   isValidUsername,
   normalizeDisplayName,
@@ -66,10 +67,12 @@ export class LoginPage {
       return isValidUsername(value()) ? undefined : { kind: 'username', message: USERNAME_HINT };
     });
     validate(path.displayName, ({ value }) => {
-      if (hasForbiddenNameChars(value())) {
+      const name = normalizeDisplayName(value());
+      // A name made only of allowed invisible characters, like the Hangul filler, gets the same hint.
+      if (hasForbiddenNameChars(value()) || (name !== '' && !hasVisibleNameChar(name))) {
         return { kind: 'controlChars', message: DISPLAY_NAME_CONTROL_CHARS };
       }
-      return normalizeDisplayName(value()) === '' || isValidDisplayName(value())
+      return name === '' || isValidDisplayName(value())
         ? undefined
         : { kind: 'displayName', message: DISPLAY_NAME_HINT };
     });
