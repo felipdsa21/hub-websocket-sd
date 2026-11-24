@@ -1,0 +1,8 @@
+:host {
+  flex: 1;
+  overflow-y: auto;
+}
+
+app-connection-banner + app-members-panel {
+  padding-top: 8px;
+}

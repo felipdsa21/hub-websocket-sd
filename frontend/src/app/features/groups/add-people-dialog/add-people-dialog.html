@@ -1,0 +1,13 @@
+<app-dialog-header title="Adicionar pessoas">
+  <button matButton [disabled]="!canAdd()" (click)="add()">Adicionar</button>
+</app-dialog-header>
+
+<mat-dialog-content>
+  <p class="dialog-intro">Quem for adicionado verá todo o histórico de {{ groupName() }}.</p>
+  <app-people-picker [multiple]="true" [exclude]="members()" [(selected)]="selected" />
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button matButton mat-dialog-close>Cancelar</button>
+  <button matButton [disabled]="!canAdd()" (click)="add()">Adicionar</button>
+</mat-dialog-actions>

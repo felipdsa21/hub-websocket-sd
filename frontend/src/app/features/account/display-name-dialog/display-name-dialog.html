@@ -1,0 +1,25 @@
+<h2 mat-dialog-title>Alterar nome de exibição</h2>
+<form novalidate (submit)="save($event)">
+  <mat-dialog-content>
+    <p class="dialog-intro">
+      O app se reconecta com o novo nome, e os seus contatos o veem na hora.
+    </p>
+    <mat-form-field appearance="outline">
+      <mat-label>Nome de exibição</mat-label>
+      <input matInput autocomplete="nickname" [formField]="nameForm.displayName" />
+      @if (invalid()) {
+        <mat-icon matSuffix class="filled-icon error-icon" aria-hidden="true">error</mat-icon>
+      } @else if (model().displayName) {
+        <button matIconButton matSuffix type="button" aria-label="Limpar" (click)="clear()">
+          <mat-icon>cancel</mat-icon>
+        </button>
+      }
+      <mat-hint>De 1 a 50 caracteres.</mat-hint>
+      <mat-error>Use de 1 a 50 caracteres.</mat-error>
+    </mat-form-field>
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button matButton type="button" mat-dialog-close>Cancelar</button>
+    <button matButton type="submit" [disabled]="!canSave()">Salvar</button>
+  </mat-dialog-actions>
+</form>

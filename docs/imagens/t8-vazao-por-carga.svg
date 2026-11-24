@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 420" width="780" height="420" role="img" aria-label="Vazão observada por carga (mensagens enviadas/s e entregas fan-out/s)">
+<style>
+text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; fill: #1f2937; }
+.title { font-size: 16px; font-weight: 700; }
+.sub { font-size: 12px; fill: #4b5563; }
+.axis { font-size: 11px; fill: #4b5563; }
+.val { font-size: 10px; font-weight: 600; fill: #111827; }
+.ref { font-size: 10px; font-weight: 600; }
+.legend { font-size: 11px; }
+</style>
+<rect width="780" height="420" rx="8" fill="#ffffff" stroke="#e5e7eb"/>
+<text x="74" y="28" class="title">Vazão observada por carga (mensagens enviadas/s e entregas fan-out/s)</text>
+<text x="74" y="46" class="sub">10 mensagens sequenciais por cliente em paralelo no mesmo grupo (R06)</text>
+<line x1="74" y1="344.0" x2="750" y2="344.0" stroke="#e5e7eb"/>
+<text x="64" y="348.0" text-anchor="end" class="axis">0 /s</text>
+<line x1="74" y1="291.6" x2="750" y2="291.6" stroke="#e5e7eb"/>
+<text x="64" y="295.6" text-anchor="end" class="axis">70 /s</text>
+<line x1="74" y1="239.2" x2="750" y2="239.2" stroke="#e5e7eb"/>
+<text x="64" y="243.2" text-anchor="end" class="axis">140 /s</text>
+<line x1="74" y1="186.8" x2="750" y2="186.8" stroke="#e5e7eb"/>
+<text x="64" y="190.8" text-anchor="end" class="axis">210 /s</text>
+<line x1="74" y1="134.4" x2="750" y2="134.4" stroke="#e5e7eb"/>
+<text x="64" y="138.4" text-anchor="end" class="axis">280 /s</text>
+<line x1="74" y1="82.0" x2="750" y2="82.0" stroke="#e5e7eb"/>
+<text x="64" y="86.0" text-anchor="end" class="axis">350 /s</text>
+<line x1="74" y1="82" x2="74" y2="344" stroke="#9ca3af"/>
+<line x1="74" y1="344" x2="750" y2="344" stroke="#9ca3af"/>
+<rect x="105.5" y="332.7" width="79.1" height="11.3" rx="3" fill="#2563eb"/>
+<text x="145.1" y="327.7" text-anchor="middle" class="val">15,1</text>
+<rect x="188.7" y="321.4" width="79.1" height="22.6" rx="3" fill="#16a34a"/>
+<text x="228.2" y="316.4" text-anchor="middle" class="val">30,2</text>
+<text x="186.7" y="364" text-anchor="middle" class="axis" font-weight="600">2 usuários</text>
+<rect x="330.9" y="322.6" width="79.1" height="21.4" rx="3" fill="#2563eb"/>
+<text x="370.4" y="317.6" text-anchor="middle" class="val">28,5</text>
+<rect x="414.0" y="237.2" width="79.1" height="106.8" rx="3" fill="#16a34a"/>
+<text x="453.6" y="232.2" text-anchor="middle" class="val">142,7</text>
+<text x="412.0" y="364" text-anchor="middle" class="axis" font-weight="600">5 usuários</text>
+<rect x="556.2" y="323.2" width="79.1" height="20.8" rx="3" fill="#2563eb"/>
+<text x="595.8" y="318.2" text-anchor="middle" class="val">27,8</text>
+<rect x="639.3" y="135.8" width="79.1" height="208.2" rx="3" fill="#16a34a"/>
+<text x="678.9" y="130.8" text-anchor="middle" class="val">278,2</text>
+<text x="637.3" y="364" text-anchor="middle" class="axis" font-weight="600">10 usuários (T8)</text>
+<rect x="74" y="388" width="12" height="12" rx="2" fill="#2563eb"/>
+<text x="91" y="398" class="legend">Mensagens/s</text>
+<rect x="185.8" y="388" width="12" height="12" rx="2" fill="#16a34a"/>
+<text x="202.8" y="398" class="legend">Entregas fan-out/s</text>
+</svg>

@@ -1,0 +1,8 @@
+<app-dialog-header title="Novo chat" />
+<mat-dialog-content>
+  <p class="dialog-intro">Procure uma pessoa pelo nome de usuário ou de exibição.</p>
+  <app-people-picker [exclude]="me()" (picked)="pick($event)" />
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button matButton mat-dialog-close>Cancelar</button>
+</mat-dialog-actions>

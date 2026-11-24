@@ -1,0 +1,52 @@
+# Backend
+
+Infraestrutura e Lambdas do Hub Colaborativo WebSocket, declaradas com o AWS CDK. A arquitetura está em [docs/arquitetura.md](../docs/arquitetura.md).
+
+Há um stack por estágio, `HubWebSocket-dev` e `HubWebSocket-prod`, na região `sa-east-1`. O código das Lambdas fica em `functions/`, e o stack, em `lib/`.
+
+Estão implementadas as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search` (em Lambdas ARM64 com IAM de menor privilégio e throttling no estágio), os anúncios de presença em tempo real (no `$connect`, no desvínculo e na refeitura pelo `presenceSweeper`), a Lambda `presenceSweeper` (expiração de conexões inativas em passagem única por minuto, limpeza de ids órfãos e métrica `OpenConnections`), logs JSON com identificadores anonimizados via HMAC-SHA256 (SSM Parameter Store, retenção de 14 dias em `dev` e 30 dias em `prod`), painel e alarmes no CloudWatch (`HubWebSocket-<estágio>`) e hospedagem do frontend em S3 privado com CloudFront (OAC, cabeçalhos de segurança HTTP e `index.html`/`config.json` sem cache).
+
+## Desenvolvimento
+
+```sh
+npm ci
+npm run build   # verificação de tipos
+npm run lint
+npm test
+npx cdk synth HubWebSocket-dev
+```
+
+## Implantação
+
+Com as credenciais da AWS configuradas (`aws configure`), uma vez por conta e região:
+
+```sh
+npx cdk bootstrap aws://<conta>/sa-east-1
+```
+
+Antes do primeiro deploy de cada estágio, crie o segredo HMAC usado na anonimização dos logs (arquitetura, seção 5):
+
+```sh
+aws ssm put-parameter \
+  --region sa-east-1 \
+  --name /hub-websocket/dev/log-hmac-secret \
+  --type SecureString \
+  --value "$(openssl rand -hex 32)"
+```
+
+Depois, compile o frontend (para que o `BucketDeployment` publique os arquivos estáticos junto com o `config.json` gerado automaticamente a partir de `WebSocketUrl`) e implante o stack:
+
+```sh
+(cd ../frontend && npm ci && npm run build)
+npx cdk deploy HubWebSocket-dev
+```
+
+As saídas trazem `WebSocketUrl` (endereço `wss://` do estágio), `FrontendUrl` (URL HTTPS pública do CloudFront) e `DashboardName` (painel no CloudWatch).
+
+## Teste manual
+
+```sh
+npx wscat -c "wss://<api-id>.execute-api.sa-east-1.amazonaws.com/dev?username=ana&displayName=Ana"
+> {"action":"heartbeat","requestId":"0b6d2c1e-7f0e-4a51-9d3a-1c2f6a8e4b77"}
+< {"type":"pong","requestId":"0b6d2c1e-7f0e-4a51-9d3a-1c2f6a8e4b77"}
+```

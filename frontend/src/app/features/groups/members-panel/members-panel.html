@@ -1,0 +1,29 @@
+<div class="actions">
+  <button matButton="tonal" [disabled]="!connected()" (click)="addPeople.emit()">
+    <mat-icon>add</mat-icon>
+    Adicionar pessoas
+  </button>
+</div>
+
+@for (section of sections(); track section.label) {
+  @if (section.label) {
+    @if (sectionLevel() === 2) {
+      <h2 class="section-label">{{ section.label }}</h2>
+    } @else {
+      <h3 class="section-label">{{ section.label }}</h3>
+    }
+  }
+  <ul class="plain-list" [attr.aria-label]="section.label ?? 'Membros'">
+    @for (member of section.members; track member.username) {
+      <li [class.offline]="member.presence === 'offline'">
+        <app-avatar
+          [kind]="member.known ? 'person' : 'unknown'"
+          [name]="member.name"
+          [presence]="member.presence"
+          [muted]="member.presence === 'offline'"
+        />
+        <span class="name">{{ member.label }}</span>
+      </li>
+    }
+  </ul>
+}

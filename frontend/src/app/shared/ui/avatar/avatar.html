@@ -1,0 +1,16 @@
+<span class="circle">
+  @switch (kind()) {
+    @case ('person') {
+      {{ initials() }}
+    }
+    @case ('group') {
+      <mat-icon>groups</mat-icon>
+    }
+    @default {
+      <mat-icon>person</mat-icon>
+    }
+  }
+</span>
+@if (presence(); as presence) {
+  <span class="presence" [class.online]="presence === 'online'"></span>
+}

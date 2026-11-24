@@ -1,0 +1,47 @@
+@let m = message();
+@if (!m.own) {
+  @if (m.sender; as sender) {
+    <app-avatar [size]="32" [kind]="sender.avatarKind" [name]="sender.name" />
+  } @else {
+    <span class="indent"></span>
+  }
+  <div class="column">
+    @if (m.sender; as sender) {
+      <div class="header">
+        <span class="name">{{ sender.label }}</span>
+        <span class="time">{{ m.time }}</span>
+      </div>
+    }
+    <p class="bubble">{{ m.text }}</p>
+  </div>
+  @if (!m.sender) {
+    <span class="time">{{ m.time }}</span>
+  }
+} @else {
+  @if (!m.first && m.time) {
+    <span class="time">{{ m.time }}</span>
+  }
+  <div class="column">
+    @if (m.first && m.time) {
+      <span class="time">{{ m.time }}</span>
+    }
+    <p class="bubble" [class.pending]="m.status?.pending">{{ m.text }}</p>
+    @if (m.status; as status) {
+      @if (status.pending) {
+        <span class="status">
+          <mat-icon aria-hidden="true">schedule</mat-icon>
+          {{ status.text }}
+        </span>
+      } @else {
+        <span class="status error">
+          <mat-icon class="filled-icon" aria-hidden="true">error</mat-icon>
+          {{ status.text }}
+          <span aria-hidden="true">·</span>
+          <button type="button" class="discard" (click)="discard.emit(status.messageId)">
+            Descartar
+          </button>
+        </span>
+      }
+    }
+  </div>
+}

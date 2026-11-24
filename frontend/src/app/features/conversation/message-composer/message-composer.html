@@ -1,0 +1,19 @@
+<form novalidate (submit)="send($event)">
+  <mat-form-field appearance="outline" subscriptSizing="dynamic">
+    <textarea
+      matInput
+      cdkTextareaAutosize
+      cdkAutosizeMinRows="1"
+      cdkAutosizeMaxRows="6"
+      placeholder="Escreva uma mensagem"
+      aria-label="Mensagem"
+      [formField]="composer.text"
+      (input)="composer.text().markAsTouched()"
+      (keydown.enter)="sendOnEnter($event)"
+    ></textarea>
+    <button matIconButton matSuffix type="submit" aria-label="Enviar" [disabled]="!canSend()">
+      <mat-icon>send</mat-icon>
+    </button>
+    <mat-error>{{ composer.text().errors()[0]?.message }}</mat-error>
+  </mat-form-field>
+</form>

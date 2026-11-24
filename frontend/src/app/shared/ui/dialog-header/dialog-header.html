@@ -1,0 +1,11 @@
+@if (compact()) {
+  <div class="full-screen-header">
+    <button matIconButton mat-dialog-close aria-label="Fechar">
+      <mat-icon>close</mat-icon>
+    </button>
+    <h2 mat-dialog-title>{{ title() }}</h2>
+    <ng-content />
+  </div>
+} @else {
+  <h2 mat-dialog-title>{{ title() }}</h2>
+}

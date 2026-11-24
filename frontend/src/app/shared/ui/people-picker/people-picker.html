@@ -1,0 +1,69 @@
+<mat-form-field appearance="outline" subscriptSizing="dynamic">
+  <mat-label>{{ label() }}</mat-label>
+  <input
+    matInput
+    autocomplete="off"
+    [value]="query()"
+    [disabled]="!connected()"
+    (input)="onQuery($event)"
+  />
+  @if (query()) {
+    <button
+      matIconButton
+      matSuffix
+      aria-label="Limpar"
+      [disabled]="!connected()"
+      (click)="query.set('')"
+    >
+      <mat-icon>cancel</mat-icon>
+    </button>
+  }
+</mat-form-field>
+
+@if (multiple() && selected().length > 0) {
+  <mat-chip-set aria-label="Pessoas escolhidas">
+    @for (user of selected(); track user.username) {
+      <mat-chip (removed)="toggle(user)">
+        {{ nameOf(user) }}
+        <button matChipRemove [attr.aria-label]="'Remover ' + nameOf(user)">
+          <mat-icon>close</mat-icon>
+        </button>
+      </mat-chip>
+    }
+  </mat-chip-set>
+}
+
+@switch (status()) {
+  @case ('loading') {
+    <div class="state">
+      <mat-progress-spinner mode="indeterminate" diameter="32" aria-label="Pesquisando pessoas" />
+    </div>
+  }
+  @case ('error') {
+    <div class="state error" role="alert">
+      <span>Não foi possível pesquisar.</span>
+      <button matButton [disabled]="!connected()" (click)="retry()">Tentar de novo</button>
+    </div>
+  }
+}
+
+@if (empty()) {
+  <p class="state empty" role="status">Nenhuma pessoa encontrada.</p>
+}
+
+<ul class="plain-list" aria-label="Pessoas encontradas">
+  @for (user of results(); track user.username) {
+    <li>
+      <app-result-row
+        [avatarName]="user.displayName"
+        [presence]="presenceOf(user)"
+        [title]="user.displayName"
+        [subtitle]="subtitleOf(user)"
+        [selected]="multiple() && isSelected(user)"
+        [pressed]="multiple() ? isSelected(user) : null"
+        [disabled]="!connected()"
+        (click)="choose(user)"
+      ></app-result-row>
+    </li>
+  }
+</ul>
