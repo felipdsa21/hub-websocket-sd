@@ -37,6 +37,12 @@ describe('HubConfig', () => {
     expect(config.invalid()).toBe(true);
   });
 
+  it('is invalid with a malformed WebSocket URL', async () => {
+    const config = setUp();
+    await config.load(serve({ websocketUrl: 'wss://' }));
+    expect(config.invalid()).toBe(true);
+  });
+
   it('is invalid with a config.json that is not JSON', async () => {
     const config = setUp();
     await config.load((() =>

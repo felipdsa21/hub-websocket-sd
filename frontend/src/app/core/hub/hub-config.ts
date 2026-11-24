@@ -40,7 +40,7 @@ export class HubConfig {
   public use(body: unknown): void {
     const url = (body as { websocketUrl?: unknown } | null)?.websocketUrl;
     const scheme = this.devMode ? /^wss?:\/\// : /^wss:\/\//;
-    if (typeof url === 'string' && scheme.test(url)) {
+    if (typeof url === 'string' && scheme.test(url) && URL.canParse(url)) {
       this.url.set(url);
     } else {
       this.reject(`${CONFIG_PATH} has no valid websocketUrl.`);
