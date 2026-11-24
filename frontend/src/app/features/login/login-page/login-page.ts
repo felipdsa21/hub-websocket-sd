@@ -58,7 +58,7 @@ export class LoginPage {
 
   private readonly model = signal({ username: '', displayName: '' });
   protected readonly loginForm = form(this.model, (path) => {
-    disabled(path, () => this.connecting());
+    disabled(path, { when: () => this.connecting() });
     validate(path.username, ({ value }) => {
       if (/\s/.test(value())) {
         return { kind: 'spaces', message: USERNAME_SPACES };
