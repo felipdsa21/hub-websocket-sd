@@ -93,7 +93,7 @@ export class BackendStack extends cdk.Stack {
       });
       const f = new NodejsFunction(this, name, {
         entry: path.join(__dirname, '..', 'functions', `${name}.ts`),
-        runtime: Runtime.NODEJS_22_X,
+        runtime: Runtime.NODEJS_24_X,
         architecture: Architecture.ARM_64,
         memorySize: opts.memorySize,
         timeout: cdk.Duration.seconds(opts.timeoutSeconds ?? 10),

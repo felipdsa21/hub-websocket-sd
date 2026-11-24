@@ -42,7 +42,7 @@ flowchart LR
     FE["frontend/<br/>npm run build"] -->|"dist/.../browser"| CDK["AWS CDK<br/>cdk deploy"]
     BE["backend/<br/>lib/ + functions/"] --> CDK
     CDK --> API["API Gateway WebSocket<br/>(throttle 1000 rps / burst 2000)<br/>+ 5 tabelas DynamoDB"]
-    CDK --> LAM["5 Lambdas ARM64<br/>(Node.js 22 · IAM mínimo)"]
+    CDK --> LAM["5 Lambdas ARM64<br/>(Node.js 24 · IAM mínimo)"]
     CDK --> CW["CloudWatch<br/>painel · 3 alarmes · logs 14d/30d"]
     CDK -->|"bundle + config.json (WebSocketUrl)"| S3["Bucket S3 privado"]
     SSM["SSM SecureString<br/>(1x por estágio)"] -.->|"GetParameter + kms:Decrypt (4 rotas)"| LAM

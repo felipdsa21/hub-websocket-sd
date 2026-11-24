@@ -45,5 +45,8 @@
     "esbuild": false,
     "lmdb": false,
     "msgpackr-extract": false
+  },
+  "engines": {
+    "node": "^24.15.0 || >=26.0.0"
   }
 }

@@ -41,5 +41,8 @@
     "@parcel/watcher": false,
     "@swc/core": false,
     "esbuild": false
+  },
+  "engines": {
+    "node": ">=24"
   }
 }
