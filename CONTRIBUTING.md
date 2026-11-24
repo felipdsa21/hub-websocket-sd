@@ -23,7 +23,7 @@ Nada é commitado diretamente na `main` ou na `develop`: toda mudança entra por
    ```
 
 2. Faça os commits e envie: `git push -u origin feature/<nome>`.
-3. Abra um pull request para a `develop`.
+3. Abra um pull request para a `develop`. A CI roda build, lint, formatação, testes e `cdk synth` do backend e do frontend, e precisa passar.
 
 Branches `release/*` e `hotfix/*` precisam de dois pull requests: um para a `main` e outro para a `develop`.
 
