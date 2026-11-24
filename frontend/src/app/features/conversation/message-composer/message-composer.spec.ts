@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MessagesStore } from '@/core/state/messages-store';
 import { MessageComposer } from './message-composer';
 
 describe('MessageComposer', () => {
@@ -37,5 +38,20 @@ describe('MessageComposer', () => {
     await fixture.whenStable();
 
     expect(textarea().value).toBe('');
+  });
+
+  it('does not send on the Enter that confirms an IME composition', async () => {
+    const send = vi
+      .spyOn(TestBed.inject(MessagesStore), 'send')
+      .mockImplementation(() => undefined);
+    await type('にほんご');
+
+    textarea().dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, cancelable: true }),
+    );
+    expect(send).not.toHaveBeenCalled();
+
+    textarea().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+    expect(send).toHaveBeenCalledWith('g:1', 'にほんご');
   });
 });

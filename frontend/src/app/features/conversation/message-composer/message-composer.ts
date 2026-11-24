@@ -50,8 +50,13 @@ export class MessageComposer {
   }
 
   protected sendOnEnter(event: Event): void {
-    // Enter sends; Shift+Enter breaks the line.
-    if (!(event as KeyboardEvent).shiftKey) {
+    // Enter sends; Shift+Enter breaks the line. The Enter that confirms an IME composition doesn't
+    // send (keyCode 229 covers browsers that end the composition before this event).
+    const key = event as KeyboardEvent;
+    if (key.isComposing || key.keyCode === 229) {
+      return;
+    }
+    if (!key.shiftKey) {
       this.send(event);
     }
   }
