@@ -177,16 +177,17 @@ export class SessionStore {
       if (generation !== this.sessionGeneration) {
         return;
       }
-      // Persist the browser's active user and display name only after the first connection opens.
+      const data = await this.socket.request<SyncData>('sync');
+      if (generation !== this.sessionGeneration) {
+        return;
+      }
+      // Persist the browser's active user and display name only once entering succeeds; other tabs
+      // follow the stored user.
       this.storage.writeCurrentUser(user.username);
       if (displayName) {
         this.storage.writeDisplayName(user.username, displayName);
       } else {
         this.storage.clearDisplayName(user.username);
-      }
-      const data = await this.socket.request<SyncData>('sync');
-      if (generation !== this.sessionGeneration) {
-        return;
       }
       this.activeDisplayName = displayName;
       this.lastSyncServerTime = data.serverTime;

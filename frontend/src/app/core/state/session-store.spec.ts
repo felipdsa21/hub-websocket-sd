@@ -275,7 +275,7 @@ describe('SessionStore', () => {
     });
   });
 
-  it('persists current user only after socket opens and clears saved displayName when entering blank (C3)', async () => {
+  it('persists current user only after entering succeeds and clears saved displayName when entering blank (C3)', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { session, sockets } = setUp();
     localStorage.setItem(
@@ -293,18 +293,28 @@ describe('SessionStore', () => {
       displayName: 'Alice Antiga',
     });
 
-    // Successful entry without displayName writes current-user on open and clears saved displayName.
-    const entering = session.enter('alice', '');
-    expect(localStorage.getItem(CURRENT_USER_STORAGE_KEY)).toBeNull();
+    // A sync that fails after the socket opens doesn't write it either.
+    const syncFails = session.enter('alice', '');
     sockets[1]!.open();
     await Promise.resolve();
+    sockets[1]!.drop();
+    await syncFails;
+    expect(session.enterStatus()).toBe('failed');
+    expect(localStorage.getItem(CURRENT_USER_STORAGE_KEY)).toBeNull();
+
+    // Successful entry without displayName writes current-user after sync and clears saved
+    // displayName.
+    const entering = session.enter('alice', '');
+    sockets[2]!.open();
+    await Promise.resolve();
+    expect(localStorage.getItem(CURRENT_USER_STORAGE_KEY)).toBeNull();
+    expect(new URL(sockets[2]!.url).searchParams.has('displayName')).toBe(false);
+    answer(sockets[2]!, { serverTime: 1000, updated: [], conversations: [] });
+    await entering;
     expect(localStorage.getItem(CURRENT_USER_STORAGE_KEY)).toBe('alice');
     expect(JSON.parse(localStorage.getItem(userStorageKey('alice'))!)).toEqual({
       seen: { 'd:alice:bruno': 500 },
     });
-    expect(new URL(sockets[1]!.url).searchParams.has('displayName')).toBe(false);
-    answer(sockets[1]!, { serverTime: 1000, updated: [], conversations: [] });
-    await entering;
 
     session.leave();
     expect(localStorage.getItem(CURRENT_USER_STORAGE_KEY)).toBeNull();
