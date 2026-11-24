@@ -1,5 +1,5 @@
 import { CdkTextareaAutosize } from '@angular/cdk/text-field';
-import { Component, inject, input, signal } from '@angular/core';
+import { Component, inject, input, linkedSignal } from '@angular/core';
 import { FormField, form, validate } from '@angular/forms/signals';
 import { MatIconButton } from '@angular/material/button';
 import { MatError, MatFormField, MatSuffix } from '@angular/material/form-field';
@@ -29,7 +29,11 @@ export class MessageComposer {
 
   public readonly conversationId = input.required<string>();
 
-  private readonly model = signal({ text: '' });
+  // Switching to another conversation discards the draft, so it isn't sent there.
+  private readonly model = linkedSignal({
+    source: this.conversationId,
+    computation: () => ({ text: '' }),
+  });
   protected readonly composer = form(this.model, (path) => {
     validate(path.text, ({ value }) =>
       sendMessageRequestBytes(this.conversationId(), value()) > MAX_REQUEST_BYTES
