@@ -63,6 +63,14 @@ const sentTo = () =>
     payload: JSON.parse(String(c.args[0].input.Data)),
   }));
 
+const replyTo = (connectionId: string) =>
+  sentTo().filter(
+    (d) =>
+      d.connectionId === connectionId &&
+      d.payload.type === 'response' &&
+      d.payload.requestId === REQ_ID,
+  );
+
 let logSpy: jest.SpyInstance;
 
 beforeAll(() => {
@@ -791,6 +799,20 @@ describe('openDirect & createGroup', () => {
     ).toBe('Projeto SD');
   });
 
+  test('createGroup still replies to the creator when the fan-out to a member fails', async () => {
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(BatchGetCommand).resolves({ Responses: { Users: [anaUser, biaUser] } });
+    db.on(TransactWriteCommand).resolves({});
+    api.on(PostToConnectionCommand, { ConnectionId: 'c2' }).rejects(limitExceeded);
+
+    await expect(
+      app.handler(event('createGroup', { requestId: REQ_ID, name: 'SD', members: ['bia'] })),
+    ).rejects.toThrow(limitExceeded);
+
+    const [reply] = replyTo('c1');
+    expect(reply?.payload.data.conversation).toEqual(expect.objectContaining({ name: 'SD' }));
+  });
+
   test.each(['Time\nSD', 'Time\u0000', 'Time\u007f', 'Time\u202e', '\u2066Time'])(
     'createGroup rejects control and bidi characters in group name (%j) (B6)',
     async (badName) => {
@@ -999,7 +1021,7 @@ describe('addMember & leaveGroup', () => {
     ]);
   });
 
-  test('addMember waits for both fanOuts to finish even when one fails', async () => {
+  test('addMember waits for both fanOuts and still replies when one fails', async () => {
     const carlosUser = {
       username: 'carlos',
       displayName: 'Carlos',
@@ -1033,7 +1055,7 @@ describe('addMember & leaveGroup', () => {
     const pendingTarget = new Promise<object>((resolve) => {
       resolveTarget = () => resolve({});
     });
-    api.on(PostToConnectionCommand, { ConnectionId: 'c1' }).rejects(limitExceeded);
+    api.on(PostToConnectionCommand, { ConnectionId: 'c2' }).rejects(limitExceeded);
     api.on(PostToConnectionCommand, { ConnectionId: 'c4' }).callsFake(() => pendingTarget);
 
     let settled = false;
@@ -1052,9 +1074,10 @@ describe('addMember & leaveGroup', () => {
     await outcome;
     expect(sentTo().filter((d) => d.payload.type === 'conversationAdded')).toHaveLength(1);
     expect(sentTo().filter((d) => d.payload.type === 'memberJoined')).toHaveLength(3);
+    expect(replyTo('c1')).toHaveLength(1);
   });
 
-  test('leaveGroup waits for both fanOuts to finish even when one fails', async () => {
+  test('leaveGroup waits for both fanOuts and still replies when one fails', async () => {
     db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
     db.on(GetCommand)
       .resolvesOnce({
@@ -1070,7 +1093,7 @@ describe('addMember & leaveGroup', () => {
     const pendingMemberLeft = new Promise<object>((resolve) => {
       resolveMemberLeft = () => resolve({});
     });
-    api.on(PostToConnectionCommand, { ConnectionId: 'c1' }).rejects(limitExceeded);
+    api.on(PostToConnectionCommand, { ConnectionId: 'c3' }).rejects(limitExceeded);
     api.on(PostToConnectionCommand, { ConnectionId: 'c2' }).callsFake(() => pendingMemberLeft);
 
     let settled = false;
@@ -1086,6 +1109,7 @@ describe('addMember & leaveGroup', () => {
     resolveMemberLeft();
     await outcome;
     expect(sentTo().filter((d) => d.payload.type === 'memberLeft')).toHaveLength(2);
+    expect(replyTo('c1')).toHaveLength(1);
   });
 });
 

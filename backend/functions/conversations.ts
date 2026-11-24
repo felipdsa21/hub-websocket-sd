@@ -81,6 +81,24 @@ async function loadVisibleConversations(username: string): Promise<ConversationP
   return mapVisibleConversations(username, memberships, convById, users).conversations;
 }
 
+/**
+ * Replies after the fan-out of a committed change. When the fan-out fails, the requester still gets the
+ * reply, since a retry would repeat the committed write, and the failure is rethrown so the request logs it.
+ */
+async function replyAfterFanOut(
+  ctx: RequestContext,
+  delivery: Promise<unknown>,
+  data: object,
+): Promise<Outcome> {
+  try {
+    await delivery;
+  } catch (err) {
+    await ctx.reply(data);
+    throw err;
+  }
+  return ctx.reply(data);
+}
+
 async function requireGroupMember(
   ctx: RequestContext,
   conversationId: unknown,
@@ -306,8 +324,11 @@ export async function handleCreateGroup(ctx: RequestContext): Promise<Outcome> {
 
   const users = await getUsers(allMembers);
   const conversation = buildConversationPayload(conv, now, users);
-  await fanOut(allMembers, { type: 'conversationAdded', conversation }, users);
-  const outcome = await ctx.reply({ conversation });
+  const outcome = await replyAfterFanOut(
+    ctx,
+    fanOut(allMembers, { type: 'conversationAdded', conversation }, users),
+    { conversation },
+  );
   return { ...outcome, conversationId: conv.conversationId };
 }
 
@@ -395,19 +416,25 @@ export async function handleAddMember(ctx: RequestContext): Promise<Outcome> {
   const users = await getUsers(updatedMembers);
   const member = toUserState(users.get(target), target);
 
-  await settle([
-    fanOut(
-      [...updatedMembers].filter((u) => u !== target),
-      { type: 'memberJoined', conversationId, member },
-      users,
-    ),
-    fanOut(
-      [target],
-      { type: 'conversationAdded', conversation: buildConversationPayload(freshConv, now, users) },
-      users,
-    ),
-  ]);
-  return ctx.reply({});
+  return replyAfterFanOut(
+    ctx,
+    settle([
+      fanOut(
+        [...updatedMembers].filter((u) => u !== target),
+        { type: 'memberJoined', conversationId, member },
+        users,
+      ),
+      fanOut(
+        [target],
+        {
+          type: 'conversationAdded',
+          conversation: buildConversationPayload(freshConv, now, users),
+        },
+        users,
+      ),
+    ]),
+    {},
+  );
 }
 
 export async function handleLeaveGroup(ctx: RequestContext): Promise<Outcome> {
@@ -468,11 +495,14 @@ export async function handleLeaveGroup(ctx: RequestContext): Promise<Outcome> {
   const remaining = [...toStringSet((freshConv ?? conv).members)].filter((u) => u !== me);
   const users = await getUsers([me, ...remaining]);
 
-  await settle([
-    fanOut([me], { type: 'conversationRemoved', conversationId }, users),
-    fanOut(remaining, { type: 'memberLeft', conversationId, username: me }, users),
-  ]);
-  return ctx.reply({});
+  return replyAfterFanOut(
+    ctx,
+    settle([
+      fanOut([me], { type: 'conversationRemoved', conversationId }, users),
+      fanOut(remaining, { type: 'memberLeft', conversationId, username: me }, users),
+    ]),
+    {},
+  );
 }
 
 export async function handleSearch(ctx: RequestContext): Promise<Outcome> {
