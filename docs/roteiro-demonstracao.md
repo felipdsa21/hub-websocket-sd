@@ -21,7 +21,7 @@
 1. No **Cliente A**, entrar como `ana` (nome de exibição `Ana Silva`); no **Cliente B**, entrar como `bruno` (`Bruno Costa`). (Opcionalmente demonstrar a escolha do tema (sistema, claro ou escuro) na tela de entrada ou no menu da conta.)
 2. Explicar rapidamente o fluxo de `$connect` → gravação em `Connections` e `Users.connections` → `sync` inicial.
 3. No **Cliente A**, alterar o nome de exibição para `Ana S.` pelo menu da conta e mostrar que o **Cliente B** vê o novo nome imediatamente (reconexão paralela sem nenhum evento `offline`).
-4. Abrir uma segunda aba no mesmo navegador do **Cliente B**: ela restaura automaticamente a sessão via `localStorage` (`hub:current-user`); fechar apenas uma das abas mantém Bruno **online** para Ana, e ao clicar em **Sair** em uma aba, a outra também desconecta automaticamente via evento `storage` (anunciando `online: false` em tempo real para Ana).
+4. Abrir uma segunda aba no mesmo navegador do **Cliente B**: ela restaura automaticamente a sessão pelo usuário atual guardado no navegador; fechar apenas uma das abas mantém Bruno **online** para Ana, e ao clicar em **Sair** em uma aba, a outra também desconecta automaticamente via evento `storage` (anunciando `online: false` em tempo real para Ana).
 
 ### Bloco 2 — Chat privado, grupos, isolamento e autorização (2,5 min)
 
@@ -37,7 +37,7 @@
 **Requisitos evidenciados:** RF07, RF08, RF12, T7.
 
 1. No DevTools do **Cliente A** (aba _Network_), alternar para **Offline** (simulando queda abrupta sem `$disconnect`).
-2. Observar: o evento `offline` da `window` dispara a verificação imediata; as ações dependentes do backend ficam desabilitadas (`connected = false`), e após **3 segundos** entram o banner de queda e a ocultação da presença dos contatos (evitando ruído em quedas breves como o limite de 2 h, L02).
+2. Observar: o evento `offline` da `window` dispara uma sondagem de `heartbeat`; quando ela fica 10 s sem `pong` (ou a conexão fecha antes), as ações dependentes do backend ficam desabilitadas e, **3 segundos** depois, entram o banner de queda e a ocultação da presença dos contatos (evitando ruído em quedas breves como o limite de 2 h, L02).
 3. Ainda offline, enviar **duas mensagens** pelo **Cliente A** (elas ficam como pendentes na fila local) e enviar **uma mensagem** pelo **Cliente B** para Ana.
 4. Mostrar no Console do **Cliente A** os intervalos crescentes de backoff exponencial (`0 ms`, `1 s`, `2 s`, `4 s`…).
 5. Religar a rede (**Online** no DevTools):
@@ -63,5 +63,5 @@
 ## 3. Pontos de atenção durante a demo
 
 - Não expor o endereço `wss://` cru em tela de edição de arquivos se não for necessário; a aplicação publicada já o consome via `/config.json` (sem cache) atrás de CloudFront com CSP e HSTS.
-- A URL HTTPS final pode usar `HubWebSocket-dev` ou `HubWebSocket-prod` (decisão da equipe antes da banca); o roteiro e os nomes de painéis/logs seguem o padrão `HubWebSocket-<estágio>`.
+- A arquitetura reserva o `prod` para a apresentação; os exemplos deste roteiro usam o `dev`, e os nomes de painéis e logs seguem o padrão `HubWebSocket-<estágio>`.
 - Para limpar usuários de teste antes da apresentação, usar nomes frescos (ex.: `demo_ana`, `demo_bruno`).

@@ -78,7 +78,7 @@ stateDiagram-v2
 
 Uma falha da Lambda `connect` depois de gravar o vínculo, como um tempo limite, também faz o handshake falhar, mas o id fica em `Users.connections`, e o usuário aparece online até um `410 Gone` em um envio ou o `presenceSweeper` desvinculá-lo (seção 3.4 da arquitetura).
 
-Uma conexão encerrada nem sempre gera o `$disconnect`, porque a AWS o entrega em regime de melhor esforço (R01). O registro que sobra é removido pelo `410 Gone` no próximo envio a essa conexão, exceto nos primeiros 30 s (seção 7, RF08), ou pelo `presenceSweeper` depois de 10 minutos sem requisições (RF07).
+Uma conexão encerrada nem sempre gera o `$disconnect`, porque a AWS o entrega em regime de melhor esforço (R01). O registro que sobra é removido pelo `410 Gone` no próximo envio a essa conexão, exceto nos primeiros 30 s (seção 7 deste documento, RF08), ou pelo `presenceSweeper` depois de 10 minutos sem requisições (RF07).
 
 Do lado do cliente, qualquer encerramento que ele não pediu leva à reconexão com backoff exponencial, que abre uma sessão nova com outro `connectionId` (RF08). Nem toda queda chega ao cliente como um encerramento: se um `heartbeat` fica 10 s sem `pong` — ou se o evento `offline` da `window` dispara uma sondagem sem resposta —, o cliente também considera a conexão perdida, e o evento `online` acorda o backoff imediatamente. Na sessão nova, o `sync` com `since` e o `getHistory` recuperam o que chegou durante a queda, e as mensagens pendentes são reenviadas (seção 4.4 da arquitetura). Já para trocar o nome de exibição, o cliente abre uma conexão nova com o nome novo antes de fechar a antiga, e os contatos não veem o usuário offline (RF01, seção 4.6 da arquitetura).
 

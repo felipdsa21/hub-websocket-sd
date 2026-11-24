@@ -45,11 +45,11 @@ Confirmação através da linha 3 `2026-11-06T01:52:07.634Z adaedaf3-3fcb-4c48-a
 
 **Item 3:** Alteração do Nome de Exibição  
 **Descrição:** Com um dos usuários aberto em uma única aba, trocar o nome de exibição dele e confirmar que o outro usuário vê o novo nome imediatamente e, pelos logs do cliente do outro usuário, que ele não recebe nenhum anúncio do usuário como offline.  
-**Status:** [x] Aprovado (validado ao vivo em Chromium contra o CloudFront/`dev` via reconexão paralela `HubSocket.reconnectInParallel` — propagação imediata ao contato B com 0 eventos `offline`, e coberto em Vitest)
+**Status:** [x] Aprovado (validado ao vivo em Chromium contra o CloudFront/`dev` via reconexão paralela — propagação imediata ao contato B com 0 eventos `offline`, e coberto em Vitest)
 
 **Item 4:** Persistência Local e Reconexão  
-**Descrição:** Abrir uma segunda aba desse usuário no mesmo navegador, sem informar o nome de exibição, e confirmar que o outro usuário continua vendo o novo nome. Trocar o nome de novo na segunda aba e fechá-la; desligar a rede da máquina até a primeira aba indicar a queda da conexão, religá-la e, depois que os clientes que perderam a conexão indicarem a volta dela, confirmar que o outro usuário vê o último nome.  
-**Status:** [x] Aprovado (validado ao vivo em Chromium: recarga F5 e 2ª aba restauram automaticamente via `hub:current-user` e `displayName` salvo em `localStorage`, sincronizados via evento `storage`, e reconectam com o último nome após queda/volta de rede)
+**Descrição:** Abrir uma segunda aba no mesmo navegador e confirmar que ela entra com o mesmo usuário e que o outro usuário continua vendo o novo nome. Trocar o nome de novo na segunda aba e fechá-la; desligar a rede da máquina até a primeira aba indicar a queda da conexão, religá-la e, depois que os clientes que perderam a conexão indicarem a volta dela, confirmar que o outro usuário vê o último nome.  
+**Status:** [x] Aprovado (validado ao vivo em Chromium: recarga F5 e 2ª aba restauram automaticamente o usuário atual e o nome de exibição guardados no navegador, sincronizados pelo evento `storage`, e reconectam com o último nome após queda/volta de rede)
 
 **Item 5:** Encerramento de Conexão e Sincronização de Sessão  
 **Descrição:** Abrir de novo uma segunda aba desse usuário, sair do cliente em uma das abas e confirmar que a outra também sai. Entrar em uma das abas com um terceiro usuário e confirmar que a outra entra com ele.  
@@ -105,8 +105,8 @@ Executada em `2026-11-21T16:58:34Z` contra `HubWebSocket-dev` (`sa-east-1`) via 
 
 ## Validação E2E em navegador real (Chromium sobre CloudFront HTTPS — T1, T4, RF01, RF08 e WCAG AA)
 
-Validado em Chromium headless contra a URL pública HTTPS da distribuição CloudFront (`HubWebSocket-dev`, `Content-Security-Policy` estrita sem erros de console nem violações CSP, zero erros HTTP >= 400 e `h1Count = 1` no desktop):
+Validado em Chromium headless contra a URL pública HTTPS da distribuição CloudFront (`HubWebSocket-dev`, `Content-Security-Policy` estrita sem erros de console nem violações CSP, zero erros HTTP >= 400 e um único título de nível 1 no desktop):
 
 - **RF01 / T1.3–T1.5:** troca de `displayName` em tempo real via reconexão paralela propagada ao contato B sem nenhum evento `offline`; recarga (F5) e abertura de 2ª aba restaurando sessão automaticamente; saída em uma aba desconectando e redirecionando ambas para `/entrar` via evento `storage`; entrada com 3º usuário sincronizando ambas as abas.
-- **RF05 / UX / RF08:** busca sem acento (`joao antonio`) encontrando `João Antônio`; clique em área não-focável da `SearchBox` mantendo o painel aberto; estado vazio acessível (`Nenhuma pessoa encontrada.`) no `PeoplePicker`; detecção rápida de offline via evento `offline` da `window`, bloqueio de navegação por teclado (`tabindex="-1"`) em conversas esmaecidas e retorno automático com `Conectado novamente.`.
-- **T2.6–T2.9 e T7.4 (injeção de falhas e `beforeunload`):** cobertos de forma determinística pelas suítes automatizadas (`backend/test/` com 109 testes Jest e `frontend/src/**/*.spec.ts` com 181 testes Vitest).
+- **RF05 / UX / RF08:** busca sem acento (`joao antonio`) encontrando `João Antônio`; clique em área não focável da pesquisa mantendo o painel aberto; estado vazio acessível (`Nenhuma pessoa encontrada.`) na escolha de pessoas; detecção de offline pela sondagem disparada pelo evento `offline` da `window`, bloqueio da navegação por teclado nas conversas esmaecidas e retorno automático com `Conectado novamente.`.
+- **T2.6–T2.9 e T7.4 (injeção de falhas e `beforeunload`):** cobertos de forma determinística pelas suítes automatizadas (`backend/test/` com 126 testes Jest e `frontend/src/**/*.spec.ts` com 190 testes Vitest).

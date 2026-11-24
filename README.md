@@ -38,7 +38,7 @@ O frontend tem todas as telas, incluindo modo escuro persistido e painel de tele
 
 ## Como rodar
 
-É preciso ter o Node.js 24.15.0 ou mais novo (ou o 26), versão mínima exigida pelo Angular CLI.
+É preciso ter o Node.js 24.15.0 ou mais novo (ou o 26).
 
 Frontend:
 

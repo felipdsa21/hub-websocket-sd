@@ -22,7 +22,7 @@ Os valores de `IntegrationLatency` abaixo correspondem à estatística agregada 
 
 ## 2. Funções Lambda
 
-Todas as funções rodaram em **ARM64 (Graviton2)** (`Node.js 22.x`), com **`512 MB`** (`app`, `connect`, `disconnect`, `default`) e **`256 MB`** (`presenceSweeper`, passagem única por minuto sem espera em `setTimeout`), apresentando **zero erros de execução** (`Errors = 0`). As colunas de duração reportam a média e o **p95 agregados diretamente sobre a janela inteira** (`Period = 120 s`) e o pico máximo observado.
+Todas as funções rodaram em **ARM64 (Graviton2)** (`Node.js 22.x`, anterior à atualização das Lambdas para o Node.js 24.x), com **`512 MB`** (`app`, `connect`, `disconnect`, `default`) e **`256 MB`** (`presenceSweeper`, passagem única por minuto sem espera ociosa), apresentando **zero erros de execução** (`Errors = 0`). As colunas de duração reportam a média e o **p95 agregados diretamente sobre a janela inteira** (`Period = 120 s`) e o pico máximo observado.
 
 | Função            | Invocações | Erros | Throttles | Duração média (janela, ms) | Duração p95 (janela, ms) | Duração máx (ms) |
 | ----------------- | ---------: | ----: | --------: | -------------------------: | -----------------------: | ---------------: |
@@ -53,4 +53,4 @@ O maior consumo de leitura recai sobre `Users` (resolução de conexões no fan-
 
 ## 4. Cota de concorrência da conta de desenvolvimento
 
-A consulta `aws lambda get-account-settings` confirma que a conta AWS de desenvolvimento ainda possui a cota inicial de conta nova (`ConcurrentExecutions = 10`). Com a remoção do `setTimeout(30 s)` do `presenceSweeper` e o corte de 3× na duração da Lambda `app` (`512 MB` ARM64), a contenção caiu de `8` para apenas **`2` eventos** (`1` throttle em `app` e `1` em `disconnect`), permitindo que o experimento T8 com 10 usuários simultâneos cumprisse com folga o requisito **RNF02** (`p95 = 166,05 ms < 500 ms`). Para o estágio `prod`, continua recomendado solicitar o desbloqueio da cota padrão da conta (`1.000` execuções simultâneas) via console AWS Support / Service Quotas.
+A consulta `aws lambda get-account-settings` confirma que a conta AWS de desenvolvimento ainda possui a cota inicial de conta nova (`ConcurrentExecutions = 10`). Com a remoção da espera de 30 s do `presenceSweeper` e o corte de 3× na duração da Lambda `app` (`512 MB` ARM64), a contenção caiu de `8` para apenas **`2` eventos** (`1` throttle em `app` e `1` em `disconnect`), permitindo que o experimento T8 com 10 usuários simultâneos cumprisse com folga o requisito **RNF02** (`p95 = 166,05 ms < 500 ms`). Para o estágio `prod`, continua recomendado solicitar o desbloqueio da cota padrão da conta (`1.000` execuções simultâneas) via console AWS Support / Service Quotas.
