@@ -83,6 +83,25 @@ describe('MessagesStore', () => {
     expect(messages.history(ALICE_BRUNO)?.status).toBe('error');
   });
 
+  it('ignores a history answer that arrives after a reset', async () => {
+    const { socket, messages } = await setUp();
+    messages.open(ALICE_BRUNO);
+    answer(socket, { messages: [message('bruno', 2000, ID2)], hasMore: true });
+    await settle();
+    messages.loadOlder(ALICE_BRUNO);
+
+    messages.reset();
+    socket.receive({
+      type: 'error',
+      requestId: socket.last().requestId,
+      code: 'conflict',
+      message: 'no',
+    });
+    await settle();
+
+    expect(messages.history(ALICE_BRUNO)).toBeUndefined();
+  });
+
   it('keeps a message pending until its own message event confirms it', async () => {
     const { socket, messages } = await setUp();
     messages.open(ALICE_BRUNO);

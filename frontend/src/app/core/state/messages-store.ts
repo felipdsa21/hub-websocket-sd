@@ -42,6 +42,8 @@ export class MessagesStore {
   private readonly sentAtPerf = new Map<string, number>();
   /** Loaded conversations whose reconnect catch-up did not finish and must retry next reconnect. */
   private readonly pendingSync = new Set<string>();
+  /** Changes on `reset`, so a request answered after it doesn't touch the next session's state. */
+  private generation = 0;
   /** Latest `sentAt` received from the backend, used to compute `sync` `since` (section 4.4). */
   private lastReceived = 0;
 
@@ -65,6 +67,7 @@ export class MessagesStore {
   }
 
   public reset(): void {
+    this.generation++;
     this.inFlight.clear();
     this.sentAtPerf.clear();
     this.pendingSync.clear();
@@ -208,9 +211,13 @@ export class MessagesStore {
       return;
     }
     this.pendingSync.add(conversationId);
+    const generation = this.generation;
     try {
       if (history.messages.length === 0) {
         const page = await this.socket.request<HistoryPage>('getHistory', { conversationId });
+        if (generation !== this.generation) {
+          return;
+        }
         this.applySyncedPage(conversationId, page.messages, page.hasMore);
       } else {
         const last = history.messages.at(-1)!;
@@ -220,6 +227,9 @@ export class MessagesStore {
             conversationId,
             after: cursor,
           });
+          if (generation !== this.generation) {
+            return;
+          }
           this.applySyncedPage(conversationId, page.messages);
           if (!page.hasMore || page.messages.length === 0) {
             break;
@@ -233,6 +243,9 @@ export class MessagesStore {
       }
       this.pendingSync.delete(conversationId);
     } catch (error) {
+      if (generation !== this.generation) {
+        return;
+      }
       console.warn(`Failed to catch up history for ${conversationId}:`, error);
     }
   }
@@ -261,8 +274,12 @@ export class MessagesStore {
   private async fetchLatest(conversationId: string): Promise<void> {
     const known = this.history(conversationId)?.messages ?? [];
     this.setHistory(conversationId, { status: 'loading', messages: known, hasOlder: false });
+    const generation = this.generation;
     try {
       const page = await this.socket.request<HistoryPage>('getHistory', { conversationId });
+      if (generation !== this.generation) {
+        return;
+      }
       this.recordReceived(page.messages);
       // Messages that arrived while loading are kept; the repeated ones are dropped.
       const current = this.history(conversationId)?.messages ?? [];
@@ -272,6 +289,9 @@ export class MessagesStore {
         hasOlder: page.hasMore,
       });
     } catch {
+      if (generation !== this.generation) {
+        return;
+      }
       const current = this.history(conversationId)?.messages ?? [];
       this.setHistory(conversationId, { status: 'error', messages: current, hasOlder: false });
     }
@@ -281,11 +301,15 @@ export class MessagesStore {
     const history = this.history(conversationId)!;
     const first = history.messages[0];
     this.setHistory(conversationId, { ...history, status: 'loading-older' });
+    const generation = this.generation;
     try {
       const page = await this.socket.request<HistoryPage>('getHistory', {
         conversationId,
         ...(first && { before: first.sk }),
       });
+      if (generation !== this.generation) {
+        return;
+      }
       this.recordReceived(page.messages);
       const current = this.history(conversationId)!;
       this.setHistory(conversationId, {
@@ -294,6 +318,9 @@ export class MessagesStore {
         hasOlder: page.hasMore,
       });
     } catch {
+      if (generation !== this.generation) {
+        return;
+      }
       const current = this.history(conversationId)!;
       this.setHistory(conversationId, { ...current, status: 'older-error' });
     }
