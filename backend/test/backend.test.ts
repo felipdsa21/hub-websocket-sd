@@ -5,8 +5,9 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { BackendStack } from '../lib/backend-stack';
 
+const app = new cdk.App();
 const template = Template.fromStack(
-  new BackendStack(new cdk.App(), 'Test', {
+  new BackendStack(app, 'Test', {
     stage: 'dev',
     // Avoid depending on whether frontend/dist has been built locally when running backend unit tests.
     frontendDistPath: '__nonexistent_for_unit_test__',
@@ -344,10 +345,20 @@ test('hosts the static frontend in a private S3 bucket behind CloudFront with OA
     Prune: false,
     DistributionPaths: ['/*'],
   });
-  const deployments = template.findResources('Custom::CDKBucketDeployment');
-  const markersStr = JSON.stringify(Object.values(deployments)[0]!.Properties.SourceMarkers);
-  expect(markersStr).toContain('wss://');
-  expect(markersStr).toContain('/dev');
+  // config.json is a staged asset whose tokens become markers resolved at deploy time.
+  const deployment = Object.values(template.findResources('Custom::CDKBucketDeployment'))[0]!;
+  const markers: Record<string, { Ref: string }> = deployment.Properties.SourceMarkers[0];
+  const configDir = fs
+    .readdirSync(app.outdir)
+    .find((dir) => fs.existsSync(path.join(app.outdir, dir, 'config.json')))!;
+  let config = fs.readFileSync(path.join(app.outdir, configDir, 'config.json'), 'utf8');
+  for (const [marker, { Ref }] of Object.entries(markers)) {
+    config = config.replaceAll(marker, `\${${Ref}}`);
+  }
+  const apiId = Object.keys(template.findResources('AWS::ApiGatewayV2::Api'))[0]!;
+  expect(JSON.parse(config)).toEqual({
+    websocketUrl: `wss://\${${apiId}}.execute-api.\${AWS::Region}.\${AWS::URLSuffix}/dev`,
+  });
   template.hasOutput('FrontendUrl', {});
   template.hasOutput('FrontendBucketName', {});
   template.hasOutput('DistributionId', {});
