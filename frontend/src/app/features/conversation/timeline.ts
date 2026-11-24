@@ -79,6 +79,12 @@ export function buildTimeline(input: TimelineInput): TimelineItem[] {
   /** The message the next one may join; a separator or a notice in between starts a new group. */
   let groupWith: Message | undefined;
   for (const message of input.messages) {
+    const before = pending.filter((n) => n.afterSk! < message.sk);
+    if (before.length > 0) {
+      items.push(...before.map((n) => noticeItem(n, input.users)));
+      pending = pending.filter((n) => !before.includes(n));
+      groupWith = undefined;
+    }
     if (
       previousSentAt === undefined ||
       !isSameDay(previousSentAt, message.sentAt, input.time.timeZone)
@@ -97,13 +103,6 @@ export function buildTimeline(input: TimelineInput): TimelineItem[] {
     items.push(messageItem(message, !grouped, input, repeated));
     previousSentAt = message.sentAt;
     groupWith = message;
-
-    const after = pending.filter((n) => n.afterSk !== undefined && n.afterSk <= message.sk);
-    if (after.length > 0) {
-      items.push(...after.map((n) => noticeItem(n, input.users)));
-      pending = pending.filter((n) => !after.includes(n));
-      groupWith = undefined;
-    }
   }
   items.push(...pending.map((n) => noticeItem(n, input.users)));
 
