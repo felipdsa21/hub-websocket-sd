@@ -57,6 +57,14 @@ export class SearchStore {
     this.search('');
   }
 
+  /** Adds a found conversation to the list when it isn't there, so it can be opened. */
+  public keep(conversationId: string): void {
+    const found = this.results().conversations.find((c) => c.conversationId === conversationId);
+    if (found && !this.conversations.get(conversationId)) {
+      this.conversations.add(found);
+    }
+  }
+
   /**
    * Searches on the backend. The conversations found are shown as the client keeps them, in the
    * order of the list (architecture, section 4.6).

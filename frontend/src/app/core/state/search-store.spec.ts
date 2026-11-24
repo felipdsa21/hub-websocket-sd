@@ -8,6 +8,7 @@ import {
   enterTestSession,
   refuse,
 } from '@/core/hub/testing';
+import { ConversationsStore } from './conversations-store';
 import { SEARCH_DELAY_MS } from './directory-store';
 import { SearchStore } from './search-store';
 
@@ -45,6 +46,23 @@ describe('SearchStore', () => {
       ALICE_BRUNO,
     ]);
     expect(search.results().people).toEqual([DIEGO]);
+  });
+
+  it('adds a found conversation missing from the list when kept', async () => {
+    const socket = await enterTestSession([aliceBrunoChat()]);
+    vi.useFakeTimers();
+    const search = TestBed.inject(SearchStore);
+    const conversations = TestBed.inject(ConversationsStore);
+
+    search.search('sd');
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    answer(socket, { conversations: [GROUP], people: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(conversations.get('g:1')).toBeUndefined();
+
+    search.keep('g:1');
+
+    expect(conversations.get('g:1')).toEqual(expect.objectContaining({ name: 'SD' }));
   });
 
   it('shows the error of a failed search', async () => {
