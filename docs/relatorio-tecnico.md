@@ -50,7 +50,7 @@ Conforme detalhado em [docs/observabilidade-implantacao.md](observabilidade-impl
 ## 6. Validação funcional e avaliação de desempenho
 
 ### 6.1 Testes unitários, integração na AWS e E2E em navegador real
-- **Testes automatizados locais:** **109 testes** unitários/infra no backend (6 suítes Jest + `cdk synth` `dev`/`prod`) e **210 testes** no frontend (62 suítes Angular/Vitest), todos com lint, typecheck e formatação validados.
+- **Testes automatizados locais:** **109 testes** unitários/infra no backend (6 suítes Jest + `cdk synth` `dev`/`prod`) e **181 testes** no frontend (58 suítes Angular/Vitest), todos com lint, typecheck e formatação validados.
 - **Bateria de integração ao vivo no estágio `dev` ([docs/testes.md](testes.md)):** **12/12 cenários aprovados** contra a AWS real cobrindo T2 (`31,6 KB` UTF-8), T3 (isolamento, histórico, ordenação concorrente, `lastMember`), T4 (pesquisa sem acento `pt-BR`), T5 (histórico > `128 KB` paginado em 5 páginas), T6 (presença multi-aba), **T7.1 (`410 Gone` / `GoneException` real)**, **T7.2 (expiração real pelo `presenceSweeper`)**, T7.3/5 (reenvio idempotente e recuperação pós-queda), segurança (`$connect` incluindo controles/bidi e `forbidden` RNF01) e auditoria no CloudWatch Logs (`appLogs` com 45 linhas JSON + `presenceSweeperLogs`, zero vazamentos).
 - **Validação E2E em Chromium sobre CloudFront HTTPS:** **13/13 verificações aprovadas** com zero erros de console, zero violações de CSP e zero HTTP >= 400 (incluindo troca de `displayName` paralela sem `offline`, recarga F5 + 2ª aba + sincronização multi-aba de logout/login via `storage`, `SearchBox`, `PeoplePicker`, bloqueio por teclado offline e contraste WCAG AA nos modos claro e escuro).
 

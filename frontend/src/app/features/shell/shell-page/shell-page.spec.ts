@@ -1,8 +1,17 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideTestFixtures } from '@/core/fixtures/testing';
+import { provideRouter } from '@angular/router';
+import {
+  FakeWebSocket,
+  enterAsAlice,
+  provideFakeSockets,
+  useTestBackend,
+} from '@/core/hub/testing';
 import { Breakpoints } from '@/core/layout/breakpoints';
+import { ConnectionStore } from '@/core/state/connection-store';
+import { SessionStore } from '@/core/state/session-store';
 import { TelemetryStore } from '@/core/state/telemetry-store';
+import { provideTestClock } from '@/core/time/testing';
 import { ShellPage } from './shell-page';
 
 describe('ShellPage', () => {
@@ -59,11 +68,14 @@ describe('ShellPage', () => {
   });
 
   it('disables mobile FAB "Novo chat" and "Novo grupo" actions when offline (B1)', async () => {
+    const sockets: FakeWebSocket[] = [];
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [ShellPage],
       providers: [
-        ...provideTestFixtures({ scenarios: ['sem-conexao'] }),
+        provideRouter([]),
+        ...provideTestClock(),
+        ...provideFakeSockets(sockets),
         {
           provide: Breakpoints,
           useValue: {
@@ -74,6 +86,12 @@ describe('ShellPage', () => {
         },
       ],
     }).compileComponents();
+    useTestBackend();
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const session = TestBed.inject(SessionStore);
+    const socket = await enterAsAlice((u, d) => session.enter(u, d), sockets);
+    socket.drop();
+    expect(TestBed.inject(ConnectionStore).connected()).toBe(false);
 
     const mobileFixture = TestBed.createComponent(ShellPage);
     (

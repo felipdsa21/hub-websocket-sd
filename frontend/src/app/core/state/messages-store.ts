@@ -1,7 +1,4 @@
 import { DOCUMENT, DestroyRef, Service, inject, signal } from '@angular/core';
-import { Fixtures } from '@/core/fixtures/fixtures';
-import { Scenarios } from '@/core/fixtures/scenarios';
-import { HubConfig } from '@/core/hub/hub-config';
 import { HubSocket, RequestFailure } from '@/core/hub/hub-socket';
 import { HistoryPage } from '@/core/hub/protocol';
 import { HubError } from '@/core/model/error';
@@ -9,26 +6,14 @@ import {
   Message,
   OutgoingMessage,
   compareMessages,
-  messageSk,
   skAfterInstant,
   skBeforeInstant,
 } from '@/core/model/message';
 import { MemberNotice } from '@/core/model/notice';
-import { Clock } from '@/core/time/clock';
 import { ConnectionStore } from './connection-store';
 import { ConversationsStore } from './conversations-store';
 import { CurrentUser } from './current-user';
 import { TelemetryStore } from './telemetry-store';
-
-/** The error of a message the "nao-enviada" scenario rejects. */
-const REJECTED_TEXT: HubError = {
-  code: 'invalidRequest',
-  message: 'text: invalid',
-  details: { field: 'text' },
-};
-
-/** Messages per page of history (architecture, section 4.4). */
-export const HISTORY_PAGE_SIZE = 50;
 
 /** Overlap subtracted from `since` and `after` on reconnection (architecture, section 4.4). */
 export const SYNC_OVERLAP_MS = 30_000;
@@ -47,9 +32,6 @@ export class MessagesStore {
   private readonly conversations = inject(ConversationsStore);
   private readonly currentUser = inject(CurrentUser);
   private readonly connection = inject(ConnectionStore);
-  private readonly scenarios = inject(Scenarios);
-  private readonly clock = inject(Clock);
-  private readonly config = inject(HubConfig);
   private readonly socket = inject(HubSocket);
   private readonly telemetry = inject(TelemetryStore);
   private readonly window = inject(DOCUMENT).defaultView;
@@ -63,8 +45,6 @@ export class MessagesStore {
   /** Latest `sentAt` received from the backend, used to compute `sync` `since` (section 4.4). */
   private lastReceived = 0;
 
-  /** Everything the backend has, page by page; with the fixed data, it is all known up front. */
-  private backend: readonly Message[] = [];
   private readonly histories = signal<ReadonlyMap<string, History>>(new Map());
   private readonly outgoing = signal<readonly OutgoingMessage[]>([]);
   private readonly notices = signal<readonly MemberNotice[]>([]);
@@ -84,15 +64,14 @@ export class MessagesStore {
     }
   }
 
-  public reset(data: Fixtures | null): void {
+  public reset(): void {
     this.inFlight.clear();
     this.sentAtPerf.clear();
     this.pendingSync.clear();
     this.lastReceived = 0;
-    this.backend = data ? [...data.messages].sort(compareMessages) : [];
     this.histories.set(new Map());
-    this.notices.set(data?.notices ?? []);
-    this.outgoing.set(data ? this.scenarioOutgoing(data) : []);
+    this.notices.set([]);
+    this.outgoing.set([]);
   }
 
   public lastReceivedSentAt(): number | undefined {
@@ -124,24 +103,7 @@ export class MessagesStore {
   }
 
   public loadLatest(conversationId: string): void {
-    if (this.config.live()) {
-      void this.fetchLatest(conversationId);
-      return;
-    }
-    if (this.scenarios.has('carregando')) {
-      this.setHistory(conversationId, { status: 'loading', messages: [], hasOlder: false });
-      return;
-    }
-    if (this.scenarios.has('erro-historico')) {
-      this.setHistory(conversationId, { status: 'error', messages: [], hasOlder: false });
-      return;
-    }
-    const all = this.backendIn(conversationId);
-    this.setHistory(conversationId, {
-      status: 'loaded',
-      messages: all.slice(-HISTORY_PAGE_SIZE),
-      hasOlder: all.length > HISTORY_PAGE_SIZE,
-    });
+    void this.fetchLatest(conversationId);
   }
 
   public loadOlder(conversationId: string): void {
@@ -149,71 +111,13 @@ export class MessagesStore {
     if (!history?.hasOlder || history.status === 'loading-older') {
       return;
     }
-    if (this.config.live()) {
-      void this.fetchOlder(conversationId);
-      return;
-    }
-    if (this.scenarios.has('carregando')) {
-      this.setHistory(conversationId, { ...history, status: 'loading-older' });
-      return;
-    }
-    if (this.scenarios.has('erro-historico')) {
-      this.setHistory(conversationId, { ...history, status: 'older-error' });
-      return;
-    }
-    const first = history.messages[0];
-    const older = this.backendIn(conversationId).filter((m) => !first || m.sk < first.sk);
-    this.setHistory(conversationId, {
-      status: 'loaded',
-      messages: [...older.slice(-HISTORY_PAGE_SIZE), ...history.messages],
-      hasOlder: older.length > HISTORY_PAGE_SIZE,
-    });
+    void this.fetchOlder(conversationId);
   }
 
-  /**
-   * Sends a message. With the fixed data it is confirmed at once, unless a scenario or the lost
-   * connection keeps it pending, or a scenario rejects it (RF12).
-   */
+  /** Sends a message; it waits in the queue until the backend confirms it (RF12). */
   public send(conversationId: string, text: string, messageId = crypto.randomUUID()): void {
-    if (this.config.live()) {
-      // The message waits in the queue until the backend confirms it (RF12).
-      this.outgoing.update((list) => [...list, { conversationId, messageId, text }]);
-      this.sendNext(conversationId);
-      return;
-    }
-    if (this.scenarios.has('nao-enviada')) {
-      this.outgoing.update((list) => [
-        ...list,
-        {
-          conversationId,
-          messageId,
-          text,
-          error: REJECTED_TEXT,
-        },
-      ]);
-      return;
-    }
-    if (!this.connection.connected() || this.scenarios.has('pendentes')) {
-      this.outgoing.update((list) => [...list, { conversationId, messageId, text }]);
-      return;
-    }
-    const sender = this.currentUser.user()?.username ?? '';
-    const sentAt = this.clock.instant().epochMilliseconds;
-    const message: Message = {
-      conversationId,
-      sk: messageSk(sentAt, sender, messageId),
-      messageId,
-      sender,
-      text,
-      sentAt,
-    };
-    this.backend = [...this.backend, message];
-    const history = this.history(conversationId);
-    if (history) {
-      this.setHistory(conversationId, { ...history, messages: [...history.messages, message] });
-    }
-    this.conversations.updateLastMessage(conversationId, sentAt, sender);
-    this.conversations.markSeen(conversationId);
+    this.outgoing.update((list) => [...list, { conversationId, messageId, text }]);
+    this.sendNext(conversationId);
   }
 
   public discard(messageId: string): void {
@@ -221,7 +125,7 @@ export class MessagesStore {
     this.inFlight.delete(messageId);
     this.sentAtPerf.delete(messageId);
     this.outgoing.update((list) => list.filter((m) => m.messageId !== messageId));
-    if (message && this.config.live()) {
+    if (message) {
       this.sendNext(message.conversationId);
     }
   }
@@ -237,9 +141,7 @@ export class MessagesStore {
     this.outgoing.update((list) =>
       list.map((m) => (m.messageId === messageId ? { ...m, error } : m)),
     );
-    if (this.config.live()) {
-      this.sendNext(message.conversationId);
-    }
+    this.sendNext(message.conversationId);
   }
 
   /**
@@ -276,9 +178,6 @@ export class MessagesStore {
 
   /** Resends the pending queue after a reconnection, one message per conversation (RF12, 4.4). */
   public resendPending(): void {
-    if (!this.config.live()) {
-      return;
-    }
     this.inFlight.clear();
     this.sentAtPerf.clear();
     const conversationIds = new Set(
@@ -297,9 +196,6 @@ export class MessagesStore {
    * (architecture, section 4.4).
    */
   public syncAfterReconnect(conversationIds: readonly string[]): void {
-    if (!this.config.live()) {
-      return;
-    }
     for (const conversationId of new Set([...this.pendingSync, ...conversationIds])) {
       void this.catchUp(conversationId);
     }
@@ -484,47 +380,8 @@ export class MessagesStore {
       });
   }
 
-  private backendIn(conversationId: string): Message[] {
-    return this.backend.filter((m) => m.conversationId === conversationId);
-  }
-
   private setHistory(conversationId: string, history: History): void {
     this.histories.update((map) => new Map(map).set(conversationId, history));
-  }
-
-  /** The unconfirmed messages the "pendentes" and "nao-enviada" scenarios start with. */
-  private scenarioOutgoing(data: Fixtures): OutgoingMessage[] {
-    const bruno = data.conversations.find(
-      (c) => c.type === 'direct' && c.members.includes('bruno'),
-    );
-    if (!bruno) {
-      return [];
-    }
-    const conversationId = bruno.conversationId;
-    const outgoing: OutgoingMessage[] = [];
-    if (this.scenarios.has('pendentes')) {
-      outgoing.push(
-        {
-          conversationId,
-          messageId: crypto.randomUUID(),
-          text: 'Já coloquei as latências do T8 também.',
-        },
-        {
-          conversationId,
-          messageId: crypto.randomUUID(),
-          text: 'Me avisa se faltar alguma evidência.',
-        },
-      );
-    }
-    if (this.scenarios.has('nao-enviada')) {
-      outgoing.push({
-        conversationId,
-        messageId: crypto.randomUUID(),
-        text: 'Segue o resumo do T5 para conferir.',
-        error: REJECTED_TEXT,
-      });
-    }
-    return outgoing;
   }
 }
 

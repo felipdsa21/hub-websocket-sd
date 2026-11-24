@@ -1,8 +1,16 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { provideTestFixtures } from '@/core/fixtures/testing';
+import {
+  ALICE,
+  FakeWebSocket,
+  aliceBrunoChat,
+  enterAsAlice,
+  provideFakeSockets,
+  useTestBackend,
+} from '@/core/hub/testing';
 import { ConversationsStore } from '@/core/state/conversations-store';
 import { SessionStore } from '@/core/state/session-store';
+import { provideTestClock } from '@/core/time/testing';
 import { ConversationList } from './conversation-list';
 
 describe('ConversationList', () => {
@@ -25,16 +33,24 @@ describe('ConversationList', () => {
   });
 
   it('prevents keyboard focus and navigation on dimmed offline conversations (M2)', async () => {
+    const sockets: FakeWebSocket[] = [];
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [ConversationList],
-      providers: [provideRouter([]), ...provideTestFixtures({ scenarios: ['sem-conexao'] })],
+      providers: [provideRouter([]), ...provideTestClock(), ...provideFakeSockets(sockets)],
     }).compileComponents();
+    useTestBackend();
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
 
-    await TestBed.inject(SessionStore).enter('marina', 'Marina Alves');
+    const session = TestBed.inject(SessionStore);
+    const socket = await enterAsAlice((u, d) => session.enter(u, d), sockets, [
+      aliceBrunoChat({ lastMessageAt: 900, lastMessageBy: 'bruno' }),
+      { conversationId: 'g:1', type: 'group', name: 'SD', members: [ALICE], joinedAt: 200 },
+    ]);
     const conversations = TestBed.inject(ConversationsStore);
     const [first, second] = conversations.sorted();
     conversations.open(first!.conversationId);
+    socket.drop();
 
     const offlineFixture = TestBed.createComponent(ConversationList);
     await offlineFixture.whenStable();

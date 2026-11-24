@@ -1,72 +1,75 @@
 import { TestBed } from '@angular/core/testing';
-import { Scenario } from '@/core/fixtures/scenarios';
-import { provideTestFixtures } from '@/core/fixtures/testing';
+import { ALICE, BRUNO, answer, enterTestSession, refuse } from '@/core/hub/testing';
 import { ConversationsStore } from '@/core/state/conversations-store';
 import { MessagesStore } from '@/core/state/messages-store';
-import { SessionStore } from '@/core/state/session-store';
-import { UsersStore } from '@/core/state/users-store';
-import { addMembersNotice } from '@/shared/format/error-messages';
 import { GroupActions } from './group-actions';
 
-const TEAM = 'g:3f2b7c1e-5a4d-4e8f-9b6a-1c2d3e4f5a6b';
-
-function setUp(scenarios: readonly Scenario[] = []) {
-  TestBed.configureTestingModule({ providers: provideTestFixtures({ scenarios }) });
-  TestBed.inject(SessionStore).enter('marina', 'Marina Alves');
-  return TestBed.inject(GroupActions);
-}
+const CARLA = { username: 'carla', displayName: 'Carla', online: false, version: 2 };
+const GROUP = {
+  conversationId: 'g:1',
+  type: 'group',
+  name: 'SD',
+  members: [ALICE, BRUNO],
+  joinedAt: 500,
+};
 
 describe('GroupActions', () => {
-  it('adds people as members, makes them known and records the notices', async () => {
-    const actions = setUp();
-    const result = await actions.addMembers(TEAM, ['gabriel.nunes', 'juliana']);
+  it('adds one person at a time and records each notice once', async () => {
+    const socket = await enterTestSession([GROUP]);
+    const conversations = TestBed.inject(ConversationsStore);
+    const adding = TestBed.inject(GroupActions).addMembers('g:1', ['carla', 'diego']);
 
-    expect(result).toEqual({ added: ['gabriel.nunes', 'juliana'], failed: [] });
-    expect(TestBed.inject(ConversationsStore).get(TEAM)?.members).toContain('juliana');
-    expect(TestBed.inject(UsersStore).get('gabriel.nunes')?.displayName).toBe('Gabriel Nunes');
+    expect(socket.last()).toMatchObject({
+      action: 'addMember',
+      conversationId: 'g:1',
+      username: 'carla',
+    });
+    // The backend sends memberJoined to the members before answering.
+    socket.receive({ type: 'memberJoined', conversationId: 'g:1', member: CARLA });
+    answer(socket, {});
+    await vi.waitFor(() => expect(socket.last()).toMatchObject({ username: 'diego' }));
+    refuse(socket, 'notFound');
+
+    expect(await adding).toEqual({
+      added: ['carla'],
+      failed: [{ username: 'diego', reason: { code: 'notFound', message: 'notFound' } }],
+    });
+    expect(conversations.get('g:1')?.members).toEqual(['alice', 'bruno', 'carla']);
     expect(
       TestBed.inject(MessagesStore)
-        .noticesIn(TEAM)
+        .noticesIn('g:1')
         .map((n) => n.username),
-    ).toEqual(['diego', 'gabriel.nunes', 'juliana']);
+    ).toEqual(['carla']);
   });
 
-  it('reports people who already are members or do not exist', async () => {
-    const result = await setUp().addMembers(TEAM, ['bruno', 'ninguem']);
-    expect(result.added).toEqual([]);
-    expect(
-      result.failed.map((f) => (f.reason === 'noResponse' ? f.reason : f.reason.code)),
-    ).toEqual(['invalidOperation', 'notFound']);
+  it('adds the member from the answer when memberJoined did not arrive', async () => {
+    const socket = await enterTestSession([GROUP]);
+    const conversations = TestBed.inject(ConversationsStore);
+    const adding = TestBed.inject(GroupActions).addMembers('g:1', ['carla']);
+    answer(socket, {});
+    await adding;
+    expect(conversations.get('g:1')?.members).toContain('carla');
   });
 
-  it('leaves the group, or keeps it when the scenario rejects the request', async () => {
-    expect(await setUp().leave(TEAM)).toBe('left');
-    expect(TestBed.inject(ConversationsStore).get(TEAM)).toBeUndefined();
+  it('leaves a group, sending confirm only when the user agreed to leave it empty', async () => {
+    const socket = await enterTestSession([GROUP]);
+    const conversations = TestBed.inject(ConversationsStore);
+    const actions = TestBed.inject(GroupActions);
 
-    TestBed.resetTestingModule();
-    expect(await setUp(['erro-acao']).leave(TEAM)).toEqual(
-      expect.objectContaining({ code: 'conflict' }),
-    );
-    expect(TestBed.inject(ConversationsStore).get(TEAM)).toBeDefined();
-  });
-});
+    const refused = actions.leave('g:1');
+    expect(socket.last()).not.toHaveProperty('confirm');
+    refuse(socket, 'lastMember');
+    expect(await refused).toMatchObject({ code: 'lastMember' });
+    expect(conversations.get('g:1')).toBeDefined();
 
-describe('addMembersNotice', () => {
-  const nameOf = (u: string) => ({ bruno: 'Bruno Lima', gabriel: 'Gabriel Nunes' })[u] ?? u;
-
-  it('names who went in and why the others failed, as in the design', () => {
-    expect(
-      addMembersNotice(
-        {
-          added: ['bruno'],
-          failed: [{ username: 'gabriel', reason: { code: 'invalidOperation', message: '' } }],
-        },
-        nameOf,
-      ),
-    ).toBe('Bruno Lima foi adicionado. Gabriel Nunes já é membro do grupo.');
-  });
-
-  it('says nothing when everyone was added', () => {
-    expect(addMembersNotice({ added: ['bruno'], failed: [] }, nameOf)).toBeNull();
+    const leaving = actions.leave('g:1', true);
+    expect(socket.last()).toMatchObject({
+      action: 'leaveGroup',
+      conversationId: 'g:1',
+      confirm: true,
+    });
+    answer(socket, {});
+    expect(await leaving).toBe('left');
+    expect(conversations.get('g:1')).toBeUndefined();
   });
 });

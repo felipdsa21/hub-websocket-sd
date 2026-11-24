@@ -6,7 +6,6 @@ import { MatIcon } from '@angular/material/icon';
 import { MatInput } from '@angular/material/input';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { Router } from '@angular/router';
-import { Scenarios } from '@/core/fixtures/scenarios';
 import { ThemeStore } from '@/core/layout/theme-store';
 import {
   hasForbiddenNameChars,
@@ -43,7 +42,6 @@ const DISPLAY_NAME_CONTROL_CHARS = 'Não use caracteres de controle no nome de e
 export class LoginPage {
   private readonly session = inject(SessionStore);
   private readonly storage = inject(UserStorage);
-  private readonly scenarios = inject(Scenarios);
   private readonly router = inject(Router);
   protected readonly theme = inject(ThemeStore);
 
@@ -88,7 +86,7 @@ export class LoginPage {
 
   /** Proposes the last saved display name for the typed username without overwriting manual edits. */
   protected proposeDisplayName(username = this.model().username): void {
-    if (this.displayNameEdited || this.scenarios.any()) {
+    if (this.displayNameEdited) {
       return;
     }
     const suggested = isValidUsername(username)

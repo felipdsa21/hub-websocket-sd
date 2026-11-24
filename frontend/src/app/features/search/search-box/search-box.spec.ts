@@ -1,20 +1,33 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { provideTestFixtures } from '@/core/fixtures/testing';
+import {
+  FakeWebSocket,
+  aliceBrunoChat,
+  answer,
+  enterAsAlice,
+  provideFakeSockets,
+  useTestBackend,
+} from '@/core/hub/testing';
+import { SEARCH_DELAY_MS } from '@/core/state/directory-store';
 import { SessionStore } from '@/core/state/session-store';
+import { provideTestClock } from '@/core/time/testing';
 import { SearchBox } from './search-box';
 
 describe('SearchBox', () => {
   let component: SearchBox;
   let fixture: ComponentFixture<SearchBox>;
+  let socket: FakeWebSocket;
 
   beforeEach(async () => {
+    const sockets: FakeWebSocket[] = [];
     await TestBed.configureTestingModule({
       imports: [SearchBox],
-      providers: [provideRouter([]), ...provideTestFixtures()],
+      providers: [provideRouter([]), ...provideTestClock(), ...provideFakeSockets(sockets)],
     }).compileComponents();
+    useTestBackend();
+    const session = TestBed.inject(SessionStore);
+    socket = await enterAsAlice((u, d) => session.enter(u, d), sockets);
 
-    await TestBed.inject(SessionStore).enter('marina', 'Marina Alves');
     fixture = TestBed.createComponent(SearchBox);
     component = fixture.componentInstance;
     await fixture.whenStable();
@@ -31,6 +44,10 @@ describe('SearchBox', () => {
     input.dispatchEvent(new FocusEvent('focus'));
     input.value = 'a';
     input.dispatchEvent(new Event('input'));
+    await new Promise((resolve) => setTimeout(resolve, SEARCH_DELAY_MS));
+    expect(socket.last()).toMatchObject({ action: 'search', query: 'a' });
+    answer(socket, { conversations: [aliceBrunoChat()], people: [] });
+    await new Promise((resolve) => setTimeout(resolve));
     await fixture.whenStable();
 
     expect(host.classList.contains('open')).toBe(true);

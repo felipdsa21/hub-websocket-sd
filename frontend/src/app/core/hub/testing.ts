@@ -1,5 +1,7 @@
 import { Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { SessionStore } from '@/core/state/session-store';
+import { provideTestClock } from '@/core/time/testing';
 import { HubConfig } from './hub-config';
 import { WEB_SOCKET_FACTORY } from './hub-socket';
 
@@ -44,8 +46,8 @@ export class FakeWebSocket {
 }
 
 /**
- * Providers that make the client talk to fake sockets instead of the fixed data. Call
- * `useTestBackend()` after configuring TestBed to turn the backend address on.
+ * Providers that make the client talk to fake sockets. Call `useTestBackend()` after configuring
+ * TestBed to turn the backend address on.
  */
 export function provideFakeSockets(sockets: FakeWebSocket[]): Provider[] {
   return [
@@ -84,6 +86,17 @@ export function answer(socket: FakeWebSocket, data: unknown): void {
   socket.receive({ type: 'response', requestId: socket.last().requestId, data });
 }
 
+/** Refuses the last request the client sent with the error `code`. */
+export function refuse(socket: FakeWebSocket, code: string, details?: unknown): void {
+  socket.receive({
+    type: 'error',
+    requestId: socket.last().requestId,
+    code,
+    message: code,
+    ...(details !== undefined && { details }),
+  });
+}
+
 /**
  * Enters as alice against a fake backend whose `sync` lists the given conversations, and returns
  * the open socket.
@@ -100,4 +113,19 @@ export async function enterAsAlice(
   answer(socket, { serverTime: 1000, updated: [], conversations });
   await entering;
   return socket;
+}
+
+/**
+ * Configures TestBed with the test clock and fake sockets, then enters as alice with `sync` listing
+ * the given conversations, and returns the open socket.
+ */
+export async function enterTestSession(conversations?: unknown[]): Promise<FakeWebSocket> {
+  localStorage.clear();
+  const sockets: FakeWebSocket[] = [];
+  TestBed.configureTestingModule({
+    providers: [...provideTestClock(), ...provideFakeSockets(sockets)],
+  });
+  useTestBackend();
+  const session = TestBed.inject(SessionStore);
+  return enterAsAlice((u, d) => session.enter(u, d), sockets, conversations);
 }

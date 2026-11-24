@@ -1,5 +1,4 @@
 import { Service, computed, inject, signal } from '@angular/core';
-import { HubConfig } from '@/core/hub/hub-config';
 import { Conversation } from '@/core/model/conversation';
 import { compareConversations, hasNewActivity } from '@/core/model/conversation-rules';
 import { CurrentUser } from './current-user';
@@ -8,7 +7,6 @@ import { UserStorage } from './user-storage';
 @Service()
 export class ConversationsStore {
   private readonly currentUser = inject(CurrentUser);
-  private readonly config = inject(HubConfig);
   private readonly storage = inject(UserStorage);
   private readonly conversations = signal<readonly Conversation[]>([]);
   /**
@@ -130,7 +128,7 @@ export class ConversationsStore {
     if (lastMessageAt !== undefined) {
       this.seen.update((seen) => new Map(seen).set(conversationId, lastMessageAt));
       const me = this.currentUser.user()?.username;
-      if (me && this.config.live()) {
+      if (me) {
         this.storage.writeSeen(me, conversationId, lastMessageAt);
       }
     }

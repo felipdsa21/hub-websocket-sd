@@ -1,7 +1,14 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatDialogRef } from '@angular/material/dialog';
-import { provideTestFixtures } from '@/core/fixtures/testing';
+import {
+  FakeWebSocket,
+  enterAsAlice,
+  provideFakeSockets,
+  useTestBackend,
+} from '@/core/hub/testing';
+import { ConnectionStore } from '@/core/state/connection-store';
 import { SessionStore } from '@/core/state/session-store';
+import { provideTestClock } from '@/core/time/testing';
 import { NewChatDialog } from './new-chat-dialog';
 
 describe('NewChatDialog', () => {
@@ -25,16 +32,23 @@ describe('NewChatDialog', () => {
 
   it('disables picking a person while offline (B1)', async () => {
     const close = vi.fn();
+    const sockets: FakeWebSocket[] = [];
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [NewChatDialog],
       providers: [
-        ...provideTestFixtures({ scenarios: ['sem-conexao'] }),
+        ...provideTestClock(),
+        ...provideFakeSockets(sockets),
         { provide: MatDialogRef, useValue: { close } },
       ],
     }).compileComponents();
+    useTestBackend();
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
 
-    await TestBed.inject(SessionStore).enter('marina', 'Marina Alves');
+    const session = TestBed.inject(SessionStore);
+    const socket = await enterAsAlice((u, d) => session.enter(u, d), sockets);
+    socket.drop();
+    expect(TestBed.inject(ConnectionStore).connected()).toBe(false);
     const offlineFixture = TestBed.createComponent(NewChatDialog);
     await offlineFixture.whenStable();
 

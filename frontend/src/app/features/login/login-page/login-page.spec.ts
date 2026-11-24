@@ -1,16 +1,18 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { Scenario } from '@/core/fixtures/scenarios';
-import { provideTestFixtures } from '@/core/fixtures/testing';
+import { FakeWebSocket, answer, provideFakeSockets, useTestBackend } from '@/core/hub/testing';
 import { SessionStore } from '@/core/state/session-store';
 import { userStorageKey } from '@/core/state/user-storage';
+import { provideTestClock } from '@/core/time/testing';
 import { LoginPage } from './login-page';
 
-async function render(scenarios: readonly Scenario[] = []) {
+async function render() {
+  const sockets: FakeWebSocket[] = [];
   TestBed.configureTestingModule({
     imports: [LoginPage],
-    providers: [provideRouter([]), ...provideTestFixtures({ scenarios })],
+    providers: [provideRouter([]), ...provideTestClock(), ...provideFakeSockets(sockets)],
   });
+  useTestBackend();
   const fixture = TestBed.createComponent(LoginPage);
   await fixture.whenStable();
   const element = fixture.nativeElement as HTMLElement;
@@ -23,7 +25,7 @@ async function render(scenarios: readonly Scenario[] = []) {
     input.dispatchEvent(new FocusEvent('blur'));
     await fixture.whenStable();
   };
-  return { element, button, type, fixture };
+  return { element, button, type, fixture, sockets };
 }
 
 describe('LoginPage', () => {
@@ -38,12 +40,16 @@ describe('LoginPage', () => {
   });
 
   it('enters with the username in lowercase and goes to the list', async () => {
-    const { button, type, fixture } = await render();
+    const { button, type, fixture, sockets } = await render();
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
 
     await type(0, 'Marina');
     await type(1, 'Marina Alves');
     button.click();
+    expect(new URL(sockets[0]!.url).searchParams.get('username')).toBe('marina');
+    sockets[0]!.open();
+    await Promise.resolve();
+    answer(sockets[0]!, { serverTime: 1000, updated: [], conversations: [] });
     await fixture.whenStable();
 
     expect(TestBed.inject(SessionStore).user()).toEqual({
@@ -54,10 +60,12 @@ describe('LoginPage', () => {
   });
 
   it('shows the connection failure without leaving the entry screen', async () => {
-    const { element, button, type, fixture } = await render(['entrar-falha']);
+    const { element, button, type, fixture, sockets } = await render();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     await type(0, 'marina');
     button.click();
+    sockets[0]!.drop();
     await fixture.whenStable();
 
     expect(element.querySelector('[role="alert"]')?.textContent).toContain(

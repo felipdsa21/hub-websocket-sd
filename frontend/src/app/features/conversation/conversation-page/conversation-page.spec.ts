@@ -1,7 +1,6 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { provideTestFixtures } from '@/core/fixtures/testing';
 import {
   ALICE_BRUNO,
   FakeWebSocket,
@@ -14,6 +13,7 @@ import {
 import { Breakpoints } from '@/core/layout/breakpoints';
 import { messageSk } from '@/core/model/message';
 import { SessionStore } from '@/core/state/session-store';
+import { provideTestClock } from '@/core/time/testing';
 import { ConversationPage } from './conversation-page';
 
 let lastIntersection: {
@@ -75,7 +75,7 @@ describe('ConversationPage', () => {
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [ConversationPage],
-      providers: [provideRouter([]), ...provideTestFixtures(), ...provideFakeSockets(sockets)],
+      providers: [provideRouter([]), ...provideTestClock(), ...provideFakeSockets(sockets)],
     }).compileComponents();
     useTestBackend();
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
@@ -132,12 +132,14 @@ describe('ConversationPage', () => {
 
   it('uses h2 for the conversation header on desktop and h1 in compact mode (B5)', async () => {
     const compact = signal(false);
+    const sockets: FakeWebSocket[] = [];
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [ConversationPage],
       providers: [
         provideRouter([]),
-        ...provideTestFixtures(),
+        ...provideTestClock(),
+        ...provideFakeSockets(sockets),
         {
           provide: Breakpoints,
           useValue: {
@@ -149,34 +151,38 @@ describe('ConversationPage', () => {
       ],
     }).compileComponents();
 
-    await TestBed.inject(SessionStore).enter('marina', 'Marina Alves');
+    useTestBackend();
+    const session = TestBed.inject(SessionStore);
+    await enterAsAlice((u, d) => session.enter(u, d), sockets);
     const pageFixture = TestBed.createComponent(ConversationPage);
-    pageFixture.componentRef.setInput('conversationId', 'd:bruno:marina');
+    pageFixture.componentRef.setInput('conversationId', ALICE_BRUNO);
     await pageFixture.whenStable();
 
     const root = pageFixture.nativeElement as HTMLElement;
     expect(root.querySelector('app-screen-header h1')).toBeNull();
-    expect(root.querySelector('app-screen-header h2')?.textContent?.trim()).toBe('Bruno Lima');
+    expect(root.querySelector('app-screen-header h2')?.textContent?.trim()).toBe('Bruno');
 
     compact.set(true);
     await pageFixture.whenStable();
-    expect(root.querySelector('app-screen-header h1')?.textContent?.trim()).toBe('Bruno Lima');
+    expect(root.querySelector('app-screen-header h1')?.textContent?.trim()).toBe('Bruno');
     expect(root.querySelector('app-screen-header h2')).toBeNull();
   });
 
   it('does not redirect to / while signing out so /entrar navigation is not cancelled', async () => {
+    const sockets: FakeWebSocket[] = [];
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [ConversationPage],
-      providers: [provideRouter([]), ...provideTestFixtures()],
+      providers: [provideRouter([]), ...provideTestClock(), ...provideFakeSockets(sockets)],
     }).compileComponents();
+    useTestBackend();
 
     const session = TestBed.inject(SessionStore);
-    await session.enter('marina', 'Marina Alves');
+    await enterAsAlice((u, d) => session.enter(u, d), sockets);
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
 
     const pageFixture = TestBed.createComponent(ConversationPage);
-    pageFixture.componentRef.setInput('conversationId', 'd:bruno:marina');
+    pageFixture.componentRef.setInput('conversationId', ALICE_BRUNO);
     await pageFixture.whenStable();
 
     session.leave();

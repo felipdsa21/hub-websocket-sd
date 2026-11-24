@@ -1,5 +1,4 @@
 import { TestBed } from '@angular/core/testing';
-import { provideTestFixtures } from '@/core/fixtures/testing';
 import { HEARTBEAT_INTERVAL_MS } from '@/core/hub/hub-socket';
 import {
   ALICE_BRUNO,
@@ -10,6 +9,7 @@ import {
   useTestBackend,
 } from '@/core/hub/testing';
 import { messageSk } from '@/core/model/message';
+import { provideTestClock } from '@/core/time/testing';
 import { MessagesStore } from './messages-store';
 import { SessionStore } from './session-store';
 import { TelemetryStore } from './telemetry-store';
@@ -21,7 +21,7 @@ describe('TelemetryStore', () => {
     localStorage.clear();
     const sockets: FakeWebSocket[] = [];
     TestBed.configureTestingModule({
-      providers: [...provideTestFixtures(), ...provideFakeSockets(sockets)],
+      providers: [...provideTestClock(), ...provideFakeSockets(sockets)],
     });
     useTestBackend();
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
@@ -76,7 +76,7 @@ describe('TelemetryStore', () => {
     localStorage.clear();
     const sockets: FakeWebSocket[] = [];
     TestBed.configureTestingModule({
-      providers: [...provideTestFixtures(), ...provideFakeSockets(sockets)],
+      providers: [...provideTestClock(), ...provideFakeSockets(sockets)],
     });
     useTestBackend();
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
@@ -101,7 +101,7 @@ describe('TelemetryStore', () => {
     localStorage.clear();
     const sockets: FakeWebSocket[] = [];
     TestBed.configureTestingModule({
-      providers: [...provideTestFixtures(), ...provideFakeSockets(sockets)],
+      providers: [...provideTestClock(), ...provideFakeSockets(sockets)],
     });
     useTestBackend();
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
@@ -125,7 +125,7 @@ describe('TelemetryStore', () => {
     localStorage.clear();
     const sockets: FakeWebSocket[] = [];
     TestBed.configureTestingModule({
-      providers: [...provideTestFixtures(), ...provideFakeSockets(sockets)],
+      providers: [...provideTestClock(), ...provideFakeSockets(sockets)],
     });
     useTestBackend();
     vi.spyOn(console, 'info').mockImplementation(() => undefined);

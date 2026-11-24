@@ -34,7 +34,7 @@ O cliente web, em Angular, abre uma conexão WebSocket persistente com o API Gat
 
 O backend implementa as rotas `$connect`, `$disconnect`, `$default`, `heartbeat`, `sync`, `sendMessage`, `openDirect`, `createGroup`, `addMember`, `leaveGroup`, `getHistory` e `search` (em Lambdas ARM64 com IAM de menor privilégio e throttling no estágio), persistência no DynamoDB com TTL nos marcadores de idempotência e entrega via `@connections`, anúncios de presença em tempo real aos contatos, a rotina `presenceSweeper` (expiração de inativas em passagem única por minuto, refeitura de anúncios pendentes e métrica `OpenConnections`), logs estruturados com anonimização HMAC-SHA256 (SSM Parameter Store), painel e alarmes no CloudWatch, além da hospedagem do frontend em S3 privado com CloudFront (OAC e cabeçalhos de segurança HTTP).
 
-O frontend tem todas as telas, incluindo modo escuro persistido e painel de telemetria com RTT opcional. Com o endereço do backend configurado, ele persiste a sessão e o nome de exibição no navegador sincronizados entre abas (`storage`), reconecta em paralelo ao trocar o nome de exibição sem queda, mantém o heartbeat e escuta eventos `offline`/`online`, reconecta automaticamente com backoff exponencial sincronizando mensagens perdidas e reenviando a fila local, carrega a lista de conversas com o `sync`, carrega o histórico, envia e recebe mensagens em tempo real, aplica os eventos de conversas, membros e presença, pesquisa e faz as ações sobre conversas (iniciar chat, criar grupo, adicionar pessoas e sair). Sem o endereço, tudo roda sobre dados fixos, e os estados que só o backend produziria, como a queda da conexão ou uma mensagem recusada, são simulados por cenários.
+O frontend tem todas as telas, incluindo modo escuro persistido e painel de telemetria com RTT opcional. Ele persiste a sessão e o nome de exibição no navegador sincronizados entre abas (`storage`), reconecta em paralelo ao trocar o nome de exibição sem queda, mantém o heartbeat e escuta eventos `offline`/`online`, reconecta automaticamente com backoff exponencial sincronizando mensagens perdidas e reenviando a fila local, carrega a lista de conversas com o `sync`, carrega o histórico, envia e recebe mensagens em tempo real, aplica os eventos de conversas, membros e presença, pesquisa e faz as ações sobre conversas (iniciar chat, criar grupo, adicionar pessoas e sair).
 
 ## Como rodar
 
@@ -48,9 +48,9 @@ npm ci
 npm start
 ```
 
-Para usar o backend, copie `frontend/public/config.example.json` para `frontend/public/config.json` e coloque nele o endereço do estágio `dev` (a saída `WebSocketUrl` do `cdk deploy`). O `config.json` fica fora do Git. Sem ele, ou com um cenário escolhido na URL, a interface usa os dados fixos.
+Antes de abrir a interface, copie `frontend/public/config.example.json` para `frontend/public/config.json` e coloque nele o endereço do estágio `dev` (a saída `WebSocketUrl` do `cdk deploy`); sem ele, não é possível entrar. O `config.json` fica fora do Git.
 
-A interface abre em http://localhost:4200. Em desenvolvimento, os cenários são escolhidos com `?cenario=`, como em http://localhost:4200/?cenario=sem-conexao,pendentes; a lista completa está em `frontend/src/app/core/fixtures/scenarios.ts`. Para conferir o código: `npm test`, `npm run lint` e `npx prettier --check src`.
+A interface abre em http://localhost:4200. Para conferir o código: `npm test`, `npm run lint` e `npx prettier --check src`.
 
 Backend:
 

@@ -1,9 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { provideTestFixtures } from '@/core/fixtures/testing';
 import { ConversationsStore } from '@/core/state/conversations-store';
 import { MessagesStore } from '@/core/state/messages-store';
 import { SessionStore } from '@/core/state/session-store';
 import { UsersStore } from '@/core/state/users-store';
+import { provideTestClock } from '@/core/time/testing';
 import {
   ALICE,
   ALICE_BRUNO,
@@ -29,7 +29,7 @@ async function setUp(conversations?: unknown[]) {
   localStorage.clear();
   const sockets: FakeWebSocket[] = [];
   TestBed.configureTestingModule({
-    providers: [...provideTestFixtures(), ...provideFakeSockets(sockets)],
+    providers: [...provideTestClock(), ...provideFakeSockets(sockets)],
   });
   useTestBackend();
   const session = TestBed.inject(SessionStore);
@@ -88,7 +88,7 @@ describe('HubEvents', () => {
     localStorage.clear();
     const sockets: FakeWebSocket[] = [];
     TestBed.configureTestingModule({
-      providers: [...provideTestFixtures(), ...provideFakeSockets(sockets)],
+      providers: [...provideTestClock(), ...provideFakeSockets(sockets)],
     });
     useTestBackend();
     vi.spyOn(console, 'info').mockImplementation(() => undefined);

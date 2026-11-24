@@ -1,5 +1,4 @@
 import { TestBed } from '@angular/core/testing';
-import { provideTestFixtures } from '@/core/fixtures/testing';
 import { PONG_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from '@/core/hub/hub-socket';
 import {
   ALICE_BRUNO,
@@ -11,6 +10,7 @@ import {
   useTestBackend,
 } from '@/core/hub/testing';
 import { Message, messageSk, skBeforeInstant } from '@/core/model/message';
+import { provideTestClock } from '@/core/time/testing';
 import { ConnectionStore, LOSS_INDICATION_MS } from './connection-store';
 import { MessagesStore, SYNC_OVERLAP_MS } from './messages-store';
 import { RECONNECT_INITIAL_DELAY_MS, RECONNECT_MAX_DELAY_MS, SessionStore } from './session-store';
@@ -30,7 +30,7 @@ async function setUp(conversations?: unknown[], serverTime = 100_000) {
   localStorage.clear();
   const sockets: FakeWebSocket[] = [];
   TestBed.configureTestingModule({
-    providers: [...provideTestFixtures(), ...provideFakeSockets(sockets)],
+    providers: [...provideTestClock(), ...provideFakeSockets(sockets)],
   });
   useTestBackend();
   const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);

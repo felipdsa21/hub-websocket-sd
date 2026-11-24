@@ -4,7 +4,6 @@ import { MatFabButton, MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router, RouterOutlet } from '@angular/router';
-import { Scenarios } from '@/core/fixtures/scenarios';
 import { Breakpoints } from '@/core/layout/breakpoints';
 import { ThemeStore } from '@/core/layout/theme-store';
 import { urlSignal } from '@/core/signals/observed-signals';
@@ -45,7 +44,6 @@ export class ShellPage {
   protected readonly telemetry = inject(TelemetryStore);
   protected readonly theme = inject(ThemeStore);
   private readonly newConversations = inject(NewConversationDialogs);
-  private readonly scenarios = inject(Scenarios);
   private readonly snackBar = inject(MatSnackBar);
 
   /** The phone's "Novo" button opens "Novo chat" and "Novo grupo" above it. */
@@ -65,10 +63,6 @@ export class ShellPage {
   protected readonly showMain = computed(() => !this.compact() || this.selectedId() !== null);
 
   constructor() {
-    // With the fixed data, the return of the connection only happens in this scenario (RF08).
-    if (this.scenarios.has('reconectado')) {
-      this.snackBar.open('Conectado novamente.', undefined, { duration: 4000 });
-    }
     this.connection.reconnected.pipe(takeUntilDestroyed()).subscribe(() => {
       this.snackBar.open('Conectado novamente.', undefined, { duration: 4000 });
     });
