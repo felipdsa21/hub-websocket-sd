@@ -32,9 +32,9 @@ import {
 
 const HISTORY_MAX_MESSAGES = 50;
 const HISTORY_MAX_BYTES = 28 * 1024;
-// Blocks multi-frame WebSocket payloads (up to 128 KB) that would break getHistory pagination (A1).
+// Without this cap, another client could store a message near 128 KB whose history page would exceed the @connections limit (RF11).
 export const MAX_TEXT_BYTES = 32 * 1024;
-// Idempotency markers are only needed for short-term resends; messages themselves never expire (M7).
+// Idempotency markers are only needed for short-term resends; messages themselves never expire (architecture, section 3.3).
 export const MARKER_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 interface SendMessageInput {

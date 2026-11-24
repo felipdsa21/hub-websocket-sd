@@ -189,7 +189,7 @@ describe('MessagesStore', () => {
     expect(messages.outgoingIn(ALICE_BRUNO).map((m) => m.messageId)).toEqual([ID2]);
   });
 
-  it('marks a refused message as not sent even when error has messageId without requestId (B4)', async () => {
+  it('marks a refused message as not sent even when error has messageId without requestId (RF12)', async () => {
     const { socket, messages } = await setUp();
     messages.send(ALICE_BRUNO, 'um', ID1);
     messages.send(ALICE_BRUNO, 'dois', ID2);

@@ -89,7 +89,7 @@ describe('PeoplePicker', () => {
     expect(status?.textContent?.trim()).toBe('Nenhuma pessoa encontrada.');
   });
 
-  it('disables search input and person selection while disconnected (B1)', async () => {
+  it('disables search input and person selection while disconnected (RF08)', async () => {
     const { socket, element, type } = await setUp();
     await type('bru');
     await vi.advanceTimersByTimeAsync(SEARCH_DELAY_MS);

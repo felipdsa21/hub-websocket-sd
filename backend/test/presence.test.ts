@@ -409,7 +409,7 @@ describe('Presence announcements (RF01, RF07, section 3.5)', () => {
     ]);
   });
 
-  test('presenceSweeper still re-announces a stale user when orphan unbind loses a race (B7)', async () => {
+  test('presenceSweeper still re-announces a stale user when orphan unbind loses a race', async () => {
     const now = 1_750_000_000_000;
     jest.useFakeTimers({ now });
     ddbMock.on(ScanCommand, { TableName: 'Connections' }).resolves({ Items: [] });

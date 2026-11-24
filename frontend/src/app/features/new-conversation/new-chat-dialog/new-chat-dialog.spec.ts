@@ -30,7 +30,7 @@ describe('NewChatDialog', () => {
     expect(component).toBeTruthy();
   });
 
-  it('disables picking a person while offline (B1)', async () => {
+  it('disables picking a person while offline (RF08)', async () => {
     const close = vi.fn();
     const sockets: FakeWebSocket[] = [];
     TestBed.resetTestingModule();

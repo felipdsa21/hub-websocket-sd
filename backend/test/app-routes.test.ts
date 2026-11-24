@@ -209,7 +209,7 @@ describe('sendMessage', () => {
     ]);
   });
 
-  test('enforces MAX_TEXT_BYTES UTF-8 limit on sendMessage without writing to DynamoDB (A1)', async () => {
+  test('enforces MAX_TEXT_BYTES UTF-8 limit on sendMessage without writing to DynamoDB (RF11)', async () => {
     db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
     // 16384 'á' chars = 32768 UTF-8 bytes; one extra byte exceeds the 32 KB limit.
     const tooLargeUtf8 = `${'á'.repeat(MAX_TEXT_BYTES / 2)}a`;
@@ -814,7 +814,7 @@ describe('openDirect & createGroup', () => {
   });
 
   test.each(['Time\nSD', 'Time\u0000', 'Time\u007f', 'Time\u202e', '\u2066Time'])(
-    'createGroup rejects control and bidi characters in group name (%j) (B6)',
+    'createGroup rejects control and bidi characters in group name (%j)',
     async (badName) => {
       db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
       await app.handler(
@@ -897,7 +897,7 @@ describe('addMember & leaveGroup', () => {
     expect(sentTo()[0]!.payload.code).toBe('forbidden');
   });
 
-  test('addMember rejects when group already has 99 members without writing to DynamoDB (M3)', async () => {
+  test('addMember rejects when group already has 99 members without writing to DynamoDB', async () => {
     const fullMembers = new Set([
       'ana',
       ...Array.from({ length: MAX_GROUP_MEMBERS - 1 }, (_, i) => `user${i}`),
@@ -920,7 +920,7 @@ describe('addMember & leaveGroup', () => {
     );
   });
 
-  test('addMember guards size(members) < :maxMembers in transaction and handles concurrent fill (M3)', async () => {
+  test('addMember guards size(members) < :maxMembers in transaction and handles concurrent fill', async () => {
     const almostFull = [
       'ana',
       ...Array.from({ length: MAX_GROUP_MEMBERS - 2 }, (_, i) => `user${i}`),
@@ -1196,7 +1196,7 @@ describe('sync & search', () => {
     });
   });
 
-  test('search normalizes pt-BR accents and caps conversations and people at 50 each (B8)', async () => {
+  test('search normalizes pt-BR accents and caps conversations and people at 50 each (RF05)', async () => {
     const memberships = Array.from({ length: 60 }, (_, i) => ({
       username: 'ana',
       conversationId: `g:00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,

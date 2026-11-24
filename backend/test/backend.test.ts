@@ -14,7 +14,7 @@ const template = Template.fromStack(
   }),
 );
 
-test('creates the five on-demand tables, with TTL on Connections and Messages and PITR only in prod (M7)', () => {
+test('creates the five on-demand tables, with TTL on Connections and Messages and PITR only in prod', () => {
   template.resourceCountIs('AWS::DynamoDB::Table', 5);
   template.allResourcesProperties('AWS::DynamoDB::Table', {
     BillingMode: 'PAY_PER_REQUEST',
@@ -61,7 +61,7 @@ test('routes by action to the four Lambdas', () => {
   }
 });
 
-test('configures ARM64, memory, timeout, log retention and sweeper schedule (A2, D05, B10)', () => {
+test('configures ARM64, memory, timeout, log retention and sweeper schedule (D05)', () => {
   template.hasResourceProperties('AWS::Scheduler::Schedule', {
     ScheduleExpression: 'rate(1 minute)',
     Target: Match.objectLike({
@@ -92,7 +92,7 @@ test('configures ARM64, memory, timeout, log retention and sweeper schedule (A2,
   });
 });
 
-test('configures WebSocketStage throttling without accessLogSettings (M6)', () => {
+test('configures WebSocketStage throttling without accessLogSettings', () => {
   template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
     StageName: 'dev',
     DefaultRouteSettings: {
@@ -103,7 +103,7 @@ test('configures WebSocketStage throttling without accessLogSettings (M6)', () =
   });
 });
 
-test('grants least-privilege DynamoDB permissions per Lambda (M5)', () => {
+test('grants least-privilege DynamoDB permissions per Lambda', () => {
   const functions = template.findResources('AWS::Lambda::Function');
   const policies = template.findResources('AWS::IAM::Policy');
 
@@ -187,7 +187,7 @@ test('grants SSM and KMS decrypt permissions for HMAC log anonymization (RNF03)'
   });
 });
 
-test('creates the CloudWatch dashboard, alarms and allows sweeper to publish OpenConnections (RNF06, B10)', () => {
+test('creates the CloudWatch dashboard, alarms and allows sweeper to publish OpenConnections (RNF06)', () => {
   template.hasResourceProperties('AWS::CloudWatch::Dashboard', {
     DashboardName: 'HubWebSocket-dev',
   });
@@ -248,7 +248,7 @@ test('creates the CloudWatch dashboard, alarms and allows sweeper to publish Ope
   });
 });
 
-test('hosts the static frontend in a private S3 bucket behind CloudFront with OAC and security headers (A3, D08, RNF07, B10)', () => {
+test('hosts the static frontend in a private S3 bucket behind CloudFront with OAC and security headers (D08, RNF07)', () => {
   template.hasResource('AWS::S3::Bucket', {
     DeletionPolicy: 'Delete',
     Properties: {
@@ -364,7 +364,7 @@ test('hosts the static frontend in a private S3 bucket behind CloudFront with OA
   template.hasOutput('DistributionId', {});
 });
 
-test('enables prod hardening: PITR, S3 versioning, 30-day log retention and asset pruning (M7, B10)', () => {
+test('enables prod hardening: PITR, S3 versioning, 30-day log retention and asset pruning', () => {
   const distDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-frontend-dist-'));
   try {
     fs.writeFileSync(path.join(distDir, 'index.html'), '<!doctype html>');

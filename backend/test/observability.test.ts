@@ -159,7 +159,7 @@ describe('HMAC log anonymization (RNF03, section 5)', () => {
     expect(logs[0]!.connectionId).not.toBe(logs[1]!.connectionId);
   });
 
-  test('omits raw identifiers and warns once while waiting to retry a failed SSM read (B10)', async () => {
+  test('omits raw identifiers and warns once while waiting to retry a failed SSM read (RNF03)', async () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     ssmMock.on(GetParameterCommand).rejects(new Error('SSM unavailable'));
     ddbMock.on(PutCommand).resolves({});
@@ -181,7 +181,7 @@ describe('HMAC log anonymization (RNF03, section 5)', () => {
     });
   });
 
-  test('runs handler logic in parallel with getHmacSecret without blocking before log() (B10)', async () => {
+  test('runs handler logic in parallel with getHmacSecret without blocking before log() (RNF03)', async () => {
     let resolveSecret!: (value: { Parameter: { Value: string } }) => void;
     const secretDeferred = new Promise<{ Parameter: { Value: string } }>((resolve) => {
       resolveSecret = resolve;

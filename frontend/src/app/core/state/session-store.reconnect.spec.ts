@@ -346,7 +346,7 @@ describe('SessionStore reconnection and retry queue (RF08, RF12)', () => {
     expect(messages.history(ALICE_BRUNO)?.messages).toEqual([m1, m2]);
   });
 
-  it('probes on window offline and wakes reconnect backoff immediately on window online (B4)', async () => {
+  it('probes on window offline and wakes reconnect backoff immediately on window online (RF08)', async () => {
     const { sockets, socket, connection } = await setUp();
     vi.useFakeTimers();
 

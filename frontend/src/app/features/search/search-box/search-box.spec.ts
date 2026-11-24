@@ -40,7 +40,7 @@ describe('SearchBox', () => {
     expect(component).toBeTruthy();
   });
 
-  it('stays open when clicking non-focusable panel areas and closes on outside click, Escape or Tab out (M1)', async () => {
+  it('stays open when clicking non-focusable panel areas and closes on outside click, Escape or Tab out', async () => {
     const host = fixture.nativeElement as HTMLElement;
     const input = host.querySelector<HTMLInputElement>('input')!;
 

@@ -124,7 +124,7 @@ describe('LoginPage', () => {
     localStorage.clear();
   });
 
-  it('rejects control and bidi characters in displayName (B6)', async () => {
+  it('rejects control and bidi characters in displayName', async () => {
     const { element, button, type } = await render();
 
     await type(0, 'marina');

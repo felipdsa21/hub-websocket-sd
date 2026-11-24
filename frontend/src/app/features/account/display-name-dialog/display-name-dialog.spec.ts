@@ -22,7 +22,7 @@ describe('DisplayNameDialog', () => {
     expect(component).toBeTruthy();
   });
 
-  it('disables saving when displayName contains control or bidi characters (B6)', async () => {
+  it('disables saving when displayName contains control or bidi characters', async () => {
     const root = fixture.nativeElement as HTMLElement;
     const input = root.querySelector<HTMLInputElement>('input')!;
     const submit = root.querySelector<HTMLButtonElement>('button[type="submit"]')!;

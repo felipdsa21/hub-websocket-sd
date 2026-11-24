@@ -47,7 +47,7 @@ describe('ShellPage', () => {
     expect(badge?.textContent?.trim()).toBe('Latência da conexão: RTT 48 ms');
   });
 
-  it('disables mobile FAB "Novo chat" and "Novo grupo" actions when offline (B1)', async () => {
+  it('disables mobile FAB "Novo chat" and "Novo grupo" actions when offline (RF08)', async () => {
     const sockets: FakeWebSocket[] = [];
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({

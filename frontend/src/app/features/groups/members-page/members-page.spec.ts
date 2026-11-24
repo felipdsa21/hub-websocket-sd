@@ -26,7 +26,7 @@ describe('MembersPage', () => {
     expect(component).toBeTruthy();
   });
 
-  it('redirects to / on mobile when the user leaves or is removed from the group (B2)', async () => {
+  it('redirects to / on mobile when the user leaves or is removed from the group', async () => {
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [MembersPage],

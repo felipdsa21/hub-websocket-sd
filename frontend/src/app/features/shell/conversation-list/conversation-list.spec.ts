@@ -32,7 +32,7 @@ describe('ConversationList', () => {
     expect(component).toBeTruthy();
   });
 
-  it('prevents keyboard focus and navigation on dimmed offline conversations (M2)', async () => {
+  it('prevents keyboard focus and navigation on dimmed offline conversations (RF08)', async () => {
     const sockets: FakeWebSocket[] = [];
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({

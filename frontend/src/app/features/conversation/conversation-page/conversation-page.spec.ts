@@ -68,7 +68,7 @@ describe('ConversationPage', () => {
     expect(component).toBeTruthy();
   });
 
-  it('observes #olderSentinel with root=scroller and resumes loadOlder after reconnecting (B3)', async () => {
+  it('observes #olderSentinel with root=scroller and resumes loadOlder after reconnecting (RF06)', async () => {
     localStorage.clear();
     lastIntersection = null;
     const sockets: FakeWebSocket[] = [];
@@ -130,7 +130,7 @@ describe('ConversationPage', () => {
     ).toBe(true);
   });
 
-  it('uses h2 for the conversation header on desktop and h1 in compact mode (B5)', async () => {
+  it('uses h2 for the conversation header on desktop and h1 in compact mode', async () => {
     const compact = signal(false);
     const sockets: FakeWebSocket[] = [];
     TestBed.resetTestingModule();

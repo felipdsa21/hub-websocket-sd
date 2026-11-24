@@ -18,8 +18,7 @@ const EMPTY: SearchResults = { conversations: [], people: [] };
 
 /**
  * Searches the user's conversations by name and the other users by username or display name
- * (RF05, architecture 4.5). Someone with a visible direct chat shows only as that conversation
- * (design note).
+ * (RF05). The backend leaves out of `people` whoever it returns as a direct chat (architecture 4.5).
  */
 @Service()
 export class SearchStore {
