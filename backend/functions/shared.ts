@@ -138,36 +138,35 @@ export function anonymize(value: string, secret: string): string {
   return createHmac('sha256', secret).update(value).digest('hex').slice(0, 12);
 }
 
+const HMAC_FETCH_TIMEOUT_MS = 1_000;
+// After a failed fetch, requests log without ids until this delay passes, instead of each one calling SSM again.
+export const HMAC_RETRY_DELAY_MS = 60_000;
+
 let hmacSecretPromise: Promise<string | undefined> | undefined;
-let hmacWarned = false;
+let hmacRetryAt: number | undefined;
 
 /** Clears the cached SSM secret (for unit tests). */
 export function resetHmacSecretCache() {
   hmacSecretPromise = undefined;
-  hmacWarned = false;
+  hmacRetryAt = undefined;
 }
 
 function getHmacSecret(): Promise<string | undefined> {
   const paramName = process.env.LOG_HMAC_SECRET_PARAM;
   if (!paramName) return Promise.resolve(undefined);
-  if (!hmacSecretPromise) {
+  if (!hmacSecretPromise || (hmacRetryAt !== undefined && Date.now() >= hmacRetryAt)) {
+    hmacRetryAt = undefined;
     hmacSecretPromise = ssm
-      .send(new GetParameterCommand({ Name: paramName, WithDecryption: true }))
+      .send(new GetParameterCommand({ Name: paramName, WithDecryption: true }), {
+        abortSignal: AbortSignal.timeout(HMAC_FETCH_TIMEOUT_MS),
+      })
       .then((res) => {
         if (!res.Parameter?.Value) throw new Error(`Empty SSM parameter ${paramName}`);
         return res.Parameter.Value;
       })
       .catch((err) => {
-        hmacSecretPromise = undefined;
-        if (!hmacWarned) {
-          hmacWarned = true;
-          console.warn(
-            JSON.stringify({
-              event: 'hmacSecretUnavailable',
-              error: errorName(err),
-            }),
-          );
-        }
+        hmacRetryAt = Date.now() + HMAC_RETRY_DELAY_MS;
+        console.warn(JSON.stringify({ event: 'hmacSecretUnavailable', error: errorName(err) }));
         return undefined;
       });
   }
