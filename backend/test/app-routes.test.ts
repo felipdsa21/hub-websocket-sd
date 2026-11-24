@@ -1229,6 +1229,42 @@ describe('sync & search', () => {
     expect(data.conversations[0].name).toContain('João Antônio');
     expect(data.people[0].displayName).toContain('João Antônio');
   });
+
+  test('search lists a person whose direct chat was cut by the cap', async () => {
+    const groupMemberships = Array.from({ length: SEARCH_MAX_RESULTS }, (_, i) => ({
+      username: 'ana',
+      conversationId: `g:00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      joinedAt: 200 + i,
+    }));
+    const groups = groupMemberships.map((m, i) => ({
+      conversationId: m.conversationId,
+      type: 'group',
+      name: `Bia fã-clube ${i}`,
+      members: new Set(['ana']),
+    }));
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(QueryCommand).resolves({
+      Items: [...groupMemberships, { username: 'ana', conversationId: DIRECT_ID, joinedAt: 100 }],
+    });
+    db.on(BatchGetCommand).resolves({
+      Responses: {
+        Conversations: [
+          ...groups,
+          { conversationId: DIRECT_ID, type: 'direct', members: new Set(['ana', 'bia']) },
+        ],
+      },
+    });
+    db.on(ScanCommand).resolves({ Items: [anaUser, biaUser] });
+
+    await app.handler(event('search', { requestId: REQ_ID, query: 'bia' }));
+
+    const data = sentTo()[0]!.payload.data;
+    expect(data.conversations).toHaveLength(SEARCH_MAX_RESULTS);
+    expect(
+      data.conversations.map((c: { conversationId: string }) => c.conversationId),
+    ).not.toContain(DIRECT_ID);
+    expect(data.people).toEqual([expect.objectContaining({ username: 'bia' })]);
+  });
 });
 
 describe('table', () => {

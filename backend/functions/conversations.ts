@@ -45,25 +45,16 @@ function normalizeSearch(value: string): string {
 }
 
 function mapVisibleConversations(
-  username: string,
   memberships: MembershipRecord[],
   convById: Map<string, ConversationRecord>,
   users: Map<string, UserRecord>,
 ) {
-  const directPartners = new Set<string>();
   const conversations: ConversationPayload[] = [];
-
   for (const membership of memberships) {
     const conv = convById.get(membership.conversationId);
-    if (!conv) continue;
-    if (conv.type === 'direct') {
-      const partner = [...toStringSet(conv.members)].find((m) => m !== username) ?? username;
-      directPartners.add(partner);
-    }
-    conversations.push(buildConversationPayload(conv, membership.joinedAt ?? 0, users));
+    if (conv) conversations.push(buildConversationPayload(conv, membership.joinedAt ?? 0, users));
   }
-  conversations.sort(compareConversations);
-  return { conversations, directPartners };
+  return conversations.sort(compareConversations);
 }
 
 async function loadVisibleConversations(username: string): Promise<ConversationPayload[]> {
@@ -78,7 +69,7 @@ async function loadVisibleConversations(username: string): Promise<ConversationP
   const users = await getUsers(memberNames);
   const convById = new Map(convRecords.map((c) => [c.conversationId, c]));
 
-  return mapVisibleConversations(username, memberships, convById, users).conversations;
+  return mapVisibleConversations(memberships, convById, users);
 }
 
 /**
@@ -526,24 +517,23 @@ export async function handleSearch(ctx: RequestContext): Promise<Outcome> {
   ]);
 
   const convById = new Map(convRecords.map((c) => [c.conversationId, c]));
-  const { conversations: visible, directPartners } = mapVisibleConversations(
-    me,
-    memberships,
-    convById,
-    allUsers,
-  );
-
-  const conversations = visible
+  const conversations = mapVisibleConversations(memberships, convById, allUsers)
     .filter((c) => {
       if (c.type === 'group') return matches(c.name ?? '');
       const partner = c.members.find((m) => m.username !== me);
       return partner !== undefined && (matches(partner.username) || matches(partner.displayName));
     })
     .slice(0, SEARCH_MAX_RESULTS);
+  // Only partners of returned direct chats are left out, so a chat cut by the cap still lists its partner.
+  const shownPartners = new Set(
+    conversations
+      .filter((c) => c.type === 'direct')
+      .flatMap((c) => c.members.map((m) => m.username)),
+  );
 
   const people: UserState[] = [];
   for (const user of allUsers.values()) {
-    if (user.username === me || directPartners.has(user.username)) continue;
+    if (user.username === me || shownPartners.has(user.username)) continue;
     if (matches(user.username) || matches(user.displayName)) {
       people.push(toUserState(user, user.username));
     }
