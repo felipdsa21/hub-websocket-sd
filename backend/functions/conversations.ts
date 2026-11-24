@@ -22,6 +22,7 @@ import {
   toStringSet,
   toUserState,
 } from './data';
+import { HISTORY_MAX_BYTES } from './messages';
 import {
   Outcome,
   db,
@@ -36,6 +37,8 @@ import {
 
 export const MAX_GROUP_MEMBERS = 99;
 export const SEARCH_MAX_RESULTS = 50;
+// Same budget as a getHistory page, so a search reply with large groups stays far below the 128 KB @connections limit.
+export const SEARCH_MAX_CONVERSATION_BYTES = HISTORY_MAX_BYTES;
 
 function normalizeSearch(value: string): string {
   return value
@@ -45,25 +48,34 @@ function normalizeSearch(value: string): string {
 }
 
 function mapVisibleConversations(
-  username: string,
   memberships: MembershipRecord[],
   convById: Map<string, ConversationRecord>,
   users: Map<string, UserRecord>,
 ) {
-  const directPartners = new Set<string>();
   const conversations: ConversationPayload[] = [];
-
   for (const membership of memberships) {
     const conv = convById.get(membership.conversationId);
-    if (!conv) continue;
-    if (conv.type === 'direct') {
-      const partner = [...toStringSet(conv.members)].find((m) => m !== username) ?? username;
-      directPartners.add(partner);
-    }
-    conversations.push(buildConversationPayload(conv, membership.joinedAt ?? 0, users));
+    if (conv) conversations.push(buildConversationPayload(conv, membership.joinedAt ?? 0, users));
   }
-  conversations.sort(compareConversations);
-  return { conversations, directPartners };
+  return conversations.sort(compareConversations);
+}
+
+/** Takes conversations in order up to SEARCH_MAX_RESULTS and the byte budget, keeping at least one. */
+function capSearchConversations(conversations: ConversationPayload[]): ConversationPayload[] {
+  const kept: ConversationPayload[] = [];
+  let usedBytes = 0;
+  for (const conv of conversations) {
+    const bytes = Buffer.byteLength(JSON.stringify(conv)) + (kept.length > 0 ? 1 : 0);
+    if (
+      kept.length >= SEARCH_MAX_RESULTS ||
+      (kept.length > 0 && usedBytes + bytes > SEARCH_MAX_CONVERSATION_BYTES)
+    ) {
+      break;
+    }
+    kept.push(conv);
+    usedBytes += bytes;
+  }
+  return kept;
 }
 
 async function loadVisibleConversations(username: string): Promise<ConversationPayload[]> {
@@ -78,7 +90,28 @@ async function loadVisibleConversations(username: string): Promise<ConversationP
   const users = await getUsers(memberNames);
   const convById = new Map(convRecords.map((c) => [c.conversationId, c]));
 
-  return mapVisibleConversations(username, memberships, convById, users).conversations;
+  return mapVisibleConversations(memberships, convById, users);
+}
+
+/**
+ * Replies after the fan-out of a committed change. When the fan-out fails, the requester still gets the
+ * reply, since a retry would repeat the committed write, and the failure is rethrown so the request logs it.
+ */
+async function replyAfterFanOut(
+  ctx: RequestContext,
+  delivery: Promise<unknown>,
+  data: object,
+): Promise<Outcome> {
+  try {
+    await delivery;
+  } catch (err) {
+    // A failed reply must not hide the fan-out failure from the request log.
+    await ctx.reply(data).catch((replyErr: unknown) => {
+      throw new AggregateError([err, replyErr]);
+    });
+    throw err;
+  }
+  return ctx.reply(data);
 }
 
 async function requireGroupMember(
@@ -306,8 +339,11 @@ export async function handleCreateGroup(ctx: RequestContext): Promise<Outcome> {
 
   const users = await getUsers(allMembers);
   const conversation = buildConversationPayload(conv, now, users);
-  await fanOut(allMembers, { type: 'conversationAdded', conversation }, users);
-  const outcome = await ctx.reply({ conversation });
+  const outcome = await replyAfterFanOut(
+    ctx,
+    fanOut(allMembers, { type: 'conversationAdded', conversation }, users),
+    { conversation },
+  );
   return { ...outcome, conversationId: conv.conversationId };
 }
 
@@ -395,19 +431,25 @@ export async function handleAddMember(ctx: RequestContext): Promise<Outcome> {
   const users = await getUsers(updatedMembers);
   const member = toUserState(users.get(target), target);
 
-  await settle([
-    fanOut(
-      [...updatedMembers].filter((u) => u !== target),
-      { type: 'memberJoined', conversationId, member },
-      users,
-    ),
-    fanOut(
-      [target],
-      { type: 'conversationAdded', conversation: buildConversationPayload(freshConv, now, users) },
-      users,
-    ),
-  ]);
-  return ctx.reply({});
+  return replyAfterFanOut(
+    ctx,
+    settle([
+      fanOut(
+        [...updatedMembers].filter((u) => u !== target),
+        { type: 'memberJoined', conversationId, member },
+        users,
+      ),
+      fanOut(
+        [target],
+        {
+          type: 'conversationAdded',
+          conversation: buildConversationPayload(freshConv, now, users),
+        },
+        users,
+      ),
+    ]),
+    {},
+  );
 }
 
 export async function handleLeaveGroup(ctx: RequestContext): Promise<Outcome> {
@@ -468,11 +510,14 @@ export async function handleLeaveGroup(ctx: RequestContext): Promise<Outcome> {
   const remaining = [...toStringSet((freshConv ?? conv).members)].filter((u) => u !== me);
   const users = await getUsers([me, ...remaining]);
 
-  await settle([
-    fanOut([me], { type: 'conversationRemoved', conversationId }, users),
-    fanOut(remaining, { type: 'memberLeft', conversationId, username: me }, users),
-  ]);
-  return ctx.reply({});
+  return replyAfterFanOut(
+    ctx,
+    settle([
+      fanOut([me], { type: 'conversationRemoved', conversationId }, users),
+      fanOut(remaining, { type: 'memberLeft', conversationId, username: me }, users),
+    ]),
+    {},
+  );
 }
 
 export async function handleSearch(ctx: RequestContext): Promise<Outcome> {
@@ -496,24 +541,23 @@ export async function handleSearch(ctx: RequestContext): Promise<Outcome> {
   ]);
 
   const convById = new Map(convRecords.map((c) => [c.conversationId, c]));
-  const { conversations: visible, directPartners } = mapVisibleConversations(
-    me,
-    memberships,
-    convById,
-    allUsers,
-  );
-
-  const conversations = visible
-    .filter((c) => {
+  const conversations = capSearchConversations(
+    mapVisibleConversations(memberships, convById, allUsers).filter((c) => {
       if (c.type === 'group') return matches(c.name ?? '');
       const partner = c.members.find((m) => m.username !== me);
       return partner !== undefined && (matches(partner.username) || matches(partner.displayName));
-    })
-    .slice(0, SEARCH_MAX_RESULTS);
+    }),
+  );
+  // Only partners of returned direct chats are left out, so a chat cut by the cap still lists its partner.
+  const shownPartners = new Set(
+    conversations
+      .filter((c) => c.type === 'direct')
+      .flatMap((c) => c.members.map((m) => m.username)),
+  );
 
   const people: UserState[] = [];
   for (const user of allUsers.values()) {
-    if (user.username === me || directPartners.has(user.username)) continue;
+    if (user.username === me || shownPartners.has(user.username)) continue;
     if (matches(user.username) || matches(user.displayName)) {
       people.push(toUserState(user, user.username));
     }

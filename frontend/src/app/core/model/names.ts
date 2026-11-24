@@ -3,12 +3,18 @@
 export const USERNAME_PATTERN = /^[a-z0-9._-]{3,32}$/;
 export const DISPLAY_NAME_MAX_LENGTH = 50;
 
-// Control characters (U+0000..U+001F, U+007F) and Unicode bidi controls, aligned with backend.
-// eslint-disable-next-line no-control-regex
-const FORBIDDEN_NAME_CHARS = /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/;
+// Controls, line and paragraph separators and format characters (bidi controls, zero-width spaces),
+// except the joiners that emoji sequences and some scripts need. Aligned with backend.
+const FORBIDDEN_NAME_CHARS = /[\p{Cc}\p{Zl}\p{Zp}]|(?![\u200c\u200d])\p{Cf}/u;
+// A character that is neither blank nor ignorable, unlike the Hangul filler.
+const VISIBLE_NAME_CHAR = /[^\s\p{Default_Ignorable_Code_Point}]/u;
 
 export function hasForbiddenNameChars(value: string): boolean {
   return FORBIDDEN_NAME_CHARS.test(value);
+}
+
+export function hasVisibleNameChar(value: string): boolean {
+  return VISIBLE_NAME_CHAR.test(value);
 }
 
 export function normalizeUsername(value: string): string {
@@ -28,6 +34,6 @@ export function isValidDisplayName(value: string): boolean {
   if (hasForbiddenNameChars(value)) {
     return false;
   }
-  const length = [...normalizeDisplayName(value)].length;
-  return length >= 1 && length <= DISPLAY_NAME_MAX_LENGTH;
+  const name = normalizeDisplayName(value);
+  return [...name].length <= DISPLAY_NAME_MAX_LENGTH && hasVisibleNameChar(name);
 }

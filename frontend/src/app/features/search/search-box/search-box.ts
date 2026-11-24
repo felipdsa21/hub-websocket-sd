@@ -110,6 +110,7 @@ export class SearchBox {
   }
 
   protected openConversation(conversationId: string): void {
+    this.search.keep(conversationId);
     this.close();
     void this.router.navigate(['/c', conversationId]);
   }

@@ -11,10 +11,11 @@ import {
   getCancellationReasons,
   send,
   settle,
+  table,
   toStringSet,
 } from './shared';
 
-export { batchGet, toStringSet };
+export { batchGet, table, toStringSet };
 
 export interface UserState {
   username: string;
@@ -75,8 +76,6 @@ export interface RequestContext {
   ) => Promise<Outcome>;
   reply: (data: object) => Promise<Outcome>;
 }
-
-export const table = (envKey: string) => process.env[envKey] ?? envKey;
 
 export function directConversationId(a: string, b: string): string {
   const [first, second] = a < b ? [a, b] : [b, a];

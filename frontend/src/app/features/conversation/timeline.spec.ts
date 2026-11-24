@@ -1,5 +1,5 @@
 import { Temporal } from 'temporal-polyfill';
-import { Message, messageSk } from '@/core/model/message';
+import { Message, messageSk, skAfterInstant } from '@/core/model/message';
 import { UserState } from '@/core/model/user';
 import { TimelineInput, TimelineMessage, buildTimeline } from './timeline';
 
@@ -100,6 +100,23 @@ describe('buildTimeline', () => {
     expect(messagesOf(items).map((m) => m.first)).toEqual([true, true]);
   });
 
+  it('places a notice that follows an instant before the next message', () => {
+    const first = message('bruno', '2026-11-02T09:00');
+    const items = timeline({
+      messages: [first, message('bruno', '2026-11-02T09:01')],
+      notices: [
+        {
+          id: 'n',
+          conversationId: 'g:1',
+          kind: 'joined',
+          username: 'bruno',
+          afterSk: skAfterInstant(first.sentAt),
+        },
+      ],
+    });
+    expect(items.map((i) => i.kind)).toEqual(['day', 'message', 'notice', 'message']);
+  });
+
   it('shows unknown senders by username and repeated names with the username', () => {
     const items = messagesOf(
       timeline({
@@ -138,5 +155,15 @@ describe('buildTimeline', () => {
       ['pendente', undefined, 'Aguardando conexão'],
       ['recusada', undefined, 'Não enviada: requisição fora do formato'],
     ]);
+  });
+
+  it('shows message text without bidi embeddings, overrides and isolates', () => {
+    const items = messagesOf(
+      timeline({
+        messages: [message('bruno', '2026-11-02T09:00', 'foto\u202egpj.exe')],
+        outgoing: [{ conversationId: 'g:1', messageId: 'p', text: '\u2067oi\u2069' }],
+      }),
+    );
+    expect(items.map((m) => m.text)).toEqual(['fotogpj.exe', 'oi']);
   });
 });

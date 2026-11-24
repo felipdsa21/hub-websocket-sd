@@ -22,7 +22,11 @@ import {
 import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
 import * as app from '../functions/app';
-import { MAX_GROUP_MEMBERS, SEARCH_MAX_RESULTS } from '../functions/conversations';
+import {
+  MAX_GROUP_MEMBERS,
+  SEARCH_MAX_CONVERSATION_BYTES,
+  SEARCH_MAX_RESULTS,
+} from '../functions/conversations';
 import { MARKER_TTL_SECONDS, MAX_TEXT_BYTES } from '../functions/messages';
 
 const db = mockClient(DynamoDBDocumentClient);
@@ -61,6 +65,14 @@ const sentTo = () =>
     connectionId: c.args[0].input.ConnectionId,
     payload: JSON.parse(String(c.args[0].input.Data)),
   }));
+
+const replyTo = (connectionId: string) =>
+  sentTo().filter(
+    (d) =>
+      d.connectionId === connectionId &&
+      d.payload.type === 'response' &&
+      d.payload.requestId === REQ_ID,
+  );
 
 let logSpy: jest.SpyInstance;
 
@@ -200,7 +212,7 @@ describe('sendMessage', () => {
     ]);
   });
 
-  test('enforces MAX_TEXT_BYTES UTF-8 limit on sendMessage without writing to DynamoDB (A1)', async () => {
+  test('enforces MAX_TEXT_BYTES UTF-8 limit on sendMessage without writing to DynamoDB (RF11)', async () => {
     db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
     // 16384 'á' chars = 32768 UTF-8 bytes; one extra byte exceeds the 32 KB limit.
     const tooLargeUtf8 = `${'á'.repeat(MAX_TEXT_BYTES / 2)}a`;
@@ -484,6 +496,9 @@ describe('sendMessage', () => {
 });
 
 describe('getHistory', () => {
+  const historySk = (sentAt: number, sender: string, n: number) =>
+    `m#${String(sentAt).padStart(13, '0')}#${sender}#00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
   test('rejects before and after together', async () => {
     db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
     await app.handler(
@@ -497,6 +512,23 @@ describe('getHistory', () => {
     expect(sentTo()[0]!.payload).toEqual(
       expect.objectContaining({ type: 'error', code: 'invalidRequest' }),
     );
+  });
+
+  test.each([
+    ['before', 'm#' + 'x'.repeat(2000)],
+    ['after', 'm#1'],
+    ['after', 'm#123#'],
+    ['before', 'm#1764000000000#'],
+    ['before', `${historySk(1, 'ana', 1)}#extra`],
+  ])('rejects a %s cursor that is not a message sort key: %#', async (field, cursor) => {
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    await app.handler(
+      event('getHistory', { requestId: REQ_ID, conversationId: DIRECT_ID, [field]: cursor }),
+    );
+    expect(sentTo()[0]!.payload).toEqual(
+      expect.objectContaining({ type: 'error', code: 'invalidRequest', details: { field } }),
+    );
+    expect(db.commandCalls(QueryCommand)).toHaveLength(0);
   });
 
   test('rejects non-members with forbidden (RNF01)', async () => {
@@ -541,7 +573,7 @@ describe('getHistory', () => {
       Items: [
         {
           conversationId: DIRECT_ID,
-          sk: 'm#0000000000300#ana#3',
+          sk: historySk(300, 'ana', 3),
           messageId: '3',
           sender: 'ana',
           text: '3',
@@ -549,7 +581,7 @@ describe('getHistory', () => {
         },
         {
           conversationId: DIRECT_ID,
-          sk: 'm#0000000000200#bia#2',
+          sk: historySk(200, 'bia', 2),
           messageId: '2',
           sender: 'bia',
           text: '2',
@@ -557,7 +589,7 @@ describe('getHistory', () => {
         },
         {
           conversationId: DIRECT_ID,
-          sk: 'm#0000000000100#ana#1',
+          sk: historySk(100, 'ana', 1),
           messageId: '1',
           sender: 'ana',
           text: '1',
@@ -570,7 +602,7 @@ describe('getHistory', () => {
       event('getHistory', {
         requestId: REQ_ID,
         conversationId: DIRECT_ID,
-        before: 'm#0000000000300#ana#3',
+        before: historySk(300, 'ana', 3),
       }),
     );
 
@@ -586,12 +618,42 @@ describe('getHistory', () => {
       requestId: REQ_ID,
       data: {
         messages: [
-          expect.objectContaining({ sk: 'm#0000000000100#ana#1' }),
-          expect.objectContaining({ sk: 'm#0000000000200#bia#2' }),
+          expect.objectContaining({ sk: historySk(100, 'ana', 1) }),
+          expect.objectContaining({ sk: historySk(200, 'bia', 2) }),
         ],
         hasMore: false,
       },
     });
+  });
+
+  test('accepts an instant as the after cursor', async () => {
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(GetCommand).resolves({
+      Item: { conversationId: DIRECT_ID, members: new Set(['ana', 'bia']) },
+    });
+    const later = {
+      conversationId: DIRECT_ID,
+      sk: historySk(1764000000001, 'bia', 1),
+      messageId: '1',
+      sender: 'bia',
+      text: 'oi',
+      sentAt: 1764000000001,
+    };
+    db.on(QueryCommand).resolves({ Items: [later] });
+
+    await app.handler(
+      event('getHistory', {
+        requestId: REQ_ID,
+        conversationId: DIRECT_ID,
+        after: 'm#1764000000000#',
+      }),
+    );
+
+    const q = db.commandCalls(QueryCommand)[0]!.args[0].input;
+    expect(q.ExpressionAttributeValues).toEqual(
+      expect.objectContaining({ ':after': 'm#1764000000000#' }),
+    );
+    expect(sentTo()[0]!.payload.data.messages).toEqual([later]);
   });
 
   test('queries after in ascending order and enforces 28 KB page cap while keeping >= 1 message', async () => {
@@ -604,7 +666,7 @@ describe('getHistory', () => {
       Items: [
         {
           conversationId: DIRECT_ID,
-          sk: 'm#1',
+          sk: historySk(1, 'ana', 1),
           messageId: '1',
           sender: 'ana',
           text: bigText,
@@ -612,7 +674,7 @@ describe('getHistory', () => {
         },
         {
           conversationId: DIRECT_ID,
-          sk: 'm#2',
+          sk: historySk(2, 'bia', 2),
           messageId: '2',
           sender: 'bia',
           text: bigText,
@@ -622,7 +684,11 @@ describe('getHistory', () => {
     });
 
     await app.handler(
-      event('getHistory', { requestId: REQ_ID, conversationId: DIRECT_ID, after: 'm#0' }),
+      event('getHistory', {
+        requestId: REQ_ID,
+        conversationId: DIRECT_ID,
+        after: historySk(0, 'ana', 0),
+      }),
     );
 
     const q = db.commandCalls(QueryCommand)[0]!.args[0].input;
@@ -736,8 +802,36 @@ describe('openDirect & createGroup', () => {
     ).toBe('Projeto SD');
   });
 
+  test('createGroup still replies to the creator when the fan-out to a member fails', async () => {
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(BatchGetCommand).resolves({ Responses: { Users: [anaUser, biaUser] } });
+    db.on(TransactWriteCommand).resolves({});
+    api.on(PostToConnectionCommand, { ConnectionId: 'c2' }).rejects(limitExceeded);
+
+    await expect(
+      app.handler(event('createGroup', { requestId: REQ_ID, name: 'SD', members: ['bia'] })),
+    ).rejects.toThrow(limitExceeded);
+
+    const [reply] = replyTo('c1');
+    expect(reply?.payload.data.conversation).toEqual(expect.objectContaining({ name: 'SD' }));
+  });
+
+  test('createGroup keeps the fan-out failure when the reply to the creator also fails', async () => {
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(BatchGetCommand).resolves({ Responses: { Users: [anaUser, biaUser] } });
+    db.on(TransactWriteCommand).resolves({});
+    api.on(PostToConnectionCommand).rejects(limitExceeded);
+
+    const error = await app
+      .handler(event('createGroup', { requestId: REQ_ID, name: 'SD', members: ['bia'] }))
+      .catch((err: unknown) => err);
+
+    expect(error).toBeInstanceOf(AggregateError);
+    expect((error as AggregateError).errors).toHaveLength(2);
+  });
+
   test.each(['Time\nSD', 'Time\u0000', 'Time\u007f', 'Time\u202e', '\u2066Time'])(
-    'createGroup rejects control and bidi characters in group name (%j) (B6)',
+    'createGroup rejects control and bidi characters in group name (%j)',
     async (badName) => {
       db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
       await app.handler(
@@ -820,7 +914,7 @@ describe('addMember & leaveGroup', () => {
     expect(sentTo()[0]!.payload.code).toBe('forbidden');
   });
 
-  test('addMember rejects when group already has 99 members without writing to DynamoDB (M3)', async () => {
+  test('addMember rejects when group already has 99 members without writing to DynamoDB', async () => {
     const fullMembers = new Set([
       'ana',
       ...Array.from({ length: MAX_GROUP_MEMBERS - 1 }, (_, i) => `user${i}`),
@@ -843,7 +937,7 @@ describe('addMember & leaveGroup', () => {
     );
   });
 
-  test('addMember guards size(members) < :maxMembers in transaction and handles concurrent fill (M3)', async () => {
+  test('addMember guards size(members) < :maxMembers in transaction and handles concurrent fill', async () => {
     const almostFull = [
       'ana',
       ...Array.from({ length: MAX_GROUP_MEMBERS - 2 }, (_, i) => `user${i}`),
@@ -944,7 +1038,7 @@ describe('addMember & leaveGroup', () => {
     ]);
   });
 
-  test('addMember waits for both fanOuts to finish even when one fails', async () => {
+  test('addMember waits for both fanOuts and still replies when one fails', async () => {
     const carlosUser = {
       username: 'carlos',
       displayName: 'Carlos',
@@ -978,7 +1072,7 @@ describe('addMember & leaveGroup', () => {
     const pendingTarget = new Promise<object>((resolve) => {
       resolveTarget = () => resolve({});
     });
-    api.on(PostToConnectionCommand, { ConnectionId: 'c1' }).rejects(limitExceeded);
+    api.on(PostToConnectionCommand, { ConnectionId: 'c2' }).rejects(limitExceeded);
     api.on(PostToConnectionCommand, { ConnectionId: 'c4' }).callsFake(() => pendingTarget);
 
     let settled = false;
@@ -997,9 +1091,10 @@ describe('addMember & leaveGroup', () => {
     await outcome;
     expect(sentTo().filter((d) => d.payload.type === 'conversationAdded')).toHaveLength(1);
     expect(sentTo().filter((d) => d.payload.type === 'memberJoined')).toHaveLength(3);
+    expect(replyTo('c1')).toHaveLength(1);
   });
 
-  test('leaveGroup waits for both fanOuts to finish even when one fails', async () => {
+  test('leaveGroup waits for both fanOuts and still replies when one fails', async () => {
     db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
     db.on(GetCommand)
       .resolvesOnce({
@@ -1015,7 +1110,7 @@ describe('addMember & leaveGroup', () => {
     const pendingMemberLeft = new Promise<object>((resolve) => {
       resolveMemberLeft = () => resolve({});
     });
-    api.on(PostToConnectionCommand, { ConnectionId: 'c1' }).rejects(limitExceeded);
+    api.on(PostToConnectionCommand, { ConnectionId: 'c3' }).rejects(limitExceeded);
     api.on(PostToConnectionCommand, { ConnectionId: 'c2' }).callsFake(() => pendingMemberLeft);
 
     let settled = false;
@@ -1031,6 +1126,7 @@ describe('addMember & leaveGroup', () => {
     resolveMemberLeft();
     await outcome;
     expect(sentTo().filter((d) => d.payload.type === 'memberLeft')).toHaveLength(2);
+    expect(replyTo('c1')).toHaveLength(1);
   });
 });
 
@@ -1117,7 +1213,7 @@ describe('sync & search', () => {
     });
   });
 
-  test('search normalizes pt-BR accents and caps conversations and people at 50 each (B8)', async () => {
+  test('search normalizes pt-BR accents and caps conversations and people at 50 each (RF05)', async () => {
     const memberships = Array.from({ length: 60 }, (_, i) => ({
       username: 'ana',
       conversationId: `g:00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
@@ -1149,5 +1245,74 @@ describe('sync & search', () => {
     expect(data.people).toHaveLength(SEARCH_MAX_RESULTS);
     expect(data.conversations[0].name).toContain('João Antônio');
     expect(data.people[0].displayName).toContain('João Antônio');
+  });
+
+  test('search caps conversations by size when groups are large', async () => {
+    const members = Array.from({ length: MAX_GROUP_MEMBERS - 1 }, (_, i) => ({
+      username: `member${String(i).padStart(2, '0')}`,
+      displayName: `Member ${i} ${'x'.repeat(40)}`,
+      version: 1,
+    }));
+    const memberships = Array.from({ length: 20 }, (_, i) => ({
+      username: 'ana',
+      conversationId: `g:00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      joinedAt: 100 + i,
+    }));
+    const groups = memberships.map((m, i) => ({
+      conversationId: m.conversationId,
+      type: 'group',
+      name: `Turma ${i}`,
+      members: new Set(['ana', ...members.map((u) => u.username)]),
+    }));
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(QueryCommand).resolves({ Items: memberships });
+    db.on(BatchGetCommand).resolves({ Responses: { Conversations: groups } });
+    db.on(ScanCommand).resolves({ Items: [anaUser, ...members] });
+
+    await app.handler(event('search', { requestId: REQ_ID, query: 'turma' }));
+
+    const { conversations } = sentTo()[0]!.payload.data;
+    expect(conversations.length).toBeGreaterThan(0);
+    expect(conversations.length).toBeLessThan(groups.length);
+    // The budget counts each conversation and the commas between them, not the array's brackets.
+    expect(Buffer.byteLength(JSON.stringify(conversations)) - 2).toBeLessThanOrEqual(
+      SEARCH_MAX_CONVERSATION_BYTES,
+    );
+  });
+
+  test('search lists a person whose direct chat was cut by the cap', async () => {
+    const groupMemberships = Array.from({ length: SEARCH_MAX_RESULTS }, (_, i) => ({
+      username: 'ana',
+      conversationId: `g:00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      joinedAt: 200 + i,
+    }));
+    const groups = groupMemberships.map((m, i) => ({
+      conversationId: m.conversationId,
+      type: 'group',
+      name: `Bia fã-clube ${i}`,
+      members: new Set(['ana']),
+    }));
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(QueryCommand).resolves({
+      Items: [...groupMemberships, { username: 'ana', conversationId: DIRECT_ID, joinedAt: 100 }],
+    });
+    db.on(BatchGetCommand).resolves({
+      Responses: {
+        Conversations: [
+          ...groups,
+          { conversationId: DIRECT_ID, type: 'direct', members: new Set(['ana', 'bia']) },
+        ],
+      },
+    });
+    db.on(ScanCommand).resolves({ Items: [anaUser, biaUser] });
+
+    await app.handler(event('search', { requestId: REQ_ID, query: 'bia' }));
+
+    const data = sentTo()[0]!.payload.data;
+    expect(data.conversations).toHaveLength(SEARCH_MAX_RESULTS);
+    expect(
+      data.conversations.map((c: { conversationId: string }) => c.conversationId),
+    ).not.toContain(DIRECT_ID);
+    expect(data.people).toEqual([expect.objectContaining({ username: 'bia' })]);
   });
 });

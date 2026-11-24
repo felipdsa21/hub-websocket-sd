@@ -35,6 +35,19 @@ describe('display names', () => {
     expect([...names]).toEqual(['Ana Lima']);
   });
 
+  it('counts names that differ only by invisible characters, compatibility forms or spaces as repeated', () => {
+    const names = repeatedDisplayNames([
+      user('ana.lima', 'Ana Lima'),
+      user('fake1', 'Ana \u3164Lima'),
+      user('fake2', '\uff21\uff4e\uff41  Lima'),
+      user('fake3', 'Ana Lima\u200d'),
+      user('bruno', 'Bruno Lima'),
+    ]);
+    expect([...names].sort()).toEqual(
+      ['Ana Lima', 'Ana Lima\u200d', 'Ana \u3164Lima', '\uff21\uff4e\uff41  Lima'].sort(),
+    );
+  });
+
   it('labels the member count', () => {
     expect(membersLabel(1)).toBe('1 membro');
     expect(membersLabel(5)).toBe('5 membros');

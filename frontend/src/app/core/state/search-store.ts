@@ -1,12 +1,9 @@
 import { Service, inject, signal } from '@angular/core';
-import { Scenarios } from '@/core/fixtures/scenarios';
-import { HubConfig } from '@/core/hub/hub-config';
 import { HubSocket } from '@/core/hub/hub-socket';
 import { SearchData, toConversation } from '@/core/hub/protocol';
 import { Conversation } from '@/core/model/conversation';
 import { UserState } from '@/core/model/user';
 import { ConversationsStore } from './conversations-store';
-import { CurrentUser } from './current-user';
 import { DirectoryStore, SEARCH_DELAY_MS } from './directory-store';
 import { UsersStore } from './users-store';
 
@@ -21,17 +18,13 @@ const EMPTY: SearchResults = { conversations: [], people: [] };
 
 /**
  * Searches the user's conversations by name and the other users by username or display name
- * (RF05, architecture 4.5). Someone with a visible direct chat shows only as that conversation
- * (design note).
+ * (RF05). The backend leaves out of `people` whoever it returns as a direct chat (architecture 4.5).
  */
 @Service()
 export class SearchStore {
   private readonly conversations = inject(ConversationsStore);
   private readonly users = inject(UsersStore);
   private readonly directory = inject(DirectoryStore);
-  private readonly currentUser = inject(CurrentUser);
-  private readonly scenarios = inject(Scenarios);
-  private readonly config = inject(HubConfig);
   private readonly socket = inject(HubSocket);
 
   public readonly status = signal<SearchStatus>('idle');
@@ -51,21 +44,8 @@ export class SearchStore {
       this.results.set(EMPTY);
       return;
     }
-    if (this.config.live()) {
-      this.status.set('loading');
-      this.timer = setTimeout(() => void this.searchLive(query.trim(), count), SEARCH_DELAY_MS);
-      return;
-    }
-    if (this.scenarios.has('carregando')) {
-      this.status.set('loading');
-      return;
-    }
-    if (this.scenarios.has('erro-pesquisa') || this.scenarios.has('sem-resposta')) {
-      this.status.set('error');
-      return;
-    }
-    this.results.set(this.find(needle));
-    this.status.set('done');
+    this.status.set('loading');
+    this.timer = setTimeout(() => void this.fetchResults(query.trim(), count), SEARCH_DELAY_MS);
   }
 
   public retry(): void {
@@ -76,11 +56,19 @@ export class SearchStore {
     this.search('');
   }
 
+  /** Adds a found conversation to the list when it isn't there, so it can be opened. */
+  public keep(conversationId: string): void {
+    const found = this.results().conversations.find((c) => c.conversationId === conversationId);
+    if (found && !this.conversations.get(conversationId)) {
+      this.conversations.add(found);
+    }
+  }
+
   /**
    * Searches on the backend. The conversations found are shown as the client keeps them, in the
    * order of the list (architecture, section 4.6).
    */
-  private async searchLive(query: string, count: number): Promise<void> {
+  private async fetchResults(query: string, count: number): Promise<void> {
     try {
       const data = await this.socket.request<SearchData>('search', { query });
       if (count !== this.searchCount) {
@@ -102,24 +90,5 @@ export class SearchStore {
         this.status.set('error');
       }
     }
-  }
-
-  private find(needle: string): SearchResults {
-    const me = this.currentUser.user()?.username ?? '';
-    const matches = (text: string) => text.toLocaleLowerCase('pt-BR').includes(needle);
-    const directPartners = new Map<string, Conversation>();
-    const conversations = this.conversations.sorted().filter((c) => {
-      if (c.type === 'group') {
-        return matches(c.name ?? '');
-      }
-      const partner = c.members.find((m) => m !== me) ?? me;
-      directPartners.set(partner, c);
-      const state = this.users.get(partner);
-      return matches(partner) || (state !== undefined && matches(state.displayName));
-    });
-    const people = this.directory
-      .searchPeople(needle, new Set([me, ...directPartners.keys()]))
-      .sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR'));
-    return { conversations, people };
   }
 }

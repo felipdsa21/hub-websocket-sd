@@ -1,15 +1,11 @@
 import { DOCUMENT, DestroyRef, Service, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { Fixtures, createFixtures } from '@/core/fixtures/fixtures';
-import { HubFixtures } from '@/core/fixtures/hub-fixtures';
-import { Scenarios } from '@/core/fixtures/scenarios';
 import { HubConfig } from '@/core/hub/hub-config';
 import { HubEvents } from '@/core/hub/hub-events';
 import { HubSocket, RequestFailure } from '@/core/hub/hub-socket';
 import { SyncData, toConversation } from '@/core/hub/protocol';
 import { isValidDisplayName, normalizeDisplayName, normalizeUsername } from '@/core/model/names';
 import { UserState } from '@/core/model/user';
-import { Clock } from '@/core/time/clock';
 import { ConnectionStore } from './connection-store';
 import { ConversationsStore } from './conversations-store';
 import { CurrentUser, SessionUser } from './current-user';
@@ -27,12 +23,9 @@ export const RECONNECT_MAX_DELAY_MS = 30_000;
 @Service()
 export class SessionStore {
   private readonly currentUser = inject(CurrentUser);
-  private readonly fixtures = inject(HubFixtures);
   private readonly users = inject(UsersStore);
   private readonly conversations = inject(ConversationsStore);
   private readonly messages = inject(MessagesStore);
-  private readonly scenarios = inject(Scenarios);
-  private readonly clock = inject(Clock);
   private readonly config = inject(HubConfig);
   private readonly socket = inject(HubSocket);
   private readonly connection = inject(ConnectionStore);
@@ -58,7 +51,7 @@ export class SessionStore {
   constructor() {
     const destroyRef = inject(DestroyRef);
     const subscription = this.socket.dropped.subscribe(() => {
-      if (this.config.live() && this.currentUser.user()) {
+      if (this.currentUser.user()) {
         this.startReconnect();
       }
     });
@@ -84,9 +77,9 @@ export class SessionStore {
   }
 
   /**
-   * Enters from the entry screen. Without a display name, the username is used (RF01). With the
-   * backend, it opens the connection and loads the conversation list with `sync`; a failure is shown
-   * as a failure to enter, without reconnecting (architecture, section 4.6).
+   * Enters from the entry screen. Without a display name, the username is used (RF01). It opens the
+   * connection and loads the conversation list with `sync`; a failure is shown as a failure to
+   * enter, without reconnecting (architecture, section 4.6).
    */
   public async enter(username: string, displayName: string): Promise<void> {
     const name = normalizeDisplayName(displayName);
@@ -96,14 +89,8 @@ export class SessionStore {
     };
     if (this.config.invalid()) {
       this.enterStatus.set('failed');
-    } else if (this.config.live()) {
-      await this.enterLive(user, name);
-    } else if (this.scenarios.has('entrar-falha')) {
-      this.enterStatus.set('failed');
-    } else if (this.scenarios.has('carregando')) {
-      this.enterStatus.set('connecting');
     } else {
-      this.load(user);
+      await this.connectAndSync(user, name);
     }
   }
 
@@ -112,7 +99,7 @@ export class SessionStore {
    * Connection failures during restoration are treated as drops with exponential reconnect (RF08).
    */
   public restore(): boolean {
-    if (!this.config.live() || this.currentUser.user()) {
+    if (this.config.invalid() || this.currentUser.user()) {
       return false;
     }
     const username = this.storage.readCurrentUser();
@@ -124,15 +111,10 @@ export class SessionStore {
     return true;
   }
 
-  /** Enters as Marina, the user of the fixed data, so a scenario URL opens straight on it. */
-  public enterForScenario(): void {
-    this.load({ username: 'marina', displayName: 'Marina Alves' });
-  }
-
   /**
-   * Changes the display name (RF01, section 4.6). With the backend, opens a parallel WebSocket
-   * with the new name and drains the previous one without going offline; if opening fails, keeps
-   * the current connection active and returns `false`.
+   * Changes the display name (RF01, section 4.6). Opens a parallel WebSocket with the new name and
+   * drains the previous one without going offline; if opening fails, keeps the current connection
+   * active and returns `false`.
    */
   public async changeDisplayName(displayName: string): Promise<boolean> {
     const user = this.currentUser.user();
@@ -140,12 +122,6 @@ export class SessionStore {
       return false;
     }
     const name = normalizeDisplayName(displayName);
-    if (!this.config.live()) {
-      this.activeDisplayName = name;
-      this.currentUser.user.set({ ...user, displayName: name });
-      this.users.setDisplayName(user.username, name);
-      return true;
-    }
     if (!this.connection.connected()) {
       return false;
     }
@@ -168,9 +144,7 @@ export class SessionStore {
   }
 
   public leave(): void {
-    if (this.config.live()) {
-      this.storage.clearCurrentUser();
-    }
+    this.storage.clearCurrentUser();
     this.resetSessionState();
   }
 
@@ -181,17 +155,16 @@ export class SessionStore {
     this.socket.close();
     this.activeDisplayName = '';
     this.lastSyncServerTime = undefined;
-    this.fixtures.data.set(null);
     this.users.reset([]);
     this.conversations.reset([], new Map());
     this.conversations.loading.set(false);
-    this.messages.reset(null);
+    this.messages.reset();
     this.telemetry.reset();
     this.currentUser.user.set(null);
     this.enterStatus.set('idle');
   }
 
-  private async enterLive(user: SessionUser, displayName: string): Promise<void> {
+  private async connectAndSync(user: SessionUser, displayName: string): Promise<void> {
     this.cancelReconnect();
     const generation = this.sessionGeneration;
     this.connection.reset();
@@ -205,16 +178,17 @@ export class SessionStore {
       if (generation !== this.sessionGeneration) {
         return;
       }
-      // Persist the browser's active user and display name only after the first connection opens.
+      const data = await this.socket.request<SyncData>('sync');
+      if (generation !== this.sessionGeneration) {
+        return;
+      }
+      // Persist the browser's active user and display name only once entering succeeds; other tabs
+      // follow the stored user.
       this.storage.writeCurrentUser(user.username);
       if (displayName) {
         this.storage.writeDisplayName(user.username, displayName);
       } else {
         this.storage.clearDisplayName(user.username);
-      }
-      const data = await this.socket.request<SyncData>('sync');
-      if (generation !== this.sessionGeneration) {
-        return;
       }
       this.activeDisplayName = displayName;
       this.lastSyncServerTime = data.serverTime;
@@ -247,9 +221,6 @@ export class SessionStore {
   }
 
   private handleStorage(event: StorageEvent): void {
-    if (!this.config.live()) {
-      return;
-    }
     if (event.storageArea && event.storageArea !== this.localStorageOrNull()) {
       return;
     }
@@ -283,13 +254,13 @@ export class SessionStore {
   }
 
   private handleOffline(): void {
-    if (this.config.live() && this.currentUser.user()) {
+    if (this.currentUser.user()) {
       this.socket.checkConnection();
     }
   }
 
   private handleOnline(): void {
-    if (!this.config.live() || !this.currentUser.user()) {
+    if (!this.currentUser.user()) {
       return;
     }
     if (this.wakeReconnectWait) {
@@ -345,7 +316,7 @@ export class SessionStore {
             return;
           }
           if (outcome === 'woken') {
-            attempt = 0;
+            attempt = 1;
           }
         }
         const user = this.currentUser.user();
@@ -455,7 +426,6 @@ export class SessionStore {
         states.set(member.username, member);
       }
     }
-    this.fixtures.data.set(null);
     this.users.reset([...states.values()]);
     // Without any conversation, the user's own state isn't in the answer; version 0 yields to any.
     this.users.apply({ ...user, online: true, version: 0 });
@@ -464,23 +434,7 @@ export class SessionStore {
       this.storage.readSeen(user.username),
     );
     this.conversations.loading.set(false);
-    this.messages.reset(null);
-    this.currentUser.user.set(user);
-    this.enterStatus.set('idle');
-  }
-
-  private load(user: SessionUser): void {
-    let data: Fixtures = createFixtures(user, this.clock.context());
-    if (this.scenarios.has('sem-conversas')) {
-      data = { ...data, conversations: [], messages: [], seen: new Map(), notices: [] };
-    }
-    const known = new Set([user.username, ...data.conversations.flatMap((c) => c.members)]);
-    this.fixtures.data.set(data);
-    this.users.reset(data.directory.filter((u) => known.has(u.username)));
-    this.conversations.reset(data.conversations, data.seen);
-    this.conversations.loading.set(this.scenarios.has('carregando'));
-    this.messages.reset(data);
-    this.telemetry.clear();
+    this.messages.reset();
     this.currentUser.user.set(user);
     this.enterStatus.set('idle');
   }

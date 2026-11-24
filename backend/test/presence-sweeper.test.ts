@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 describe('presenceSweeper', () => {
-  test('closes and unbinds only the connections idle for over 10 minutes in a single scan (RF07, M7)', async () => {
+  test('closes and unbinds only the connections idle for over 10 minutes in a single scan (RF07)', async () => {
     db.on(ScanCommand, { TableName: 'Connections' }).resolves({
       Items: [
         { connectionId: 'old', lastSeenAt: NOW - IDLE_MS - 1 },

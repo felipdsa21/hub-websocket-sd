@@ -1,6 +1,6 @@
 # Scripts de experimento e validação
 
-Scripts em Node.js puro (Node 22+) usados na validação prática e no benchmark do Hub Colaborativo WebSocket. O endereço `wss://` é passado por argumento para nunca ficar versionado no Git.
+Scripts em Node.js puro (Node 24+), mais um em Python 3 para os gráficos, usados na validação prática e no benchmark do Hub Colaborativo WebSocket. O endereço `wss://` é passado por argumento para nunca ficar versionado no Git.
 
 ## Benchmark de carga (T8)
 
@@ -22,7 +22,7 @@ node scripts/collect-cloudwatch-metrics.mjs --self-test
 
 ## Testes de integração no estágio dev (T2, T3, T4, T5, T6, T7, segurança e logs)
 
-Valida isolamento de conversas, limite 32 KB UTF-8 (RF11), pesquisa sem acento `pt-BR` (RF05), histórico > 128 KB paginado (RF06), presença multi-aba (T6), tratamento real de `410 Gone` (`GoneException`, T7.1), expiração real por inatividade no `presenceSweeper` (T7.2), reenvio idempotente (RF12), recusa de conexões inválidas (incluindo caracteres de controle/bidi), autorização `forbidden` (RNF01) e logs anonimizados no CloudWatch (`appLogs` e `presenceSweeperLogs`, RNF03).
+Valida isolamento de conversas, entrega de uma mensagem de 31.600 B UTF-8 (parte do T2.5), pesquisa sem acento `pt-BR` (RF05), histórico > 128 KB paginado com mensagens de ~28 KB (parte do T5.3), presença multi-aba (T6), tratamento real de `410 Gone` (`GoneException`, T7.1), remoção pelo `presenceSweeper` de um registro gravado já ocioso (parte do T7.2), reenvio idempotente (RF12), recusa de conexões inválidas (incluindo caracteres de controle/bidi), autorização `forbidden` (RNF01) e logs anonimizados no CloudWatch (`appLogs` e `presenceSweeperLogs`, RNF03).
 
 ```sh
 node scripts/integration-tests-dev.mjs "wss://<api-id>.execute-api.sa-east-1.amazonaws.com/dev" --sanitize --out docs/dados/integration-report-dev.json

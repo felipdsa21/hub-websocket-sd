@@ -19,7 +19,7 @@ import { mockClient } from 'aws-sdk-client-mock';
 import { handler as app } from '../functions/app';
 import { handler as connect } from '../functions/connect';
 import { OPEN_CONNECTIONS_METRIC, handler as presenceSweeper } from '../functions/presenceSweeper';
-import { anonymize, resetHmacSecretCache } from '../functions/shared';
+import { HMAC_RETRY_DELAY_MS, anonymize, resetHmacSecretCache } from '../functions/shared';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
 const apiMock = mockClient(ApiGatewayManagementApiClient);
@@ -159,7 +159,7 @@ describe('HMAC log anonymization (RNF03, section 5)', () => {
     expect(logs[0]!.connectionId).not.toBe(logs[1]!.connectionId);
   });
 
-  test('omits raw identifiers and warns once per cold start if SSM fails (B10)', async () => {
+  test('omits raw identifiers and warns once while waiting to retry a failed SSM read (RNF03)', async () => {
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     ssmMock.on(GetParameterCommand).rejects(new Error('SSM unavailable'));
     ddbMock.on(PutCommand).resolves({});
@@ -181,7 +181,7 @@ describe('HMAC log anonymization (RNF03, section 5)', () => {
     });
   });
 
-  test('runs handler logic in parallel with getHmacSecret without blocking before log() (B10)', async () => {
+  test('runs handler logic in parallel with getHmacSecret without blocking before log() (RNF03)', async () => {
     let resolveSecret!: (value: { Parameter: { Value: string } }) => void;
     const secretDeferred = new Promise<{ Parameter: { Value: string } }>((resolve) => {
       resolveSecret = resolve;
@@ -212,7 +212,7 @@ describe('HMAC log anonymization (RNF03, section 5)', () => {
     });
   });
 
-  test('retries SSM on the next request after a transient failure and then caches', async () => {
+  test('retries SSM only after the retry delay and then caches', async () => {
     jest.spyOn(console, 'warn').mockImplementation(() => undefined);
     ssmMock
       .on(GetParameterCommand)
@@ -223,19 +223,39 @@ describe('HMAC log anonymization (RNF03, section 5)', () => {
 
     await connect(wsEvent('$connect', { connectionId: 'c1', query: { username: 'alice' } }));
     await connect(wsEvent('$connect', { connectionId: 'c2', query: { username: 'alice' } }));
+    expect(ssmMock.commandCalls(GetParameterCommand)).toHaveLength(1);
+
+    const later = Date.now() + HMAC_RETRY_DELAY_MS;
+    jest.spyOn(Date, 'now').mockReturnValue(later);
     await connect(wsEvent('$connect', { connectionId: 'c3', query: { username: 'alice' } }));
+    await connect(wsEvent('$connect', { connectionId: 'c4', query: { username: 'alice' } }));
 
     expect(ssmMock.commandCalls(GetParameterCommand)).toHaveLength(2);
-    expect(logs[0]).not.toHaveProperty('connectionId');
-    expect(logs[0]).not.toHaveProperty('username');
-    expect(logs[1]).toMatchObject({
-      connectionId: anonymize('c2', SECRET),
-      username: anonymize('alice', SECRET),
-    });
+    for (const entry of logs.slice(0, 2)) {
+      expect(entry).not.toHaveProperty('connectionId');
+      expect(entry).not.toHaveProperty('username');
+    }
     expect(logs[2]).toMatchObject({
       connectionId: anonymize('c3', SECRET),
       username: anonymize('alice', SECRET),
     });
+    expect(logs[3]).toMatchObject({
+      connectionId: anonymize('c4', SECRET),
+      username: anonymize('alice', SECRET),
+    });
+  });
+
+  test('passes an abort signal to the SSM read', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(UpdateCommand).resolves({ Attributes: {} });
+
+    await connect(wsEvent('$connect', { connectionId: 'c1', query: { username: 'alice' } }));
+
+    const [, options] = ssmMock.send.getCall(0).args as unknown[] as [
+      unknown,
+      { abortSignal?: unknown }?,
+    ];
+    expect(options?.abortSignal).toBeInstanceOf(AbortSignal);
   });
 
   test('logs result duplicate with anonymized identifiers on idempotent sendMessage resend', async () => {

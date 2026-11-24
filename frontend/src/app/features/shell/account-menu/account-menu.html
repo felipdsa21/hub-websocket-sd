@@ -18,8 +18,7 @@
     Alterar nome de exibição
   </button>
   <button mat-menu-item (click)="openTelemetry()">Telemetria e eventos</button>
-  <button mat-menu-item (click)="theme.toggle()">
-    {{ theme.isDark() ? 'Modo claro' : 'Modo escuro' }}
-  </button>
+  <button mat-menu-item [matMenuTriggerFor]="themeMenu.menu()">Tema</button>
   <button mat-menu-item (click)="leave()">Sair</button>
 </mat-menu>
+<app-theme-menu #themeMenu />

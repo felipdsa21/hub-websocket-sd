@@ -4,23 +4,25 @@ import { MatButton, MatIconButton } from '@angular/material/button';
 import { MatError, MatFormField, MatHint, MatLabel, MatSuffix } from '@angular/material/form-field';
 import { MatIcon } from '@angular/material/icon';
 import { MatInput } from '@angular/material/input';
+import { MatMenuTrigger } from '@angular/material/menu';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { Router } from '@angular/router';
-import { Scenarios } from '@/core/fixtures/scenarios';
-import { ThemeStore } from '@/core/layout/theme-store';
 import {
   hasForbiddenNameChars,
+  hasVisibleNameChar,
   isValidDisplayName,
   isValidUsername,
   normalizeDisplayName,
 } from '@/core/model/names';
 import { SessionStore } from '@/core/state/session-store';
 import { UserStorage } from '@/core/state/user-storage';
+import { ThemeMenu } from '@/shared/ui/theme-menu/theme-menu';
 
 const USERNAME_HINT = '3 a 32 caracteres: letras sem acento, números, . _ -';
 const USERNAME_SPACES = 'Sem espaços: use letras sem acento, números, . _ -';
 const DISPLAY_NAME_HINT = 'Até 50 caracteres; vazio usa o nome de usuário.';
-const DISPLAY_NAME_CONTROL_CHARS = 'Não use caracteres de controle no nome de exibição.';
+const DISPLAY_NAME_CONTROL_CHARS =
+  'Não use caracteres de controle ou invisíveis no nome de exibição.';
 
 @Component({
   selector: 'app-login-page',
@@ -34,8 +36,10 @@ const DISPLAY_NAME_CONTROL_CHARS = 'Não use caracteres de controle no nome de e
     MatIconButton,
     MatInput,
     MatLabel,
+    MatMenuTrigger,
     MatProgressSpinner,
     MatSuffix,
+    ThemeMenu,
   ],
   templateUrl: './login-page.html',
   styleUrl: './login-page.scss',
@@ -43,9 +47,7 @@ const DISPLAY_NAME_CONTROL_CHARS = 'Não use caracteres de controle no nome de e
 export class LoginPage {
   private readonly session = inject(SessionStore);
   private readonly storage = inject(UserStorage);
-  private readonly scenarios = inject(Scenarios);
   private readonly router = inject(Router);
-  protected readonly theme = inject(ThemeStore);
 
   protected readonly usernameHint = USERNAME_HINT;
   protected readonly displayNameHint = DISPLAY_NAME_HINT;
@@ -57,7 +59,7 @@ export class LoginPage {
 
   private readonly model = signal({ username: '', displayName: '' });
   protected readonly loginForm = form(this.model, (path) => {
-    disabled(path, () => this.connecting());
+    disabled(path, { when: () => this.connecting() });
     validate(path.username, ({ value }) => {
       if (/\s/.test(value())) {
         return { kind: 'spaces', message: USERNAME_SPACES };
@@ -65,10 +67,12 @@ export class LoginPage {
       return isValidUsername(value()) ? undefined : { kind: 'username', message: USERNAME_HINT };
     });
     validate(path.displayName, ({ value }) => {
-      if (hasForbiddenNameChars(value())) {
+      const name = normalizeDisplayName(value());
+      // A name made only of allowed invisible characters, like the Hangul filler, gets the same hint.
+      if (hasForbiddenNameChars(value()) || (name !== '' && !hasVisibleNameChar(name))) {
         return { kind: 'controlChars', message: DISPLAY_NAME_CONTROL_CHARS };
       }
-      return normalizeDisplayName(value()) === '' || isValidDisplayName(value())
+      return name === '' || isValidDisplayName(value())
         ? undefined
         : { kind: 'displayName', message: DISPLAY_NAME_HINT };
     });
@@ -88,7 +92,7 @@ export class LoginPage {
 
   /** Proposes the last saved display name for the typed username without overwriting manual edits. */
   protected proposeDisplayName(username = this.model().username): void {
-    if (this.displayNameEdited || this.scenarios.any()) {
+    if (this.displayNameEdited) {
       return;
     }
     const suggested = isValidUsername(username)

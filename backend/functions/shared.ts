@@ -17,6 +17,13 @@ import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
 import { createHmac } from 'node:crypto';
 
 export const db = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+/** The name of a DynamoDB table, failing when its environment variable is missing. */
+export function table(envKey: string): string {
+  const name = process.env[envKey];
+  if (!name) throw new Error(`Missing environment variable ${envKey}`);
+  return name;
+}
+
 export const api = new ApiGatewayManagementApiClient({ endpoint: process.env.CALLBACK_URL });
 export const ssm = new SSMClient({});
 
@@ -138,36 +145,35 @@ export function anonymize(value: string, secret: string): string {
   return createHmac('sha256', secret).update(value).digest('hex').slice(0, 12);
 }
 
+const HMAC_FETCH_TIMEOUT_MS = 1_000;
+// After a failed fetch, requests log without ids until this delay passes, instead of each one calling SSM again.
+export const HMAC_RETRY_DELAY_MS = 60_000;
+
 let hmacSecretPromise: Promise<string | undefined> | undefined;
-let hmacWarned = false;
+let hmacRetryAt: number | undefined;
 
 /** Clears the cached SSM secret (for unit tests). */
 export function resetHmacSecretCache() {
   hmacSecretPromise = undefined;
-  hmacWarned = false;
+  hmacRetryAt = undefined;
 }
 
 function getHmacSecret(): Promise<string | undefined> {
   const paramName = process.env.LOG_HMAC_SECRET_PARAM;
   if (!paramName) return Promise.resolve(undefined);
-  if (!hmacSecretPromise) {
+  if (!hmacSecretPromise || (hmacRetryAt !== undefined && Date.now() >= hmacRetryAt)) {
+    hmacRetryAt = undefined;
     hmacSecretPromise = ssm
-      .send(new GetParameterCommand({ Name: paramName, WithDecryption: true }))
+      .send(new GetParameterCommand({ Name: paramName, WithDecryption: true }), {
+        abortSignal: AbortSignal.timeout(HMAC_FETCH_TIMEOUT_MS),
+      })
       .then((res) => {
         if (!res.Parameter?.Value) throw new Error(`Empty SSM parameter ${paramName}`);
         return res.Parameter.Value;
       })
       .catch((err) => {
-        hmacSecretPromise = undefined;
-        if (!hmacWarned) {
-          hmacWarned = true;
-          console.warn(
-            JSON.stringify({
-              event: 'hmacSecretUnavailable',
-              error: errorName(err),
-            }),
-          );
-        }
+        hmacRetryAt = Date.now() + HMAC_RETRY_DELAY_MS;
+        console.warn(JSON.stringify({ event: 'hmacSecretUnavailable', error: errorName(err) }));
         return undefined;
       });
   }
@@ -257,10 +263,9 @@ export function withRequestLog(
  * conversations) and advances `announcedVersion` conditionally (architecture, section 3.5; D10, D11).
  */
 export async function announcePresence(user: PresenceUserRecord): Promise<void> {
-  const membershipsTable = process.env.MEMBERSHIPS_TABLE;
-  const conversationsTable = process.env.CONVERSATIONS_TABLE;
-  const usersTable = process.env.USERS_TABLE;
-  if (!membershipsTable || !conversationsTable || !usersTable) return;
+  const membershipsTable = table('MEMBERSHIPS_TABLE');
+  const conversationsTable = table('CONVERSATIONS_TABLE');
+  const usersTable = table('USERS_TABLE');
 
   const conversationIds: string[] = [];
   let ExclusiveStartKey: Record<string, unknown> | undefined;
@@ -344,7 +349,7 @@ export async function unbind(
 ): Promise<UnbindResult> {
   const { Item } = await db.send(
     new GetCommand({
-      TableName: process.env.CONNECTIONS_TABLE,
+      TableName: table('CONNECTIONS_TABLE'),
       Key: { connectionId },
       ConsistentRead: true,
     }),
@@ -359,7 +364,7 @@ export async function unbind(
   try {
     const res = await db.send(
       new UpdateCommand({
-        TableName: process.env.USERS_TABLE,
+        TableName: table('USERS_TABLE'),
         Key: { username: owner },
         UpdateExpression: 'DELETE connections :c ADD version :one SET changedAt = :now',
         ConditionExpression: 'contains(connections, :id)',
@@ -380,7 +385,7 @@ export async function unbind(
   }
 
   await db.send(
-    new DeleteCommand({ TableName: process.env.CONNECTIONS_TABLE, Key: { connectionId } }),
+    new DeleteCommand({ TableName: table('CONNECTIONS_TABLE'), Key: { connectionId } }),
   );
   if (announce && updatedUser) {
     await announcePresence(updatedUser);
@@ -394,7 +399,7 @@ export async function touch(connectionId: string, now: number): Promise<string |
   try {
     const { Attributes } = await db.send(
       new UpdateCommand({
-        TableName: process.env.CONNECTIONS_TABLE,
+        TableName: table('CONNECTIONS_TABLE'),
         Key: { connectionId },
         UpdateExpression: 'SET lastSeenAt = :now',
         ConditionExpression: 'attribute_exists(connectionId)',
@@ -520,29 +525,20 @@ export function isValidNameLength(name: string): boolean {
   return length >= 1 && length <= 50;
 }
 
-function hasDisallowedNameChar(value: string): boolean {
-  for (const ch of value) {
-    const code = ch.codePointAt(0)!;
-    if (
-      code <= 0x1f ||
-      code === 0x7f ||
-      (code >= 0x202a && code <= 0x202e) ||
-      (code >= 0x2066 && code <= 0x2069)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
+// Controls, line and paragraph separators and format characters (bidi controls, zero-width spaces),
+// except the joiners that most emoji sequences and some scripts need (tag-based subdivision flags stay rejected).
+const DISALLOWED_NAME_CHAR = /[\p{Cc}\p{Zl}\p{Zp}]|(?![\u200c\u200d])\p{Cf}/u;
+// A character that is neither blank nor ignorable, unlike the Hangul filler.
+const VISIBLE_NAME_CHAR = /[^\s\p{Default_Ignorable_Code_Point}]/u;
 
 /**
  * Validates and normalizes a display or group name (architecture, sections 3.1 and 4.5):
- * rejects ASCII control and bidi override/isolate characters, trims outer whitespace,
- * and requires 1 to 50 Unicode code points.
+ * rejects the characters above, trims outer whitespace, and requires 1 to 50 Unicode code
+ * points with at least one visible character.
  */
 export function parseDisplayName(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  if (hasDisallowedNameChar(value)) return undefined;
+  if (DISALLOWED_NAME_CHAR.test(value)) return undefined;
   const trimmed = value.trim();
-  return isValidNameLength(trimmed) ? trimmed : undefined;
+  return isValidNameLength(trimmed) && VISIBLE_NAME_CHAR.test(trimmed) ? trimmed : undefined;
 }

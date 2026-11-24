@@ -1,5 +1,5 @@
 import { CdkTextareaAutosize } from '@angular/cdk/text-field';
-import { Component, inject, input, signal } from '@angular/core';
+import { Component, inject, input, linkedSignal } from '@angular/core';
 import { FormField, form, validate } from '@angular/forms/signals';
 import { MatIconButton } from '@angular/material/button';
 import { MatError, MatFormField, MatSuffix } from '@angular/material/form-field';
@@ -29,7 +29,11 @@ export class MessageComposer {
 
   public readonly conversationId = input.required<string>();
 
-  private readonly model = signal({ text: '' });
+  // Switching to another conversation discards the draft, so it isn't sent there.
+  private readonly model = linkedSignal({
+    source: this.conversationId,
+    computation: () => ({ text: '' }),
+  });
   protected readonly composer = form(this.model, (path) => {
     validate(path.text, ({ value }) =>
       sendMessageRequestBytes(this.conversationId(), value()) > MAX_REQUEST_BYTES
@@ -46,8 +50,13 @@ export class MessageComposer {
   }
 
   protected sendOnEnter(event: Event): void {
-    // Enter sends; Shift+Enter breaks the line.
-    if (!(event as KeyboardEvent).shiftKey) {
+    // Enter sends; Shift+Enter breaks the line. The Enter that confirms an IME composition doesn't.
+    const key = event as KeyboardEvent;
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Safari can end the composition before this event, leaving only keyCode 229.
+    if (key.isComposing || key.keyCode === 229) {
+      return;
+    }
+    if (!key.shiftKey) {
       this.send(event);
     }
   }

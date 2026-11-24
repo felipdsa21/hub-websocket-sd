@@ -20,7 +20,7 @@ describe('ScreenHeader', () => {
     expect(component).toBeTruthy();
   });
 
-  it('renders h1 by default and h2 when headingLevel is 2 (B5)', async () => {
+  it('renders h1 by default and h2 when headingLevel is 2', async () => {
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector('h1')?.textContent?.trim()).toBe('Membros');
     expect(root.querySelector('h2')).toBeNull();

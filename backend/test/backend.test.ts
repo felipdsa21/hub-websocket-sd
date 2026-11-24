@@ -5,15 +5,16 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { BackendStack } from '../lib/backend-stack';
 
+const app = new cdk.App();
 const template = Template.fromStack(
-  new BackendStack(new cdk.App(), 'Test', {
+  new BackendStack(app, 'Test', {
     stage: 'dev',
     // Avoid depending on whether frontend/dist has been built locally when running backend unit tests.
     frontendDistPath: '__nonexistent_for_unit_test__',
   }),
 );
 
-test('creates the five on-demand tables, with TTL on Connections and Messages and PITR only in prod (M7)', () => {
+test('creates the five on-demand tables, with TTL on Connections and Messages and PITR only in prod', () => {
   template.resourceCountIs('AWS::DynamoDB::Table', 5);
   template.allResourcesProperties('AWS::DynamoDB::Table', {
     BillingMode: 'PAY_PER_REQUEST',
@@ -60,7 +61,7 @@ test('routes by action to the four Lambdas', () => {
   }
 });
 
-test('configures ARM64, memory, timeout, log retention and sweeper schedule (A2, D05, B10)', () => {
+test('configures Node.js 24, ARM64, memory, timeout, log retention and sweeper schedule (D05)', () => {
   template.hasResourceProperties('AWS::Scheduler::Schedule', {
     ScheduleExpression: 'rate(1 minute)',
     Target: Match.objectLike({
@@ -73,12 +74,12 @@ test('configures ARM64, memory, timeout, log retention and sweeper schedule (A2,
   });
   template.resourcePropertiesCountIs(
     'AWS::Lambda::Function',
-    { Timeout: 30, MemorySize: 256, Architectures: ['arm64'] },
+    { Timeout: 30, MemorySize: 256, Architectures: ['arm64'], Runtime: 'nodejs24.x' },
     1,
   );
   template.resourcePropertiesCountIs(
     'AWS::Lambda::Function',
-    { Timeout: 10, MemorySize: 512, Architectures: ['arm64'] },
+    { Timeout: 10, MemorySize: 512, Architectures: ['arm64'], Runtime: 'nodejs24.x' },
     4,
   );
   template.resourceCountIs('AWS::Logs::LogGroup', 5);
@@ -91,7 +92,7 @@ test('configures ARM64, memory, timeout, log retention and sweeper schedule (A2,
   });
 });
 
-test('configures WebSocketStage throttling without accessLogSettings (M6)', () => {
+test('configures WebSocketStage throttling without accessLogSettings', () => {
   template.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
     StageName: 'dev',
     DefaultRouteSettings: {
@@ -102,7 +103,7 @@ test('configures WebSocketStage throttling without accessLogSettings (M6)', () =
   });
 });
 
-test('grants least-privilege DynamoDB permissions per Lambda (M5)', () => {
+test('grants least-privilege DynamoDB permissions per Lambda', () => {
   const functions = template.findResources('AWS::Lambda::Function');
   const policies = template.findResources('AWS::IAM::Policy');
 
@@ -186,7 +187,7 @@ test('grants SSM and KMS decrypt permissions for HMAC log anonymization (RNF03)'
   });
 });
 
-test('creates the CloudWatch dashboard, alarms and allows sweeper to publish OpenConnections (RNF06, B10)', () => {
+test('creates the CloudWatch dashboard, alarms and allows sweeper to publish OpenConnections (RNF06)', () => {
   template.hasResourceProperties('AWS::CloudWatch::Dashboard', {
     DashboardName: 'HubWebSocket-dev',
   });
@@ -247,7 +248,7 @@ test('creates the CloudWatch dashboard, alarms and allows sweeper to publish Ope
   });
 });
 
-test('hosts the static frontend in a private S3 bucket behind CloudFront with OAC and security headers (A3, D08, RNF07, B10)', () => {
+test('hosts the static frontend in a private S3 bucket behind CloudFront with OAC and security headers (D08, RNF07)', () => {
   template.hasResource('AWS::S3::Bucket', {
     DeletionPolicy: 'Delete',
     Properties: {
@@ -344,16 +345,26 @@ test('hosts the static frontend in a private S3 bucket behind CloudFront with OA
     Prune: false,
     DistributionPaths: ['/*'],
   });
-  const deployments = template.findResources('Custom::CDKBucketDeployment');
-  const markersStr = JSON.stringify(Object.values(deployments)[0]!.Properties.SourceMarkers);
-  expect(markersStr).toContain('wss://');
-  expect(markersStr).toContain('/dev');
+  // config.json is a staged asset whose tokens become markers resolved at deploy time.
+  const deployment = Object.values(template.findResources('Custom::CDKBucketDeployment'))[0]!;
+  const markers: Record<string, { Ref: string }> = deployment.Properties.SourceMarkers[0];
+  const configDir = fs
+    .readdirSync(app.outdir)
+    .find((dir) => fs.existsSync(path.join(app.outdir, dir, 'config.json')))!;
+  let config = fs.readFileSync(path.join(app.outdir, configDir, 'config.json'), 'utf8');
+  for (const [marker, { Ref }] of Object.entries(markers)) {
+    config = config.replaceAll(marker, `\${${Ref}}`);
+  }
+  const apiId = Object.keys(template.findResources('AWS::ApiGatewayV2::Api'))[0]!;
+  expect(JSON.parse(config)).toEqual({
+    websocketUrl: `wss://\${${apiId}}.execute-api.\${AWS::Region}.\${AWS::URLSuffix}/dev`,
+  });
   template.hasOutput('FrontendUrl', {});
   template.hasOutput('FrontendBucketName', {});
   template.hasOutput('DistributionId', {});
 });
 
-test('enables prod hardening: PITR, S3 versioning, 30-day log retention and asset pruning (M7, B10)', () => {
+test('enables prod hardening: PITR, S3 versioning, 30-day log retention and asset pruning', () => {
   const distDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-frontend-dist-'));
   try {
     fs.writeFileSync(path.join(distDir, 'index.html'), '<!doctype html>');

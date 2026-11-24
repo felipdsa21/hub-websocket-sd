@@ -1,10 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { HubFixtures } from '@/core/fixtures/hub-fixtures';
-import { Scenario } from '@/core/fixtures/scenarios';
-import { provideTestFixtures } from '@/core/fixtures/testing';
 import { DEV_MODE, HubConfig } from '@/core/hub/hub-config';
 import { FakeWebSocket, answer, provideFakeSockets, useTestBackend } from '@/core/hub/testing';
+import { provideTestClock } from '@/core/time/testing';
 import { ConnectionStore } from './connection-store';
 import { ConversationsStore } from './conversations-store';
 import { MessagesStore } from './messages-store';
@@ -12,108 +10,14 @@ import { RECONNECT_INITIAL_DELAY_MS, SessionStore } from './session-store';
 import { CURRENT_USER_STORAGE_KEY, userStorageKey } from './user-storage';
 import { UsersStore } from './users-store';
 
-function setUp(scenarios: readonly Scenario[] = []) {
-  TestBed.configureTestingModule({ providers: provideTestFixtures({ scenarios }) });
-  return TestBed.inject(SessionStore);
-}
-
 describe('SessionStore', () => {
-  it('enters in place of Marina, with the conversation list of the design', () => {
-    const session = setUp();
-    session.enter('Ju.Teste', '  Ju  ');
-
-    expect(session.user()).toEqual({ username: 'ju.teste', displayName: 'Ju' });
-    const conversations = TestBed.inject(ConversationsStore);
-    const users = TestBed.inject(UsersStore);
-    const names = conversations
-      .sorted()
-      .map((c) =>
-        c.type === 'group'
-          ? c.name
-          : users.get(c.members.find((m) => m !== 'ju.teste')!)?.displayName,
-      );
-    expect(names).toEqual([
-      'Equipe SD',
-      'Bruno Lima',
-      'Trabalho final',
-      'Carla Souza',
-      'Semana de provas',
-      'Diego Martins',
-      'Eduarda Rocha',
-      'Ana Lima',
-      'Ana Lima',
-    ]);
-    expect([...conversations.withNewActivity()].map((id) => conversations.get(id)?.name)).toEqual([
-      'Trabalho final',
-    ]);
-  });
-
-  it('uses the username when the display name is empty', () => {
-    const session = setUp();
-    session.enter('marina', '   ');
-    expect(session.user()?.displayName).toBe('marina');
-  });
-
-  it('only knows users who share a conversation, so a member who left shows by username', () => {
-    setUp().enter('marina', 'Marina Alves');
-    const users = TestBed.inject(UsersStore);
-    expect(users.get('bruno')?.displayName).toBe('Bruno Lima');
-    expect(users.get('gabriel.nunes')).toBeUndefined();
-  });
-
-  it('has more than two pages of history in Equipe SD', () => {
-    setUp().enter('marina', 'Marina Alves');
-    const messages = TestBed.inject(HubFixtures).data()!.messages;
-    const team = TestBed.inject(ConversationsStore).sorted()[0]!;
-    expect(messages.filter((m) => m.conversationId === team.conversationId).length).toBeGreaterThan(
-      100,
-    );
-    expect(new Set(messages.map((m) => m.messageId)).size).toBe(messages.length);
-  });
-
-  it('fails or keeps connecting in the entry scenarios', () => {
-    expect(withScenario('entrar-falha')).toBe('failed');
-    TestBed.resetTestingModule();
-    expect(withScenario('carregando')).toBe('connecting');
-
-    function withScenario(scenario: Scenario) {
-      const session = setUp([scenario]);
-      session.enter('marina', '');
-      expect(session.user()).toBeNull();
-      return session.enterStatus();
-    }
-  });
-
-  it('starts without conversations in the "sem-conversas" scenario', () => {
-    setUp(['sem-conversas']).enter('marina', '');
-    expect(TestBed.inject(ConversationsStore).sorted()).toEqual([]);
-  });
-
-  it('changes the display name without incrementing the local version', async () => {
-    const session = setUp();
-    await session.enter('marina', 'Marina Alves');
-    const users = TestBed.inject(UsersStore);
-    const before = users.get('marina')!.version;
-
-    await expect(session.changeDisplayName('  Marina A.  ')).resolves.toBe(true);
-
-    expect(session.user()?.displayName).toBe('Marina A.');
-    expect(users.get('marina')).toMatchObject({ displayName: 'Marina A.', version: before });
-  });
-});
-
-describe('SessionStore with the backend', () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => vi.useRealTimers());
 
-  function setUpLive(scenarios: readonly Scenario[] = []) {
+  function setUp() {
     const sockets: FakeWebSocket[] = [];
     TestBed.configureTestingModule({
-      providers: [
-        provideRouter([]),
-        ...provideTestFixtures({ scenarios }),
-        ...provideFakeSockets(sockets),
-      ],
+      providers: [provideRouter([]), ...provideTestClock(), ...provideFakeSockets(sockets)],
     });
     useTestBackend();
     return { session: TestBed.inject(SessionStore), sockets };
@@ -123,7 +27,7 @@ describe('SessionStore with the backend', () => {
   const bruno = { username: 'bruno', displayName: 'Bruno', online: false, version: 7 };
 
   it('connects, loads the list with sync and only then enters', async () => {
-    const { session, sockets } = setUpLive();
+    const { session, sockets } = setUp();
     const entering = session.enter('Alice', ' Alice ');
     expect(session.enterStatus()).toBe('connecting');
 
@@ -159,12 +63,11 @@ describe('SessionStore with the backend', () => {
     expect(conversations.sorted().map((c) => c.conversationId)).toEqual(['g:1', 'd:alice:bruno']);
     expect(conversations.get('d:alice:bruno')?.members).toEqual(['alice', 'bruno']);
     expect(TestBed.inject(UsersStore).get('bruno')).toEqual(bruno);
-    expect(TestBed.inject(HubFixtures).data()).toBeNull();
   });
 
-  it('keeps the own state when there is no conversation', async () => {
-    const { session, sockets } = setUpLive();
-    const entering = session.enter('alice', '');
+  it('uses the username as the display name when it is blank, also without conversations', async () => {
+    const { session, sockets } = setUp();
+    const entering = session.enter('alice', '   ');
     const socket = sockets[0]!;
     socket.open();
     await Promise.resolve();
@@ -176,11 +79,12 @@ describe('SessionStore with the backend', () => {
     await entering;
 
     expect(new URL(socket.url).searchParams.has('displayName')).toBe(false);
+    expect(session.user()?.displayName).toBe('alice');
     expect(TestBed.inject(UsersStore).get('alice')).toMatchObject({ displayName: 'alice' });
   });
 
   it('shows a failure to enter when the connection is refused', async () => {
-    const { session, sockets } = setUpLive();
+    const { session, sockets } = setUp();
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const entering = session.enter('alice', '');
     sockets[0]!.drop();
@@ -191,7 +95,7 @@ describe('SessionStore with the backend', () => {
   });
 
   it('closes the connection when leaving', async () => {
-    const { session, sockets } = setUpLive();
+    const { session, sockets } = setUp();
     const entering = session.enter('alice', '');
     const socket = sockets[0]!;
     socket.open();
@@ -210,7 +114,7 @@ describe('SessionStore with the backend', () => {
   });
 
   async function enterWith(conversations: unknown[]) {
-    const { session, sockets } = setUpLive();
+    const { session, sockets } = setUp();
     const entering = session.enter('alice', 'Alice');
     const socket = sockets[0]!;
     socket.open();
@@ -262,13 +166,15 @@ describe('SessionStore with the backend', () => {
     const sockets: FakeWebSocket[] = [];
     TestBed.configureTestingModule({
       providers: [
-        ...provideTestFixtures(),
+        ...provideTestClock(),
         ...provideFakeSockets(sockets),
         { provide: DEV_MODE, useValue: false },
       ],
     });
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    TestBed.inject(HubConfig).use({ websocketUrl: 'ws://hub.example/dev' });
+    const config = TestBed.inject(HubConfig);
+    config.use({ websocketUrl: 'wss://hub.example/dev' });
+    config.use({ websocketUrl: 'ws://hub.example/dev' });
     const session = TestBed.inject(SessionStore);
 
     await session.enter('alice', '');
@@ -277,7 +183,7 @@ describe('SessionStore with the backend', () => {
     expect(sockets).toEqual([]);
   });
 
-  it('changes displayName via parallel socket without drop, preserving version and deduplicating notices (C2)', async () => {
+  it('changes displayName via parallel socket without drop, preserving version and deduplicating notices (RF01)', async () => {
     const group = {
       conversationId: 'g:1',
       type: 'group',
@@ -285,7 +191,7 @@ describe('SessionStore with the backend', () => {
       members: [alice, bruno],
       joinedAt: 200,
     };
-    const { session, sockets } = setUpLive();
+    const { session, sockets } = setUp();
     const entering = session.enter('alice', 'Alice');
     sockets[0]!.open();
     await Promise.resolve();
@@ -350,9 +256,9 @@ describe('SessionStore with the backend', () => {
     expect(connection.connected()).toBe(true);
   });
 
-  it('keeps the active session intact when the parallel displayName connection fails (C2)', async () => {
+  it('keeps the active session intact when the parallel displayName connection fails (RF01)', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { session, sockets } = setUpLive();
+    const { session, sockets } = setUp();
     const entering = session.enter('alice', 'Alice');
     sockets[0]!.open();
     await Promise.resolve();
@@ -371,9 +277,9 @@ describe('SessionStore with the backend', () => {
     });
   });
 
-  it('persists current user only after socket opens and clears saved displayName when entering blank (C3)', async () => {
+  it('persists current user only after entering succeeds and clears saved displayName when entering blank (RF01)', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { session, sockets } = setUpLive();
+    const { session, sockets } = setUp();
     localStorage.setItem(
       userStorageKey('alice'),
       JSON.stringify({ displayName: 'Alice Antiga', seen: { 'd:alice:bruno': 500 } }),
@@ -389,28 +295,38 @@ describe('SessionStore with the backend', () => {
       displayName: 'Alice Antiga',
     });
 
-    // Successful entry without displayName writes current-user on open and clears saved displayName.
-    const entering = session.enter('alice', '');
-    expect(localStorage.getItem(CURRENT_USER_STORAGE_KEY)).toBeNull();
+    // A sync that fails after the socket opens doesn't write it either.
+    const syncFails = session.enter('alice', '');
     sockets[1]!.open();
     await Promise.resolve();
+    sockets[1]!.drop();
+    await syncFails;
+    expect(session.enterStatus()).toBe('failed');
+    expect(localStorage.getItem(CURRENT_USER_STORAGE_KEY)).toBeNull();
+
+    // Successful entry without displayName writes current-user after sync and clears saved
+    // displayName.
+    const entering = session.enter('alice', '');
+    sockets[2]!.open();
+    await Promise.resolve();
+    expect(localStorage.getItem(CURRENT_USER_STORAGE_KEY)).toBeNull();
+    expect(new URL(sockets[2]!.url).searchParams.has('displayName')).toBe(false);
+    answer(sockets[2]!, { serverTime: 1000, updated: [], conversations: [] });
+    await entering;
     expect(localStorage.getItem(CURRENT_USER_STORAGE_KEY)).toBe('alice');
     expect(JSON.parse(localStorage.getItem(userStorageKey('alice'))!)).toEqual({
       seen: { 'd:alice:bruno': 500 },
     });
-    expect(new URL(sockets[1]!.url).searchParams.has('displayName')).toBe(false);
-    answer(sockets[1]!, { serverTime: 1000, updated: [], conversations: [] });
-    await entering;
 
     session.leave();
     expect(localStorage.getItem(CURRENT_USER_STORAGE_KEY)).toBeNull();
   });
 
-  it('restores a persisted session with automatic exponential reconnect and drops invalid displayName (C3)', async () => {
+  it('restores a persisted session with automatic exponential reconnect and drops invalid displayName (RF01)', async () => {
     vi.useFakeTimers();
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { session, sockets } = setUpLive();
+    const { session, sockets } = setUp();
     localStorage.setItem(CURRENT_USER_STORAGE_KEY, 'alice');
     localStorage.setItem(
       userStorageKey('alice'),
@@ -437,9 +353,9 @@ describe('SessionStore with the backend', () => {
     expect(TestBed.inject(ConversationsStore).loading()).toBe(false);
   });
 
-  it('synchronizes logout, user switch, seen marks and displayName across tabs via storage (C3)', async () => {
+  it('synchronizes logout, user switch, seen marks and displayName across tabs via storage (RF01)', async () => {
     vi.spyOn(console, 'info').mockImplementation(() => undefined);
-    const { session, sockets } = setUpLive();
+    const { session, sockets } = setUp();
     const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
 
     const entering = session.enter('alice', 'Alice');
@@ -483,19 +399,5 @@ describe('SessionStore with the backend', () => {
     expect(sockets[1]!.closed).toBe(true);
     expect(session.user()).toBeNull();
     expect(navigate).toHaveBeenCalledWith('/entrar');
-  });
-
-  it('ignores storage events in scenario mode', async () => {
-    const { session } = setUpLive(['sem-conexao']);
-    session.enterForScenario();
-    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
-
-    localStorage.removeItem(CURRENT_USER_STORAGE_KEY);
-    window.dispatchEvent(
-      new StorageEvent('storage', { key: CURRENT_USER_STORAGE_KEY, storageArea: localStorage }),
-    );
-
-    expect(session.user()?.username).toBe('marina');
-    expect(navigate).not.toHaveBeenCalled();
   });
 });

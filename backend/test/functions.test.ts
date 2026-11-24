@@ -17,6 +17,7 @@ import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
 import * as app from '../functions/app';
 import * as connect from '../functions/connect';
+import { table } from '../functions/data';
 import * as fallback from '../functions/default';
 import * as disconnect from '../functions/disconnect';
 
@@ -42,6 +43,14 @@ const posted = () =>
 
 let logSpy: jest.SpyInstance;
 const logged = () => logSpy.mock.calls.map((c) => JSON.parse(String(c[0])));
+
+beforeAll(() => {
+  process.env.CONNECTIONS_TABLE = 'Connections';
+  process.env.USERS_TABLE = 'Users';
+  process.env.CONVERSATIONS_TABLE = 'Conversations';
+  process.env.MEMBERSHIPS_TABLE = 'Memberships';
+  process.env.MESSAGES_TABLE = 'Messages';
+});
 
 beforeEach(() => {
   db.reset();
@@ -77,6 +86,15 @@ describe('connect', () => {
     [{ username: 'ana', displayName: 'Ana\u007f' }, undefined],
     [{ username: 'ana', displayName: 'Ana\u202e' }, undefined],
     [{ username: 'ana', displayName: '\u2066Ana' }, undefined],
+    [{ username: 'ana', displayName: 'Ana\u0085' }, undefined],
+    [{ username: 'ana', displayName: 'Ana\u200b' }, undefined],
+    [{ username: 'ana', displayName: 'Ana\u200e' }, undefined],
+    [{ username: 'ana', displayName: 'Ana\u2028' }, undefined],
+    [{ username: 'ana', displayName: '\u3164' }, undefined],
+    [
+      { username: 'ana', displayName: '\u{1f469}\u200d\u{1f4bb} Ana' },
+      { username: 'ana', displayName: '\u{1f469}\u200d\u{1f4bb} Ana' },
+    ],
   ])('parseIdentity(%j)', (query, expected) => {
     expect(connect.parseIdentity(query)).toEqual(expected);
   });
@@ -263,5 +281,18 @@ describe('default', () => {
     await expect(fallback.handler(event('$default', { body: 'hello' }))).rejects.toThrow(
       limitExceeded,
     );
+  });
+});
+
+describe('table', () => {
+  test('throws when the table variable is missing', () => {
+    const saved = process.env.MESSAGES_TABLE;
+    delete process.env.MESSAGES_TABLE;
+    try {
+      expect(() => table('MESSAGES_TABLE')).toThrow('Missing environment variable MESSAGES_TABLE');
+    } finally {
+      if (saved === undefined) delete process.env.MESSAGES_TABLE;
+      else process.env.MESSAGES_TABLE = saved;
+    }
   });
 });

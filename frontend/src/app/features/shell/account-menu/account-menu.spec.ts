@@ -9,6 +9,11 @@ describe('AccountMenu', () => {
   let component: AccountMenu;
   let fixture: ComponentFixture<AccountMenu>;
 
+  afterEach(() => {
+    localStorage.clear();
+    document.documentElement.classList.remove('theme-dark', 'theme-light');
+  });
+
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AccountMenu],
@@ -23,7 +28,24 @@ describe('AccountMenu', () => {
     expect(component).toBeTruthy();
   });
 
-  it('reports failure via snackbar when changing displayName fails (C2)', async () => {
+  it('chooses the theme from the "Tema" submenu', async () => {
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.trigger')!.click();
+    await fixture.whenStable();
+    const submenu = [...document.querySelectorAll<HTMLElement>('[mat-menu-item]')].find(
+      (item) => item.textContent?.trim() === 'Tema',
+    )!;
+    submenu.click();
+    await fixture.whenStable();
+    const dark = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find((o) =>
+      o.textContent?.includes('Escuro'),
+    )!;
+    dark.click();
+    await fixture.whenStable();
+
+    expect(document.documentElement.classList.contains('theme-dark')).toBe(true);
+  });
+
+  it('reports failure via snackbar when changing displayName fails (RF01)', async () => {
     const dialog = TestBed.inject(MatDialog);
     const snackBar = TestBed.inject(MatSnackBar);
     const session = TestBed.inject(SessionStore);

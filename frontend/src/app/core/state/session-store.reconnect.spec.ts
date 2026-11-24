@@ -1,5 +1,4 @@
 import { TestBed } from '@angular/core/testing';
-import { provideTestFixtures } from '@/core/fixtures/testing';
 import { PONG_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from '@/core/hub/hub-socket';
 import {
   ALICE_BRUNO,
@@ -11,6 +10,7 @@ import {
   useTestBackend,
 } from '@/core/hub/testing';
 import { Message, messageSk, skBeforeInstant } from '@/core/model/message';
+import { provideTestClock } from '@/core/time/testing';
 import { ConnectionStore, LOSS_INDICATION_MS } from './connection-store';
 import { MessagesStore, SYNC_OVERLAP_MS } from './messages-store';
 import { RECONNECT_INITIAL_DELAY_MS, RECONNECT_MAX_DELAY_MS, SessionStore } from './session-store';
@@ -30,7 +30,7 @@ async function setUp(conversations?: unknown[], serverTime = 100_000) {
   localStorage.clear();
   const sockets: FakeWebSocket[] = [];
   TestBed.configureTestingModule({
-    providers: [...provideTestFixtures(), ...provideFakeSockets(sockets)],
+    providers: [...provideTestClock(), ...provideFakeSockets(sockets)],
   });
   useTestBackend();
   const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
@@ -346,7 +346,7 @@ describe('SessionStore reconnection and retry queue (RF08, RF12)', () => {
     expect(messages.history(ALICE_BRUNO)?.messages).toEqual([m1, m2]);
   });
 
-  it('probes on window offline and wakes reconnect backoff immediately on window online (B4)', async () => {
+  it('probes on window offline and wakes reconnect backoff immediately on window online (RF08)', async () => {
     const { sockets, socket, connection } = await setUp();
     vi.useFakeTimers();
 
@@ -372,9 +372,16 @@ describe('SessionStore reconnection and retry queue (RF08, RF12)', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(sockets).toHaveLength(4);
 
-    sockets[3]!.open();
+    // The woken attempt counts as the immediate one: after it fails, the next waits 1 s.
+    sockets[3]!.drop();
+    await vi.advanceTimersByTimeAsync(RECONNECT_INITIAL_DELAY_MS - 1);
+    expect(sockets).toHaveLength(4);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sockets).toHaveLength(5);
+
+    sockets[4]!.open();
     await vi.advanceTimersByTimeAsync(0);
-    answer(sockets[3]!, { serverTime: 120_000, updated: [], conversations: [aliceBrunoChat()] });
+    answer(sockets[4]!, { serverTime: 120_000, updated: [], conversations: [aliceBrunoChat()] });
     await vi.advanceTimersByTimeAsync(0);
     expect(connection.connected()).toBe(true);
   });

@@ -1,5 +1,7 @@
 import { Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { SessionStore } from '@/core/state/session-store';
+import { provideTestClock } from '@/core/time/testing';
 import { HubConfig } from './hub-config';
 import { WEB_SOCKET_FACTORY } from './hub-socket';
 
@@ -44,8 +46,8 @@ export class FakeWebSocket {
 }
 
 /**
- * Providers that make the client talk to fake sockets instead of the fixed data. Call
- * `useTestBackend()` after configuring TestBed to turn the backend address on.
+ * Providers that make the client talk to fake sockets. Call `useTestBackend()` after configuring
+ * TestBed to turn the backend address on.
  */
 export function provideFakeSockets(sockets: FakeWebSocket[]): Provider[] {
   return [
@@ -66,7 +68,15 @@ export function useTestBackend(): void {
 
 export const ALICE = { username: 'alice', displayName: 'Alice', online: true, version: 3 };
 export const BRUNO = { username: 'bruno', displayName: 'Bruno', online: true, version: 7 };
+export const CARLA = { username: 'carla', displayName: 'Carla', online: false, version: 2 };
 export const ALICE_BRUNO = 'd:alice:bruno';
+export const GROUP = {
+  conversationId: 'g:1',
+  type: 'group',
+  name: 'SD',
+  members: [ALICE, BRUNO],
+  joinedAt: 500,
+};
 
 /** The direct chat between alice and bruno, as `sync` and `conversationAdded` send it. */
 export function aliceBrunoChat(fields: Record<string, unknown> = {}) {
@@ -82,6 +92,17 @@ export function aliceBrunoChat(fields: Record<string, unknown> = {}) {
 /** Answers the last request the client sent with `data`. */
 export function answer(socket: FakeWebSocket, data: unknown): void {
   socket.receive({ type: 'response', requestId: socket.last().requestId, data });
+}
+
+/** Refuses the last request the client sent with the error `code`. */
+export function refuse(socket: FakeWebSocket, code: string, details?: unknown): void {
+  socket.receive({
+    type: 'error',
+    requestId: socket.last().requestId,
+    code,
+    message: code,
+    ...(details !== undefined && { details }),
+  });
 }
 
 /**
@@ -100,4 +121,19 @@ export async function enterAsAlice(
   answer(socket, { serverTime: 1000, updated: [], conversations });
   await entering;
   return socket;
+}
+
+/**
+ * Configures TestBed with the test clock and fake sockets, then enters as alice with `sync` listing
+ * the given conversations, and returns the open socket.
+ */
+export async function enterTestSession(conversations?: unknown[]): Promise<FakeWebSocket> {
+  localStorage.clear();
+  const sockets: FakeWebSocket[] = [];
+  TestBed.configureTestingModule({
+    providers: [...provideTestClock(), ...provideFakeSockets(sockets)],
+  });
+  useTestBackend();
+  const session = TestBed.inject(SessionStore);
+  return enterAsAlice((u, d) => session.enter(u, d), sockets, conversations);
 }

@@ -21,7 +21,7 @@ describe('NewGroupDialog', () => {
     expect(component).toBeTruthy();
   });
 
-  it('invalidates group names containing control or bidi characters (B6)', async () => {
+  it('invalidates group names containing control or bidi characters', async () => {
     const root = fixture.nativeElement as HTMLElement;
     const input = root.querySelector<HTMLInputElement>('input')!;
 

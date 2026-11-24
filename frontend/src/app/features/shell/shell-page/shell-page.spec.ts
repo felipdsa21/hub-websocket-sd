@@ -1,8 +1,17 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideTestFixtures } from '@/core/fixtures/testing';
+import { provideRouter } from '@angular/router';
+import {
+  FakeWebSocket,
+  enterAsAlice,
+  provideFakeSockets,
+  useTestBackend,
+} from '@/core/hub/testing';
 import { Breakpoints } from '@/core/layout/breakpoints';
+import { ConnectionStore } from '@/core/state/connection-store';
+import { SessionStore } from '@/core/state/session-store';
 import { TelemetryStore } from '@/core/state/telemetry-store';
+import { provideTestClock } from '@/core/time/testing';
 import { ShellPage } from './shell-page';
 
 describe('ShellPage', () => {
@@ -19,28 +28,8 @@ describe('ShellPage', () => {
     await fixture.whenStable();
   });
 
-  afterEach(() => {
-    localStorage.clear();
-    document.documentElement.classList.remove('theme-dark', 'theme-light');
-  });
-
   it('should create', () => {
     expect(component).toBeTruthy();
-  });
-
-  it('toggles dark mode from the header with constant aria-label', async () => {
-    const root = fixture.nativeElement as HTMLElement;
-    const toggle = root.querySelector<HTMLButtonElement>('button[aria-pressed]')!;
-
-    expect(toggle.getAttribute('aria-label')).toBe('Modo escuro');
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
-
-    toggle.click();
-    await fixture.whenStable();
-
-    expect(toggle.getAttribute('aria-label')).toBe('Modo escuro');
-    expect(toggle.getAttribute('aria-pressed')).toBe('true');
-    expect(document.documentElement.classList.contains('theme-dark')).toBe(true);
   });
 
   it('shows the RTT badge only when showLatency is enabled and a sample exists', async () => {
@@ -58,12 +47,15 @@ describe('ShellPage', () => {
     expect(badge?.textContent?.trim()).toBe('Latência da conexão: RTT 48 ms');
   });
 
-  it('disables mobile FAB "Novo chat" and "Novo grupo" actions when offline (B1)', async () => {
+  it('disables mobile FAB "Novo chat" and "Novo grupo" actions when offline (RF08)', async () => {
+    const sockets: FakeWebSocket[] = [];
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       imports: [ShellPage],
       providers: [
-        ...provideTestFixtures({ scenarios: ['sem-conexao'] }),
+        provideRouter([]),
+        ...provideTestClock(),
+        ...provideFakeSockets(sockets),
         {
           provide: Breakpoints,
           useValue: {
@@ -74,6 +66,12 @@ describe('ShellPage', () => {
         },
       ],
     }).compileComponents();
+    useTestBackend();
+    vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const session = TestBed.inject(SessionStore);
+    const socket = await enterAsAlice((u, d) => session.enter(u, d), sockets);
+    socket.drop();
+    expect(TestBed.inject(ConnectionStore).connected()).toBe(false);
 
     const mobileFixture = TestBed.createComponent(ShellPage);
     (

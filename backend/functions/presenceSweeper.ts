@@ -10,6 +10,7 @@ import {
   log,
   rethrowFailures,
   settle,
+  table,
   unbind,
 } from './shared';
 
@@ -30,7 +31,7 @@ async function sweepConnections(
   do {
     const { Items, LastEvaluatedKey } = await db.send(
       new ScanCommand({
-        TableName: process.env.CONNECTIONS_TABLE,
+        TableName: table('CONNECTIONS_TABLE'),
         ProjectionExpression: 'connectionId, lastSeenAt',
         ConsistentRead: true,
         ExclusiveStartKey,
@@ -80,7 +81,7 @@ async function sweepUsers(seen: Set<string>) {
             candidates.map(async (id) => {
               const { Item } = await db.send(
                 new GetCommand({
-                  TableName: process.env.CONNECTIONS_TABLE,
+                  TableName: table('CONNECTIONS_TABLE'),
                   Key: { connectionId: id },
                   ConsistentRead: true,
                 }),

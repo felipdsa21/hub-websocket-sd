@@ -1,13 +1,13 @@
 import { TestBed } from '@angular/core/testing';
-import { provideTestFixtures } from '@/core/fixtures/testing';
 import { TelemetryStore } from '@/core/state/telemetry-store';
+import { provideTestClock } from '@/core/time/testing';
 import { TelemetryDialog } from './telemetry-dialog';
 
 describe('TelemetryDialog', () => {
   it('renders metrics, events and toggles the optional latency badge', async () => {
     TestBed.configureTestingModule({
       imports: [TelemetryDialog],
-      providers: provideTestFixtures(),
+      providers: provideTestClock(),
     });
     const telemetry = TestBed.inject(TelemetryStore);
     telemetry.recordRtt(42, 'heartbeat');

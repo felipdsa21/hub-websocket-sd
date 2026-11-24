@@ -1,15 +1,17 @@
 import { TestBed } from '@angular/core/testing';
+import { CARLA, aliceBrunoChat, answer, enterTestSession } from '@/core/hub/testing';
 import { DirectoryStore } from './directory-store';
 
 describe('DirectoryStore', () => {
-  let service: DirectoryStore;
+  it('finds people to choose, including those with a direct chat', async () => {
+    const socket = await enterTestSession();
+    const directory = TestBed.inject(DirectoryStore);
+    const finding = directory.findPeople('  b  ');
+    expect(socket.last()).toMatchObject({ action: 'search', query: 'b' });
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({});
-    service = TestBed.inject(DirectoryStore);
-  });
+    answer(socket, { conversations: [aliceBrunoChat()], people: [CARLA] });
 
-  it('should be created', () => {
-    expect(service).toBeTruthy();
+    expect((await finding).map((u) => u.username)).toEqual(['bruno', 'carla']);
+    expect(directory.get('carla')).toEqual(CARLA);
   });
 });

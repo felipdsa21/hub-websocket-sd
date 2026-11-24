@@ -8,15 +8,6 @@
         <span class="visually-hidden">Latência da conexão: </span>RTT {{ telemetry.lastRttMs() }} ms
       </span>
     }
-    <button
-      matIconButton
-      type="button"
-      aria-label="Modo escuro"
-      [attr.aria-pressed]="theme.isDark()"
-      (click)="theme.toggle()"
-    >
-      <mat-icon aria-hidden="true">{{ theme.isDark() ? 'light_mode' : 'dark_mode' }}</mat-icon>
-    </button>
     <app-account-menu />
   </header>
   @if (lossIndicated()) {

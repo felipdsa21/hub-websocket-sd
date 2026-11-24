@@ -6,7 +6,7 @@
 
 Este documento descreve a sessão persistente entre o cliente web e a API WebSocket: como o handshake transforma uma requisição HTTP em uma conexão WebSocket, como os dados trafegam em frames, em que as mensagens WebSocket diferem do request/response HTTP e o que acontece do `$connect` ao `$disconnect`. Os nomes, as tabelas, os procedimentos e as decisões (D) citados estão na [arquitetura](arquitetura.md), e os requisitos, os riscos, as limitações e os testes (RF, RNF, R, L e T), na [especificação](especificacao.md).
 
-Aqui, *sessão* é o período em que uma conexão WebSocket está aberta. Cada aba do navegador abre a própria conexão, então um usuário pode ter várias sessões ao mesmo tempo.
+Aqui, _sessão_ é o período em que uma conexão WebSocket está aberta. Cada aba do navegador abre a própria conexão, então um usuário pode ter várias sessões ao mesmo tempo.
 
 ## 2. Handshake: de HTTP para WebSocket
 
@@ -42,7 +42,7 @@ Toda mensagem WebSocket viaja em um ou mais frames. Cada frame tem um cabeçalho
 - **opcode:** o tipo do frame, de dados (texto `0x1`, binário `0x2`, continuação `0x0`) ou de controle (fechamento `0x8`, ping `0x9`, pong `0xA`).
 - **máscara e tamanho:** os frames do cliente são mascarados, e o cabeçalho traz o tamanho do conteúdo; o navegador e o API Gateway cuidam dos dois.
 
-As requisições do cliente web e os eventos do backend são texto com JSON, nunca binários. O API Gateway impõe limites próprios: 32 KB por frame e 128 KB por mensagem WebSocket, e fecha a conexão ao receber algo acima disso (L03), fragmentando automaticamente envios por `postToConnection` acima de 32 KB até 128 KB (validado em T2.5 e T5.3). Por isso o cliente e o backend limitam o tamanho das mensagens de chat a 32 KB (RF11) e o histórico é enviado em páginas (seção 4.4 da arquitetura).
+As requisições do cliente web e os eventos do backend são texto com JSON, nunca binários. O API Gateway impõe limites próprios: 32 KB por frame e 128 KB por mensagem WebSocket, e fecha a conexão ao receber algo acima disso (L03). Por isso o cliente e o backend limitam o tamanho das mensagens de chat a 32 KB (RF11) e o histórico é enviado em páginas (seção 4.4 da arquitetura).
 
 Os frames de ping e pong existem no protocolo, mas a API WebSocket do navegador não permite enviá-los nem observá-los. Por isso o heartbeat é uma requisição de aplicação (`heartbeat` → `pong`), que, além de manter a conexão ativa, passa pela Lambda e atualiza o `lastSeenAt` usado na expiração por inatividade (RF07, RF08).
 
@@ -50,13 +50,13 @@ Os frames de ping e pong existem no protocolo, mas a API WebSocket do navegador 
 
 No HTTP, cada requisição recebe exatamente uma resposta, e o servidor só fala quando o cliente pergunta. No WebSocket, os dois lados enviam mensagens independentes a qualquer momento, e o protocolo não associa uma mensagem a outra.
 
-| | HTTP | WebSocket no projeto |
-| --- | --- | --- |
-| Conexão | uma por requisição, ou reaproveitada, mas sem estado entre requisições | persistente, até 2 horas (L02) |
-| Quem inicia uma troca | sempre o cliente | os dois lados |
-| Resposta | implícita, uma por requisição | não existe no protocolo; o evento de volta traz o mesmo `requestId` (RF09) ou, em uma mensagem de chat aceita, o mesmo remetente e `messageId` (RF12) |
-| Identidade | enviada em cada requisição | definida no `$connect` e resolvida pelo `connectionId` em cada requisição (RNF01) |
-| Envio do servidor ao cliente | impossível sem uma requisição | `postToConnection` a qualquer momento depois do handshake (RF02) |
+|                              | HTTP                                                                   | WebSocket no projeto                                                                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Conexão                      | uma por requisição, ou reaproveitada, mas sem estado entre requisições | persistente, até 2 horas (L02)                                                                                                                        |
+| Quem inicia uma troca        | sempre o cliente                                                       | os dois lados                                                                                                                                         |
+| Resposta                     | implícita, uma por requisição                                          | não existe no protocolo; o evento de volta traz o mesmo `requestId` (RF09) ou, em uma mensagem de chat aceita, o mesmo remetente e `messageId` (RF12) |
+| Identidade                   | enviada em cada requisição                                             | definida no `$connect` e resolvida pelo `connectionId` em cada requisição (RNF01)                                                                     |
+| Envio do servidor ao cliente | impossível sem uma requisição                                          | `postToConnection` a qualquer momento depois do handshake (RF02)                                                                                      |
 
 Duas consequências aparecem no projeto. Primeiro, como não há resposta implícita, o cliente gera um `requestId` e o backend o devolve no evento `response`, `pong` ou `error`, e o cliente associa os dois. Um `sendMessage` aceito é a exceção: a confirmação é o próprio evento `message`, que o cliente associa pelo remetente e pelo `messageId` (RF02, RF12). Segundo, a Lambda que atende uma rota não responde pela integração: tudo o que o backend envia ao cliente chega por `@connections` (D06), o único caminho que também alcança os demais clientes.
 
@@ -78,7 +78,7 @@ stateDiagram-v2
 
 Uma falha da Lambda `connect` depois de gravar o vínculo, como um tempo limite, também faz o handshake falhar, mas o id fica em `Users.connections`, e o usuário aparece online até um `410 Gone` em um envio ou o `presenceSweeper` desvinculá-lo (seção 3.4 da arquitetura).
 
-Uma conexão encerrada nem sempre gera o `$disconnect`, porque a AWS o entrega em regime de melhor esforço (R01). O registro que sobra é removido pelo `410 Gone` no próximo envio a essa conexão, exceto nos primeiros 30 s (seção 7, RF08), ou pelo `presenceSweeper` depois de 10 minutos sem requisições (RF07).
+Uma conexão encerrada nem sempre gera o `$disconnect`, porque a AWS o entrega em regime de melhor esforço (R01). O registro que sobra é removido pelo `410 Gone` no próximo envio a essa conexão, exceto nos primeiros 30 s (seção 7 deste documento, RF08), ou pelo `presenceSweeper` depois de 10 minutos sem requisições (RF07).
 
 Do lado do cliente, qualquer encerramento que ele não pediu leva à reconexão com backoff exponencial, que abre uma sessão nova com outro `connectionId` (RF08). Nem toda queda chega ao cliente como um encerramento: se um `heartbeat` fica 10 s sem `pong` — ou se o evento `offline` da `window` dispara uma sondagem sem resposta —, o cliente também considera a conexão perdida, e o evento `online` acorda o backoff imediatamente. Na sessão nova, o `sync` com `since` e o `getHistory` recuperam o que chegou durante a queda, e as mensagens pendentes são reenviadas (seção 4.4 da arquitetura). Já para trocar o nome de exibição, o cliente abre uma conexão nova com o nome novo antes de fechar a antiga, e os contatos não veem o usuário offline (RF01, seção 4.6 da arquitetura).
 
@@ -178,16 +178,16 @@ O diretório é formado pelas tabelas `Connections` e `Users` (seção 3.3 da ar
 **Connections**
 
 | `connectionId` | `username` | `connectedAt` | `lastSeenAt` |
-| --- | --- | --- | --- |
-| `c1` | `ana` | 10:00:00 | 10:04:30 |
-| `c2` | `ana` | 10:02:10 | 10:04:40 |
-| `c3` | `bia` | 10:01:05 | 10:04:20 |
+| -------------- | ---------- | ------------- | ------------ |
+| `c1`           | `ana`      | 10:00:00      | 10:04:30     |
+| `c2`           | `ana`      | 10:02:10      | 10:04:40     |
+| `c3`           | `bia`      | 10:01:05      | 10:04:20     |
 
 **Users**
 
 | `username` | `displayName` | `connections` | `version` |
-| --- | --- | --- | --- |
-| `ana` | Ana | `{c1, c2}` | 2 |
-| `bia` | Bia | `{c3}` | 1 |
+| ---------- | ------------- | ------------- | --------- |
+| `ana`      | Ana           | `{c1, c2}`    | 2         |
+| `bia`      | Bia           | `{c3}`        | 1         |
 
 Quando `c1` fecha, o id sai do conjunto de `ana`, e depois o item `c1` sai de `Connections`; `ana` continua online pela `c2` (RF07). Quando `c3` fecha, o atributo `connections` de `bia` desaparece, e os contatos dela recebem o anúncio de offline.

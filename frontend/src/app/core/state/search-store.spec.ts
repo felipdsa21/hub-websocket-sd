@@ -1,83 +1,76 @@
 import { TestBed } from '@angular/core/testing';
-import { ConversationActions } from '@/core/actions/conversation-actions';
-import { Scenario } from '@/core/fixtures/scenarios';
-import { provideTestFixtures } from '@/core/fixtures/testing';
+import {
+  ALICE_BRUNO,
+  GROUP,
+  aliceBrunoChat,
+  answer,
+  enterTestSession,
+  refuse,
+} from '@/core/hub/testing';
 import { ConversationsStore } from './conversations-store';
+import { SEARCH_DELAY_MS } from './directory-store';
 import { SearchStore } from './search-store';
-import { SessionStore } from './session-store';
 
-function setUp(scenarios: readonly Scenario[] = []) {
-  TestBed.configureTestingModule({ providers: provideTestFixtures({ scenarios }) });
-  TestBed.inject(SessionStore).enter('marina', 'Marina Alves');
-}
-
+const DIEGO = { username: 'diego', displayName: 'Diego', online: true, version: 4 };
 describe('SearchStore', () => {
-  it('finds conversations by name and people without a visible direct chat, as in the design', () => {
-    setUp();
-    const search = TestBed.inject(SearchStore);
-    search.search('ANA');
+  afterEach(() => vi.useRealTimers());
 
-    const conversations = TestBed.inject(ConversationsStore);
-    const { conversations: found, people } = search.results();
-    expect(found.map((c) => c.name ?? c.conversationId)).toEqual([
-      'Semana de provas',
-      'd:ana.lima:marina',
-      'd:analima:marina',
-    ]);
-    expect(people.map((p) => p.displayName)).toEqual(['Juliana Ferreira', 'Mariana Costa']);
-    expect(conversations.sorted().length).toBe(9);
-  });
-
-  it('matches a person with a direct chat by username through that conversation', () => {
-    setUp();
+  it('waits for a pause in typing and keeps only the answer of the last search', async () => {
+    const socket = await enterTestSession([GROUP, aliceBrunoChat()]);
+    vi.useFakeTimers();
     const search = TestBed.inject(SearchStore);
-    search.search('ana.lima');
+
+    search.search('b');
+    search.search('br');
+    expect(search.status()).toBe('loading');
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    const searches = () => socket.sent.filter((r) => r['action'] === 'search');
+    expect(searches().map((r) => r['query'])).toEqual(['br']);
+
+    answer(socket, { conversations: [aliceBrunoChat(), GROUP], people: [DIEGO] });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(search.status()).toBe('done');
+    // In the order of the list: the group, joined later, comes first.
     expect(search.results().conversations.map((c) => c.conversationId)).toEqual([
-      'd:ana.lima:marina',
+      'g:1',
+      ALICE_BRUNO,
     ]);
-    expect(search.results().people).toEqual([]);
+    expect(search.results().people).toEqual([DIEGO]);
   });
 
-  it('fails in the "erro-pesquisa" scenario and can be retried', () => {
-    setUp(['erro-pesquisa']);
+  it('adds a found conversation missing from the list when kept', async () => {
+    const socket = await enterTestSession([aliceBrunoChat()]);
+    vi.useFakeTimers();
     const search = TestBed.inject(SearchStore);
-    search.search('ana');
-    expect(search.status()).toBe('error');
-    search.retry();
-    expect(search.status()).toBe('error');
-  });
-});
-
-describe('ConversationActions', () => {
-  it('opens the existing direct chat instead of starting another (RF03)', async () => {
-    setUp();
-    const result = await TestBed.inject(ConversationActions).openDirect('bruno');
-    expect(result).toEqual({ conversationId: 'd:bruno:marina' });
-    expect(TestBed.inject(ConversationsStore).sorted().length).toBe(9);
-  });
-
-  it('starts a new direct chat and a new group on top of the list', async () => {
-    setUp();
-    const actions = TestBed.inject(ConversationActions);
     const conversations = TestBed.inject(ConversationsStore);
 
-    await actions.openDirect('juliana');
-    expect(conversations.sorted()[0]?.conversationId).toBe('d:juliana:marina');
+    search.search('sd');
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    answer(socket, { conversations: [GROUP], people: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(conversations.get('g:1')).toBeUndefined();
 
-    const group = await actions.createGroup('  Revisão  ', ['diego']);
-    const created = conversations.sorted()[0]!;
-    expect(group).toEqual({ conversationId: created.conversationId });
-    expect(created).toMatchObject({ type: 'group', name: 'Revisão', members: ['marina', 'diego'] });
+    search.keep('g:1');
+
+    expect(conversations.get('g:1')).toEqual(expect.objectContaining({ name: 'SD' }));
   });
 
-  it('reports missing users and unanswered requests in the action scenarios', async () => {
-    setUp(['erro-acao']);
-    expect(await TestBed.inject(ConversationActions).createGroup('G', ['diego', 'bruno'])).toEqual(
-      expect.objectContaining({ code: 'notFound', details: { usernames: ['diego'] } }),
-    );
+  it('shows the error of a failed search', async () => {
+    const socket = await enterTestSession();
+    vi.useFakeTimers();
+    const search = TestBed.inject(SearchStore);
+    search.search('br');
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    refuse(socket, 'invalidRequest');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(search.status()).toBe('error');
 
-    TestBed.resetTestingModule();
-    setUp(['sem-resposta']);
-    expect(await TestBed.inject(ConversationActions).openDirect('juliana')).toBe('noResponse');
+    search.retry();
+    vi.advanceTimersByTime(SEARCH_DELAY_MS);
+    expect(socket.last()).toMatchObject({ action: 'search', query: 'br' });
+    answer(socket, { conversations: [], people: [] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(search.status()).toBe('done');
   });
 });

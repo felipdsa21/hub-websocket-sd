@@ -55,21 +55,19 @@ export class PeoplePicker {
   public readonly picked = output<UserState>();
 
   protected readonly query = signal('');
-  /** With the backend, the state of the search for the current query (RF09). */
+  /** The state of the search for the current query (RF09). */
   protected readonly status = signal<SearchStatus>('idle');
-  /** With the backend, the people of the current query; refreshed after a pause in typing. */
+  /** The people of the current query; refreshed after a pause in typing. */
   private readonly found = signal<readonly UserState[]>([]);
   private readonly attempt = signal(0);
   protected readonly results = computed(() =>
-    this.directory.live()
-      ? this.found().filter((u) => !this.exclude().has(u.username))
-      : this.directory.searchPeople(this.query(), this.exclude()),
+    this.found().filter((u) => !this.exclude().has(u.username)),
   );
   protected readonly empty = computed(() => {
     if (!this.query().trim() || this.results().length > 0) {
       return false;
     }
-    return this.directory.live() ? this.status() === 'done' : true;
+    return this.status() === 'done';
   });
 
   constructor() {
@@ -77,9 +75,6 @@ export class PeoplePicker {
       const query = this.query();
       const connected = this.connected();
       this.attempt();
-      if (!this.directory.live()) {
-        return;
-      }
       if (!connected) {
         if (this.status() === 'loading') {
           this.status.set('idle');

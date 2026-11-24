@@ -9,6 +9,11 @@ import { AvatarKind } from '@/shared/ui/avatar/avatar';
 /** Consecutive messages of the same sender within this interval are grouped (design note). */
 export const GROUP_INTERVAL_MS = 5 * 60 * 1000;
 
+/** Without bidi embeddings, overrides and isolates, a message can't show its characters reordered. */
+function displayText(text: string): string {
+  return text.replace(/[\u202a-\u202e\u2066-\u2069]/g, '');
+}
+
 export type TimelineItem =
   | { readonly kind: 'start'; readonly key: string }
   | { readonly kind: 'day'; readonly key: string; readonly label: string }
@@ -74,6 +79,12 @@ export function buildTimeline(input: TimelineInput): TimelineItem[] {
   /** The message the next one may join; a separator or a notice in between starts a new group. */
   let groupWith: Message | undefined;
   for (const message of input.messages) {
+    const before = pending.filter((n) => n.afterSk! < message.sk);
+    if (before.length > 0) {
+      items.push(...before.map((n) => noticeItem(n, input.users)));
+      pending = pending.filter((n) => !before.includes(n));
+      groupWith = undefined;
+    }
     if (
       previousSentAt === undefined ||
       !isSameDay(previousSentAt, message.sentAt, input.time.timeZone)
@@ -92,13 +103,6 @@ export function buildTimeline(input: TimelineInput): TimelineItem[] {
     items.push(messageItem(message, !grouped, input, repeated));
     previousSentAt = message.sentAt;
     groupWith = message;
-
-    const after = pending.filter((n) => n.afterSk !== undefined && n.afterSk <= message.sk);
-    if (after.length > 0) {
-      items.push(...after.map((n) => noticeItem(n, input.users)));
-      pending = pending.filter((n) => !after.includes(n));
-      groupWith = undefined;
-    }
   }
   items.push(...pending.map((n) => noticeItem(n, input.users)));
 
@@ -109,7 +113,7 @@ export function buildTimeline(input: TimelineInput): TimelineItem[] {
       key: `out-${message.messageId}`,
       own: true,
       first: false,
-      text: message.text,
+      text: displayText(message.text),
       status: message.error
         ? {
             pending: false,
@@ -135,7 +139,7 @@ function messageItem(
     key: message.sk,
     own,
     first,
-    text: message.text,
+    text: displayText(message.text),
     time: timeLabel(message.sentAt, input.time.timeZone),
     sender:
       own || !first

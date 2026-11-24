@@ -47,37 +47,37 @@ flowchart LR
     Lambda -.->|"logs e métricas"| CW
 ```
 
-| Componente | Papel |
-| --- | --- |
-| Cliente web | Aplicação Angular servida pelo CloudFront a partir de um bucket S3 (RNF07). Abre uma conexão WebSocket por aba, envia as requisições e mantém a fila de reenvio (RF12) e o heartbeat (RF08). |
-| API Gateway | API WebSocket com a route selection expression `$request.body.action`. Encaminha cada rota a uma Lambda e expõe a Management API (`@connections`) para o envio aos clientes. |
-| Lambda `connect` | Rota `$connect`: valida o nome de usuário, vincula a conexão ao usuário e anuncia a mudança aos contatos (RF01, RF07). |
-| Lambda `disconnect` | Rota `$disconnect`: desvincula a conexão e anuncia a mudança aos contatos (RF01, RF07). |
-| Lambda `default` | Rota `$default`: responde com erro às requisições sem rota (RF09). |
-| Lambda `app` | Todas as rotas de aplicação (seção 4), escolhidas internamente pelo `routeKey`. |
+| Componente               | Papel                                                                                                                                                                                                                        |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cliente web              | Aplicação Angular servida pelo CloudFront a partir de um bucket S3 (RNF07). Abre uma conexão WebSocket por aba, envia as requisições e mantém a fila de reenvio (RF12) e o heartbeat (RF08).                                 |
+| API Gateway              | API WebSocket com a route selection expression `$request.body.action`. Encaminha cada rota a uma Lambda e expõe a Management API (`@connections`) para o envio aos clientes.                                                 |
+| Lambda `connect`         | Rota `$connect`: valida o nome de usuário, vincula a conexão ao usuário e anuncia a mudança aos contatos (RF01, RF07).                                                                                                       |
+| Lambda `disconnect`      | Rota `$disconnect`: desvincula a conexão e anuncia a mudança aos contatos (RF01, RF07).                                                                                                                                      |
+| Lambda `default`         | Rota `$default`: responde com erro às requisições sem rota (RF09).                                                                                                                                                           |
+| Lambda `app`             | Todas as rotas de aplicação (seção 4), escolhidas internamente pelo `routeKey`.                                                                                                                                              |
 | Lambda `presenceSweeper` | Acionada a cada minuto pelo EventBridge Scheduler; desvincula as conexões sem requisições há 10 minutos (RF07, R01), refaz os anúncios interrompidos por falha e publica o número de conexões abertas (seções 3.4, 3.5 e 5). |
-| DynamoDB | Diretório de nomes (usuários e conexões), conversas, participações e mensagens (seção 3.3). |
-| SSM Parameter Store | Segredo usado para anonimizar os identificadores nos logs (seção 5). |
-| CloudWatch | Logs com identificadores anonimizados (RNF03), métricas e painel (RNF06). |
+| DynamoDB                 | Diretório de nomes (usuários e conexões), conversas, participações e mensagens (seção 3.3).                                                                                                                                  |
+| SSM Parameter Store      | Segredo usado para anonimizar os identificadores nos logs (seção 5).                                                                                                                                                         |
+| CloudWatch               | Logs com identificadores anonimizados (RNF03), métricas e painel (RNF06).                                                                                                                                                    |
 
-As Lambdas são escritas em TypeScript, no runtime Node.js 22.x em arquitetura **ARM64 (Graviton2)**, e empacotadas pelo CDK. As quatro Lambdas de rota (`connect`, `disconnect`, `default` e `app`) têm memória de `512 MB` e tempo limite de `10 s`; o `presenceSweeper` tem `256 MB` e tempo limite de `30 s` (seção 3.4); a sobreposição da reconexão (seção 4.4) depende dos `10 s` da Lambda `app`. Todas recebem `execute-api:ManageConnections` no estágio (R04), e as permissões no DynamoDB seguem menor privilégio: apenas `app` recebe leitura e gravação nas cinco tabelas, enquanto `connect`, `disconnect`, `default` e `presenceSweeper` recebem leitura e gravação em `Connections` e `Users` e somente leitura em `Memberships` e `Conversations`, sem acesso a `Messages`. Para o segredo dos logs, apenas as quatro Lambdas de rota (`connect`, `disconnect`, `default` e `app`) recebem `ssm:GetParameter` no parâmetro do estágio e `kms:Decrypt` na chave `alias/aws/ssm` via `ssm.<região>.amazonaws.com` (seção 5); o `presenceSweeper` não lê esse parâmetro porque não registra identificadores, e recebe `cloudwatch:PutMetricData`.
+As Lambdas são escritas em TypeScript, no runtime Node.js 24.x em arquitetura **ARM64 (Graviton2)**, e empacotadas pelo CDK. As quatro Lambdas de rota (`connect`, `disconnect`, `default` e `app`) têm memória de `512 MB` e tempo limite de `10 s`; o `presenceSweeper` tem `256 MB` e tempo limite de `30 s` (seção 3.4); a sobreposição da reconexão (seção 4.4) depende dos `10 s` da Lambda `app`. Todas recebem `execute-api:ManageConnections` no estágio (R04), e as permissões no DynamoDB seguem menor privilégio: apenas `app` recebe leitura e gravação nas cinco tabelas, enquanto `connect`, `disconnect`, `default` e `presenceSweeper` recebem leitura e gravação em `Connections` e `Users` e somente leitura em `Memberships` e `Conversations`, sem acesso a `Messages`. Para o segredo dos logs, apenas as quatro Lambdas de rota (`connect`, `disconnect`, `default` e `app`) recebem `ssm:GetParameter` no parâmetro do estágio e `kms:Decrypt` na chave `alias/aws/ssm` via `ssm.<região>.amazonaws.com` (seção 5); o `presenceSweeper` não lê esse parâmetro porque não registra identificadores, e recebe `cloudwatch:PutMetricData`.
 
-Toda a infraestrutura é declarada no stack do AWS CDK em `backend/` (RNF05). Há um stack por estágio, `dev` para desenvolvimento e `prod` para a apresentação, cada um com a própria API (com throttling padrão de `1.000 req/s` e burst `2.000`), as próprias Lambdas, os próprios `LogGroup`s (retenção de `14 dias` em `dev` e `30 dias` em `prod`), as próprias tabelas (com *Point-in-Time Recovery* habilitado em `prod`), painel e alarmes no CloudWatch, e distribuição CloudFront com OAC sobre bucket S3 privado (versionado em `prod`, com cabeçalhos de segurança HTTP e `CACHING_DISABLED` em `config.json` e `index.html`), na região `sa-east-1` (D07, D08).
+Toda a infraestrutura é declarada no stack do AWS CDK em `backend/` (RNF05). Há um stack por estágio, `dev` para desenvolvimento e `prod` para a apresentação, cada um com a própria API (com throttling padrão de `1.000 req/s` e burst `2.000`), as próprias Lambdas, os próprios `LogGroup`s (retenção de `14 dias` em `dev` e `30 dias` em `prod`), as próprias tabelas (com _Point-in-Time Recovery_ habilitado em `prod`), painel e alarmes no CloudWatch, e distribuição CloudFront com OAC sobre bucket S3 privado (versionado em `prod`, com cabeçalhos de segurança HTTP e `CACHING_DISABLED` em `config.json` e `index.html`), na região `sa-east-1` (D07, D08).
 
-As falhas e atrasos controlados descritos no plano de testes da especificação — erro forçado em `sendMessage`/`search`/`getHistory` (T2, passo 6), omissão/atraso de confirmação ao remetente com fila pendente e `beforeunload` (T2, passos 7 a 9) e desativação/falha de `heartbeat` com expiração (T7, passo 4) — não são ativados por chaves de injeção de falha no backend implantado na AWS. Em vez disso, são verificados de forma determinística pelas suítes automatizadas unitárias e de componente (`backend/test/` em Jest e `frontend/src/**/*.spec.ts` em Vitest, com relógios e sockets simulados) e pelos cenários locais de simulação do cliente web (`?cenario=`, como `sem-conexao`, `pendentes` e `recusada`), mantendo o stack `dev` fiel ao comportamento de produção.
+As falhas e atrasos controlados descritos no plano de testes da especificação — erro forçado em `sendMessage`/`search`/`getHistory` (T2, passo 6), omissão/atraso de confirmação ao remetente com fila pendente e `beforeunload` (T2, passos 7 a 9) e desativação/falha de `heartbeat` com expiração (T7, passo 4) — não são ativados por chaves de injeção de falha no backend implantado na AWS. Em vez disso, são verificados de forma determinística pelas suítes automatizadas unitárias e de componente (`backend/test/` em Jest e `frontend/src/**/*.spec.ts` em Vitest, com relógios e sockets simulados), mantendo o stack `dev` fiel ao comportamento de produção.
 
 ## 3. Esquema de nomeação e endereçamento
 
 ### 3.1 Nomes
 
-| Nome | Quem gera | Formato | Escopo e duração | Identifica |
-| --- | --- | --- | --- | --- |
-| `username` | o usuário, no `$connect` | `^[a-z0-9._-]{3,32}$`, convertido para minúsculas | único no estágio; permanente | o usuário |
-| `displayName` | o usuário, no `$connect` | 1 a 50 caracteres Unicode (code points), depois de aparar os espaços das pontas; rejeita caracteres de controle ASCII (`\u0000–\u001F`, `\u007F`) e controles bidirecionais (`\u202A–\u202E`, `\u2066–\u2069`) | o do último `$connect` (RF01) | nada; é só um rótulo |
-| `connectionId` | o API Gateway | opaco | uma conexão; até 2 horas (L02) | o ponto de entrega de uma aba |
-| `conversationId` | o backend | chat privado: `d:<username1>:<username2>`, em ordem alfabética; grupo: `g:<UUID v4>` | permanente | a conversa |
-| `messageId` | o cliente | UUID v4 | único por remetente | a mensagem do remetente, inclusive nos reenvios (RF12) |
-| `requestId` | o cliente | UUID v4 | uma requisição | a requisição, para associar a ela a resposta ou o erro (RF09) |
+| Nome             | Quem gera                | Formato                                                                                                                                                                                                                                                                                                                                                                                                                            | Escopo e duração               | Identifica                                                    |
+| ---------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------- |
+| `username`       | o usuário, no `$connect` | `^[a-z0-9._-]{3,32}$`, convertido para minúsculas                                                                                                                                                                                                                                                                                                                                                                                  | único no estágio; permanente   | o usuário                                                     |
+| `displayName`    | o usuário, no `$connect` | 1 a 50 caracteres Unicode (code points), depois de aparar os espaços das pontas; rejeita caracteres de controle, separadores de linha e de parágrafo e caracteres de formatação (como os controles bidirecionais e os espaços de largura zero), exceto `\u200C` e `\u200D`, e exige um caractere visível; nomes que só diferem por caracteres invisíveis, formas de compatibilidade (NFKC) ou espaços contam como repetidos (RF05) | o do último `$connect` (RF01)  | nada; é só um rótulo                                          |
+| `connectionId`   | o API Gateway            | opaco                                                                                                                                                                                                                                                                                                                                                                                                                              | uma conexão; até 2 horas (L02) | o ponto de entrega de uma aba                                 |
+| `conversationId` | o backend                | chat privado: `d:<username1>:<username2>`, em ordem alfabética; grupo: `g:<UUID v4>`                                                                                                                                                                                                                                                                                                                                               | permanente                     | a conversa                                                    |
+| `messageId`      | o cliente                | UUID v4                                                                                                                                                                                                                                                                                                                                                                                                                            | único por remetente            | a mensagem do remetente, inclusive nos reenvios (RF12)        |
+| `requestId`      | o cliente                | UUID v4                                                                                                                                                                                                                                                                                                                                                                                                                            | uma requisição                 | a requisição, para associar a ela a resposta ou o erro (RF09) |
 
 O `:` e o `#` não são aceitos no nome de usuário, e o backend recusa um `messageId` fora do formato (RF09); assim, nem um `conversationId` nem uma chave de mensagem (seção 3.3) é ambíguo. O nome de exibição não identifica nada, porque se repete entre usuários (RF05) e muda a cada conexão (RF01).
 
@@ -106,68 +106,68 @@ O backend nunca usa um nome de usuário vindo no corpo de uma requisição para 
 
 ### 3.3 Diretório (DynamoDB)
 
-As tabelas usam cobrança sob demanda (com *Point-in-Time Recovery* habilitado no estágio `prod`). Todas as leituras são fortemente consistentes, e nenhuma usa índice secundário (D04), então uma conexão, um membro ou uma mensagem recém-gravados sempre aparecem na leitura seguinte.
+As tabelas usam cobrança sob demanda (com _Point-in-Time Recovery_ habilitado no estágio `prod`). Todas as leituras são fortemente consistentes, e nenhuma usa índice secundário (D04), então uma conexão, um membro ou uma mensagem recém-gravados sempre aparecem na leitura seguinte.
 
 **Connections**: conexão → usuário.
 
-| Atributo | Tipo | Descrição |
-| --- | --- | --- |
-| `connectionId` | S (PK) | identificador da conexão |
-| `username` | S | usuário vinculado |
-| `connectedAt` | N | instante do `$connect`, em ms |
-| `lastSeenAt` | N | instante da última requisição, em ms (RF07) |
-| `expiresAt` | N (TTL) | `connectedAt` + 3 horas, em segundos, porque o TTL do DynamoDB não aceita ms; só faxina de registros esquecidos |
+| Atributo       | Tipo    | Descrição                                                                                                       |
+| -------------- | ------- | --------------------------------------------------------------------------------------------------------------- |
+| `connectionId` | S (PK)  | identificador da conexão                                                                                        |
+| `username`     | S       | usuário vinculado                                                                                               |
+| `connectedAt`  | N       | instante do `$connect`, em ms                                                                                   |
+| `lastSeenAt`   | N       | instante da última requisição, em ms (RF07)                                                                     |
+| `expiresAt`    | N (TTL) | `connectedAt` + 3 horas, em segundos, porque o TTL do DynamoDB não aceita ms; só faxina de registros esquecidos |
 
 **Users**: usuário → conexões.
 
-| Atributo | Tipo | Descrição |
-| --- | --- | --- |
-| `username` | S (PK) | nome de usuário |
-| `displayName` | S | nome de exibição atual |
-| `connections` | SS | `connectionId`s abertos; ausente quando o usuário está offline |
-| `version` | N | versão do usuário, incrementada a cada alteração de `connections` ou de `displayName` (seção 3.5) |
-| `changedAt` | N | instante da última alteração de `version` |
-| `announcedVersion` | N | última versão anunciada aos contatos, 0 na criação do usuário (seção 3.5) |
+| Atributo           | Tipo   | Descrição                                                                                         |
+| ------------------ | ------ | ------------------------------------------------------------------------------------------------- |
+| `username`         | S (PK) | nome de usuário                                                                                   |
+| `displayName`      | S      | nome de exibição atual                                                                            |
+| `connections`      | SS     | `connectionId`s abertos; ausente quando o usuário está offline                                    |
+| `version`          | N      | versão do usuário, incrementada a cada alteração de `connections` ou de `displayName` (seção 3.5) |
+| `changedAt`        | N      | instante da última alteração de `version`                                                         |
+| `announcedVersion` | N      | última versão anunciada aos contatos, 0 na criação do usuário (seção 3.5)                         |
 
 **Conversations**: conversa → membros.
 
-| Atributo | Tipo | Descrição |
-| --- | --- | --- |
-| `conversationId` | S (PK) | identificador da conversa |
-| `type` | S | `direct` ou `group` |
-| `name` | S | nome do grupo; ausente no chat privado |
-| `members` | SS | nomes de usuário dos membros |
-| `started` | BOOL | chat privado: já tem mensagem (RF10) |
-| `lastMessageAt` | N | instante da última mensagem |
-| `lastMessageBy` | S | remetente da última mensagem (RF10) |
+| Atributo         | Tipo   | Descrição                              |
+| ---------------- | ------ | -------------------------------------- |
+| `conversationId` | S (PK) | identificador da conversa              |
+| `type`           | S      | `direct` ou `group`                    |
+| `name`           | S      | nome do grupo; ausente no chat privado |
+| `members`        | SS     | nomes de usuário dos membros           |
+| `started`        | BOOL   | chat privado: já tem mensagem (RF10)   |
+| `lastMessageAt`  | N      | instante da última mensagem            |
+| `lastMessageBy`  | S      | remetente da última mensagem (RF10)    |
 
 **Memberships**: usuário → conversas (RF10).
 
-| Atributo | Tipo | Descrição |
-| --- | --- | --- |
-| `username` | S (PK) | membro |
-| `conversationId` | S (SK) | conversa |
-| `hidden` | BOOL | só na participação do outro usuário em um chat privado sem mensagens, que ainda não aparece para ele (D11) |
-| `joinedAt` | N | `requestTimeEpoch` da requisição que tornou a participação visível; ausente enquanto ela está oculta (RF10) |
+| Atributo         | Tipo   | Descrição                                                                                                   |
+| ---------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| `username`       | S (PK) | membro                                                                                                      |
+| `conversationId` | S (SK) | conversa                                                                                                    |
+| `hidden`         | BOOL   | só na participação do outro usuário em um chat privado sem mensagens, que ainda não aparece para ele (D11)  |
+| `joinedAt`       | N      | `requestTimeEpoch` da requisição que tornou a participação visível; ausente enquanto ela está oculta (RF10) |
 
 **Messages**: histórico de cada conversa (RF06).
 
-| Atributo | Tipo | Descrição |
-| --- | --- | --- |
-| `conversationId` | S (PK) | conversa |
-| `sk` | S (SK) | mensagem: `m#<sentAt com 13 dígitos>#<sender>#<messageId>`; marcador de duplicata: `id#<sender>#<messageId>` |
-| `messageId` | S | identificador gerado pelo cliente |
-| `sender` | S | nome de usuário do remetente |
-| `text` | S | texto |
-| `sentAt` | N | `requestContext.requestTimeEpoch`: o instante em que o API Gateway recebeu a requisição (RF02) |
-| `ref` | S | só no marcador de duplicata: o `sk` da mensagem original |
-| `expiresAt` | N (TTL) | só no marcador de duplicata: `sentAt` + 7 dias, em segundos, para limpar marcadores antigos sem remover as mensagens `m#…` |
+| Atributo         | Tipo    | Descrição                                                                                                                  |
+| ---------------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `conversationId` | S (PK)  | conversa                                                                                                                   |
+| `sk`             | S (SK)  | mensagem: `m#<sentAt com 13 dígitos>#<sender>#<messageId>`; marcador de duplicata: `id#<sender>#<messageId>`               |
+| `messageId`      | S       | identificador gerado pelo cliente                                                                                          |
+| `sender`         | S       | nome de usuário do remetente                                                                                               |
+| `text`           | S       | texto; o cliente o exibe sem os controles bidirecionais (`\u202A–\u202E`, `\u2066–\u2069`)                                 |
+| `sentAt`         | N       | `requestContext.requestTimeEpoch`: o instante em que o API Gateway recebeu a requisição (RF02)                             |
+| `ref`            | S       | só no marcador de duplicata: o `sk` da mensagem original                                                                   |
+| `expiresAt`      | N (TTL) | só no marcador de duplicata: `sentAt` + 7 dias, em segundos, para limpar marcadores antigos sem remover as mensagens `m#…` |
 
 As consultas ao histórico se restringem ao prefixo `m#`, para não trazer os marcadores.
 
 Os membros de uma conversa ficam em `Conversations.members`, lido em uma única leitura consistente; a tabela `Memberships` existe para listar as conversas de um usuário. As duas são alteradas juntas, em uma transação, quando um membro entra ou sai (seção 4.5).
 
-As transações envolvem só `Conversations`, `Memberships` e `Messages`. Uma gravação nessas tabelas que encontra uma transação em andamento sobre o mesmo item falha com `TransactionConflict`, e uma transação que encontra outra falha da mesma forma. O backend repete a gravação com *backoff* exponencial curto e *jitter*, até 3 vezes. Se o conflito persistir, a requisição recebe o erro `conflict` (RF09), exceto o envio de mensagem, que tem tratamento próprio (seção 4.3).
+As transações envolvem só `Conversations`, `Memberships` e `Messages`. Uma gravação nessas tabelas que encontra uma transação em andamento sobre o mesmo item falha com `TransactionConflict`, e uma transação que encontra outra falha da mesma forma. O backend repete a gravação com _backoff_ exponencial curto e _jitter_, até 3 vezes. Se o conflito persistir, a requisição recebe o erro `conflict` (RF09), exceto o envio de mensagem, que tem tratamento próprio (seção 4.3).
 
 ### 3.4 Vínculo e desvínculo de conexões
 
@@ -185,7 +185,7 @@ O `$connect` não envia nada à conexão que está abrindo, porque o API Gateway
 1. Ler `Connections[connectionId]` para obter o `username`. Se não há item, a conexão já foi desvinculada, e o procedimento termina. No fan-out, o `username` já é conhecido, e o procedimento segue para o passo 2 mesmo sem o item. Também no fan-out, um item cujo `connectedAt` é de menos de 30 s atrás encerra o procedimento: o id entra no conjunto antes de o handshake terminar, e um `postToConnection` nesse intervalo também responde `410`. Se a conexão de fato caiu, o `$disconnect` ou o `presenceSweeper` a desvincula.
 2. Em `Users[username]`, remover o `connectionId` do conjunto (`DELETE`) com a condição `contains(connections, :connectionId)`, incrementar `version` e gravar `changedAt`, pedindo os valores novos. Se o conjunto ficou vazio, o DynamoDB remove o atributo. Se a condição falha, outro caminho já removeu o id, e o procedimento segue para o passo 3 sem anunciar.
 3. Apagar `Connections[connectionId]` (somente após o passo 2 já ter retirado o id de `Users.connections`, preservando D09).
-4. Se o passo 2 removeu o id, anunciar o estado do usuário aos contatos (seção 3.5). Se o anúncio falhar, o item morto já foi removido de `Connections`, e o `presenceSweeper` refaz o anúncio pelo critério `announcedVersion < version`.
+4. Se o passo 2 removeu o id, anunciar o estado do usuário aos contatos (seção 3.5). Se o anúncio falhar, o item morto já foi removido de `Connections`, e o `presenceSweeper` refaz o anúncio pelo critério `announcedVersion < version`. Quando o `410` vem do envio de um anúncio, o desvínculo pula este passo, e o anúncio fica para o `presenceSweeper` pelo mesmo critério.
 
 Operações `ADD` e `DELETE` sobre um conjunto são atômicas, então conexões de abas diferentes do mesmo usuário não se atropelam, e a condição do passo 2 faz com que cada id seja removido uma única vez, mesmo com os três caminhos em paralelo.
 
@@ -205,7 +205,7 @@ Nos passos 1 e 2 do T7, regravar o registro de uma conexão significa gravar de 
 
 ### 3.5 Contatos e anúncios
 
-Os anúncios de presença (RF07) e de nome de exibição (RF01) vão aos *contatos* do usuário: os membros de todas as conversas em que ele tem participação, visível ou oculta (D11). A resolução é `Memberships[username]` → `Conversations.members` de cada conversa → `Users.connections` de cada contato. O cliente pode receber o anúncio de um usuário que ainda não aparece em nenhuma das suas conversas, como o de quem abriu com ele um chat privado ainda sem mensagens; ele guarda o último anúncio de cada usuário, conhecido ou não, para não ficar com um estado mais antigo quando esse usuário aparecer.
+Os anúncios de presença (RF07) e de nome de exibição (RF01) vão aos _contatos_ do usuário: os membros de todas as conversas em que ele tem participação, visível ou oculta (D11). A resolução é `Memberships[username]` → `Conversations.members` de cada conversa → `Users.connections` de cada contato. O cliente pode receber o anúncio de um usuário que ainda não aparece em nenhuma das suas conversas, como o de quem abriu com ele um chat privado ainda sem mensagens; ele guarda o último anúncio de cada usuário, conhecido ou não, para não ficar com um estado mais antigo quando esse usuário aparecer.
 
 Anunciar é enviar aos contatos o evento `presence` com o estado atual do usuário (`online`, se o conjunto `connections` não está vazio, e `displayName`) e a `version` devolvida pela alteração; depois, gravar `announcedVersion` com essa versão, se for maior que a gravada. Toda alteração é anunciada, mesmo a que não muda o que os contatos veem, como a abertura de uma segunda aba. O cliente aplica um anúncio só se a versão for maior que a última que tem daquele usuário, e, como as alterações de um mesmo item são serializadas pelo DynamoDB, um anúncio atrasado nunca desfaz um mais novo (D10).
 
@@ -217,20 +217,20 @@ Se a Lambda falha antes de anunciar, `announcedVersion` fica menor que `version`
 
 O API Gateway escolhe a rota pelo campo `action` da requisição (route selection expression `$request.body.action`). Toda requisição de aplicação leva também um `requestId`.
 
-| Rota (`action`) | Lambda | Campos | Requisitos |
-| --- | --- | --- | --- |
-| `$connect` | connect | query string: `username`, `displayName` | RF01 |
-| `$disconnect` | disconnect | — | RF01, RF07 |
-| `$default` | default | — | RF09 |
-| `sync` | app | `since` (opcional, instante em ms) | RF07, RF08, RF10 |
-| `heartbeat` | app | — | RF07, RF08 |
-| `sendMessage` | app | `conversationId`, `messageId`, `text` | RF02, RF11, RF12 |
-| `openDirect` | app | `username` | RF03 |
-| `createGroup` | app | `name`, `members` | RF04 |
-| `addMember` | app | `conversationId`, `username` | RF04 |
-| `leaveGroup` | app | `conversationId` e, opcionalmente, `confirm` | RF04 |
-| `getHistory` | app | `conversationId` e, opcionalmente, `before` ou `after` (um limite de `sk`) | RF06, RF08 |
-| `search` | app | `query` | RF05 |
+| Rota (`action`) | Lambda     | Campos                                                                     | Requisitos       |
+| --------------- | ---------- | -------------------------------------------------------------------------- | ---------------- |
+| `$connect`      | connect    | query string: `username`, `displayName`                                    | RF01             |
+| `$disconnect`   | disconnect | —                                                                          | RF01, RF07       |
+| `$default`      | default    | —                                                                          | RF09             |
+| `sync`          | app        | `since` (opcional, instante em ms)                                         | RF07, RF08, RF10 |
+| `heartbeat`     | app        | —                                                                          | RF07, RF08       |
+| `sendMessage`   | app        | `conversationId`, `messageId`, `text`                                      | RF02, RF11, RF12 |
+| `openDirect`    | app        | `username`                                                                 | RF03             |
+| `createGroup`   | app        | `name`, `members`                                                          | RF04             |
+| `addMember`     | app        | `conversationId`, `username`                                               | RF04             |
+| `leaveGroup`    | app        | `conversationId` e, opcionalmente, `confirm`                               | RF04             |
+| `getHistory`    | app        | `conversationId` e, opcionalmente, `before` ou `after` (um limite de `sk`) | RF06, RF08       |
+| `search`        | app        | `query`                                                                    | RF05             |
 
 Exemplo:
 
@@ -250,17 +250,17 @@ Em toda requisição, a Lambda `app` atualiza `lastSeenAt` e resolve o usuário 
 
 Tudo o que o cliente recebe, inclusive as respostas às próprias requisições, chega por `postToConnection` (D06). Todo evento tem um campo `type`.
 
-| `type` | Quando | Campos principais |
-| --- | --- | --- |
-| `response` | resposta a uma requisição | `requestId`, `data` |
-| `error` | requisição recusada (RF09) | `requestId` (quando houver), `messageId` (quando a requisição é uma mensagem, RF12), `code`, `message` e, em alguns erros, `details` |
-| `pong` | resposta ao heartbeat | `requestId` |
-| `message` | nova mensagem em uma conversa (RF02) | `conversationId`, `sk`, `messageId`, `sender`, `text`, `sentAt` |
-| `presence` | anúncio do estado de um contato (RF01, RF07) | `username`, `displayName`, `online`, `version` |
-| `conversationAdded` | conversa nova visível (RF10) | `conversation`, com os mesmos campos de cada conversa do `sync` (seção 4.5) |
-| `conversationRemoved` | saída de um grupo (RF04) | `conversationId` |
-| `memberJoined` | entrada de membro (RF04, RF07) | `conversationId` e `member` (estado do novo membro) |
-| `memberLeft` | saída de membro (RF04) | `conversationId`, `username` |
+| `type`                | Quando                                       | Campos principais                                                                                                                    |
+| --------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `response`            | resposta a uma requisição                    | `requestId`, `data`                                                                                                                  |
+| `error`               | requisição recusada (RF09)                   | `requestId` (quando houver), `messageId` (quando a requisição é uma mensagem, RF12), `code`, `message` e, em alguns erros, `details` |
+| `pong`                | resposta ao heartbeat                        | `requestId`                                                                                                                          |
+| `message`             | nova mensagem em uma conversa (RF02)         | `conversationId`, `sk`, `messageId`, `sender`, `text`, `sentAt`                                                                      |
+| `presence`            | anúncio do estado de um contato (RF01, RF07) | `username`, `displayName`, `online`, `version`                                                                                       |
+| `conversationAdded`   | conversa nova visível (RF10)                 | `conversation`, com os mesmos campos de cada conversa do `sync` (seção 4.5)                                                          |
+| `conversationRemoved` | saída de um grupo (RF04)                     | `conversationId`                                                                                                                     |
+| `memberJoined`        | entrada de membro (RF04, RF07)               | `conversationId` e `member` (estado do novo membro)                                                                                  |
+| `memberLeft`          | saída de membro (RF04)                       | `conversationId`, `username`                                                                                                         |
 
 O estado de um usuário é sempre o mesmo conjunto de campos: `username`, `displayName`, `online` e `version`. Ele acompanha cada membro em `conversationAdded`, em `memberJoined` e nas respostas de `sync`, `openDirect` e `createGroup`, e cada usuário no resultado de `search`. Assim, o cliente recebe a presença de quem surge em uma das suas conversas (RF07) e compara pela versão o estado dessas respostas com o dos anúncios (seção 3.5). O backend lê esses estados depois de gravar a participação que torna os usuários contatos; uma mudança posterior à leitura já encontra a participação gravada e é anunciada ao novo contato.
 
@@ -299,7 +299,7 @@ sequenceDiagram
     Note over L,G: 410 Gone → desvincular a conexão (seção 3.4) e seguir com as demais
 ```
 
-1. A Lambda resolve o remetente pelo `connectionId`, valida o corpo (incluindo o limite server-side de `32 KB` UTF-8 para `text`, recusando excessos com `invalidRequest` em `field: "text"` e mantendo o `messageId` para evitar payloads multi-frame perto de `128 KB` que quebrariam o `getHistory`), lê a conversa e confere se ele é membro dela.
+1. A Lambda resolve o remetente pelo `connectionId`, valida o corpo (incluindo o limite de `32 KB` UTF-8 para `text`, que recusa excessos com `invalidRequest` em `field: "text"` e mantém o `messageId`; sem esse limite, um cliente que não seja o web poderia gravar uma mensagem perto de `128 KB`, cuja página de histórico passaria do limite do `@connections`), lê a conversa e confere se o remetente é membro dela.
 2. Grava, em uma única transação, o marcador `id#<sender>#<messageId>` (com a condição de que ainda não exista) e a mensagem `m#<sentAt>#<sender>#<messageId>`. Como o marcador inclui o remetente, outro usuário pode usar o mesmo `messageId` sem que sua mensagem seja tomada por um reenvio (T7).
 3. Se a transação é cancelada:
    - Por `ConditionalCheckFailed` no marcador, é um reenvio da fila do cliente (RF12, R07). A Lambda lê o marcador e, pelo `ref`, a mensagem original, refaz os passos 4 e 5 com ela, que não têm efeito se já foram feitos, e a envia só à conexão que reenviou, como confirmação.
@@ -316,11 +316,11 @@ A ordem de uma conversa é a ordem do `sk` (`sentAt` e, no empate, remetente e `
 
 O cliente envia `heartbeat` a cada 30 s e, sem `pong` em 10 s, considera a conexão perdida e se reconecta com backoff exponencial, com a primeira tentativa imediata (RF08).
 
-Ao reconectar, o cliente envia `sync` com `since` igual ao maior destes dois instantes, menos 30 segundos: o `sentAt` da última mensagem recebida e o instante do último `sync`, que vem na resposta dele. Na primeira conexão, o `sync` vai sem `since`. O `sync` aponta as conversas com `lastMessageAt` posterior a ele. Para cada uma, o cliente pede `getHistory` com `after` igual ao último `sk` que tem, recuado também em 30 segundos, ou, se não tem nenhuma mensagem dela, sem `after`. A sobreposição cobre uma mensagem gravada depois de outra com `sentAt` maior: o `sentAt` é o instante em que o API Gateway recebeu a requisição, e a gravação pode acontecer até o fim do início a frio e do tempo limite de 10 s da Lambda `app`. As repetidas são descartadas pelo remetente e `messageId`, e nada se perde nem aparece duas vezes.
+Ao reconectar, o cliente envia `sync` com `since` igual ao maior destes dois instantes, menos 30 segundos: o `sentAt` da última mensagem recebida e o instante do último `sync`, que vem na resposta dele. Na primeira conexão, o `sync` vai sem `since`. O `sync` aponta as conversas com `lastMessageAt` posterior a ele. Para cada uma cujo histórico já carregou, o cliente pede `getHistory` com `after` igual ao instante do último `sk` que tem (`m#<instante>#`), recuado também em 30 segundos, ou, se não tem nenhuma mensagem dela, sem `after`; as demais carregam o histórico ao serem abertas. A sobreposição cobre uma mensagem gravada depois de outra com `sentAt` maior: o `sentAt` é o instante em que o API Gateway recebeu a requisição, e a gravação pode acontecer até o fim do início a frio e do tempo limite de 10 s da Lambda `app`. As repetidas são descartadas pelo remetente e `messageId`, e nada se perde nem aparece duas vezes.
 
 Uma mensagem sem confirmação 15 s depois de enviada é reenviada (RF12). As pendentes de cada conversa são reenviadas uma por vez, cada uma após a confirmação da anterior; reenviadas juntas, duas mensagens da mesma conversa poderiam ter o mesmo `sentAt`, e o desempate pelo `messageId` inverteria a ordem original. Enquanto há pendentes em uma conversa, uma mensagem nova nessa conversa entra no fim da fila dela e só é enviada depois da confirmação das anteriores.
 
-O histórico é enviado em páginas de até 50 mensagens e até 28 KB, com pelo menos uma mensagem por página, para que uma mensagem grande não trave a paginação. Os testes T2.5 e T5.3 no estágio `dev` confirmaram que o API Gateway fragmenta automaticamente envios por `postToConnection` acima de 32 KB (até o limite de 128 KB), entregando mensagens perto de 32 KB e históricos acima de 140 KB em páginas (RF06, RF11).
+O histórico é enviado em páginas de até 50 mensagens e até 28 KB, com pelo menos uma mensagem por página, para que uma mensagem grande não trave a paginação. A tabela de cotas da API WebSocket do API Gateway (referências da especificação) diz que uma mensagem acima de 32 KB precisa ser dividida em frames e que isso vale para os comandos `@connections`, mas não diz se o API Gateway faz essa divisão em um `postToConnection`. A bateria automatizada no `dev` só enviou eventos abaixo de 32 KB, então o comportamento real ainda precisa ser mostrado pelo T2.5 e pelo T5.3, com mensagens no limite do RF11 (RF06).
 
 ### 4.5 Demais rotas
 
@@ -331,7 +331,7 @@ O histórico é enviado em páginas de até 50 mensagens e até 28 KB, com pelo 
 - **`addMember`:** só vale em grupo (`invalidOperation` no chat privado), limita o grupo a no máximo **99 membros** (como no `createGroup`) e recusa um usuário inexistente (`notFound`) ou que já é membro (`invalidOperation`). Em uma transação, inclui o usuário em `Conversations.members`, com a condição de que quem adiciona ainda seja membro, o novo ainda não seja e `size(members) < 99`, e grava a participação dele, com `joinedAt`. Na falha da condição, a Lambda pede o item (`ReturnValuesOnConditionCheckFailure`) e responde `forbidden`, se quem adiciona já não é membro, ou `invalidOperation`, se o novo já é membro ou se o grupo atingiu o limite de 99 membros. Envia `memberJoined` às conexões dos membros anteriores e `conversationAdded` às do novo membro, que passa a ler todo o histórico (RF04).
 - **`leaveGroup`:** só vale em grupo (`invalidOperation` no chat privado). Em uma transação, retira o usuário de `Conversations.members`, com a condição de que ele seja membro e, se a requisição vem sem `confirm`, de que não seja o único (`size(members) > 1`), e apaga a participação. A Lambda pede o item na falha da condição (`ReturnValuesOnConditionCheckFailure`) para distinguir os casos: se o usuário já não está em `members`, responde `forbidden`; senão, `lastMember`. Como a condição faz parte da transação, dois membros que saem ao mesmo tempo não deixam o grupo vazio sem aviso: o segundo recebe o erro `lastMember`, o cliente mostra o aviso do RF04 e, se o usuário confirma, repete a requisição com `confirm` verdadeiro. Envia `conversationRemoved` a todas as conexões de quem saiu e `memberLeft` às dos que ficaram. Um grupo de que todos saíram fica sem membros e inacessível.
 - **`getHistory`:** sem `before` nem `after`, consulta `begins_with(sk, "m#")` em ordem decrescente e responde com a página mais recente; com `before`, consulta `sk BETWEEN "m#" AND :before` em ordem decrescente, sem o próprio `before`, e responde com a página anterior; com `after`, consulta `sk BETWEEN :after AND "m$"` em ordem crescente, sem o próprio `after`, e responde com a seguinte. Os dois juntos são recusados (`invalidRequest`). A resposta traz `messages` em ordem de `sk` e `hasMore` indicando se há mais (seção 4.4).
-- **`search`:** compara a `query` normalizada (sem diferenciar maiúsculas nem acentos `pt-BR`, via decomposição Unicode NFD) com o nome das conversas em que o usuário tem participação visível (o nome do grupo ou o nome de exibição do outro usuário) e com o nome de usuário e o nome de exibição dos demais usuários. A comparação é feita na Lambda, sobre a leitura completa de `Users` (seção 7), e a resposta traz até **50** `conversations` e até **50** `people` (cada usuário encontrado com o seu estado, RF05, RF07).
+- **`search`:** compara a `query` normalizada (sem diferenciar maiúsculas nem acentos `pt-BR`, via decomposição Unicode NFD) com o nome das conversas em que o usuário tem participação visível (o nome do grupo ou, no chat privado, o nome de usuário e o nome de exibição do outro usuário) e com o nome de usuário e o nome de exibição dos demais usuários. A comparação é feita na Lambda, sobre a leitura completa de `Users` (seção 7), e a resposta traz até **50** `conversations`, somando no máximo 28 KB (com pelo menos uma), e até **50** `people` (cada usuário encontrado com o seu estado, RF05, RF07). Quem aparece em um chat privado de `conversations` fica fora de `people`, mesmo que a pesquisa tenha encontrado apenas o nome de usuário dele.
 
 ### 4.6 Comportamento do cliente
 
@@ -342,7 +342,7 @@ O cliente web guarda no armazenamento local do navegador (`localStorage`), separ
 
 As abas do mesmo usuário mantêm esses dados em sincronia pelo evento `storage`, que avisa cada aba das gravações feitas pelas outras (RF01, RF10).
 
-O navegador tem um único usuário por vez. Fora da chave por usuário, o cliente guarda o nome de usuário atual do navegador: uma aba recarregada ou aberta depois entra com ele, sem passar pela entrada. Sair do cliente em uma aba o apaga, e as outras abas, avisadas pelo evento `storage`, saem também; entrar em uma aba o grava, depois que a primeira conexão abre, e as abas que estão na entrada entram com o mesmo usuário. Ao receber o evento `storage`, a aba lê o usuário atual gravado; se há um e ele difere do seu, como quando duas abas entram ao mesmo tempo, ela fecha a própria conexão, descarta a fila e os dados em memória, sem apagar o usuário gravado, e entra com ele (RF01).
+O navegador tem um único usuário por vez. Fora da chave por usuário, o cliente guarda o nome de usuário atual do navegador: uma aba recarregada ou aberta depois entra com ele, sem passar pela entrada. Sair do cliente em uma aba o apaga, e as outras abas, avisadas pelo evento `storage`, saem também; entrar em uma aba o grava, depois que o `sync` da entrada responde, e as abas que estão na entrada entram com o mesmo usuário. Ao receber o evento `storage`, a aba lê o usuário atual gravado; se há um e ele difere do seu, como quando duas abas entram ao mesmo tempo, ela fecha a própria conexão, descarta a fila e os dados em memória, sem apagar o usuário gravado, e entra com ele (RF01).
 
 O navegador não expõe ao cliente o status nem o corpo de um handshake recusado (seção 3.4), só o fechamento da conexão, igual ao de uma falha de rede. Por isso, o cliente confere o nome de usuário e o de exibição com as regras da seção 3.1 antes de conectar. Quando o usuário entra pela entrada, uma falha ao abrir a primeira conexão é mostrada como falha ao entrar, sem reconexão automática; uma aba que entra com o usuário atual do navegador trata a falha como uma queda (RF01, RF08). Nessa aba, um nome de exibição guardado fora das regras é apagado, e a aba conecta sem ele; um usuário atual fora das regras é apagado, e as abas voltam à entrada.
 
@@ -350,13 +350,13 @@ A fila de reenvio (RF12) fica só na memória da aba. Se há mensagens pendentes
 
 Na lista de conversas, as conversas sem mensagens ficam acima das demais, ordenadas pelo `joinedAt`, a mais recente primeiro, inclusive depois de uma recarga (RF10).
 
-Na pesquisa, as conversas seguem a ordem da lista, e uma pessoa encontrada que já tem um chat privado visível com o usuário aparece só como esse chat, mesmo que a pesquisa tenha encontrado apenas o nome de usuário dela (RF05).
+Na pesquisa, as conversas seguem a ordem da lista (RF05).
 
 Para trocar o nome de exibição, o cliente abre uma conexão nova com o nome novo, passa a enviar as requisições por ela e fecha a antiga depois que as respostas pendentes nela chegam ou expiram, sem indicar perda de conexão, e os contatos não veem o usuário passar a offline (RF01). Nesse intervalo, um aviso de entrada ou saída de membro que chega pelas duas conexões é mostrado uma vez só.
 
 Os eventos `memberJoined` e `memberLeft` não ficam no histórico. O cliente os guarda em memória, por conversa, durante a sessão, e põe cada aviso logo depois da mensagem mais recente que conhece da conversa, inclusive as de eventos `message` recebidos com ela fechada, ou do `lastMessageAt` dela, se for maior; sem nenhum dos dois, no início da conversa. Assim a posição não depende do relógio do navegador (RF04).
 
-Quando o cliente detecta a queda — pelo fechamento da conexão, pelo heartbeat sem resposta ou por uma sondagem imediata disparada pelo evento `offline` da `window` —, ele a indica (RF08) e oculta a presença dos outros (RF07) se a resposta do `sync` da reconexão não chegar em até 3 s a partir dessa detecção; uma queda mais curta, como em geral o fim das 2 horas (L02), não é indicada. Ao receber o evento `online` da `window`, o cliente acorda imediatamente a espera do backoff para reconectar sem aguardar o temporizador corrente. Depois de uma queda indicada, a presença dos outros volta a ser mostrada com a resposta do `sync` da reconexão (RF07), e é com ela que o cliente indica a volta da conexão (RF08). Se a resposta de um `sync` não chega em 15 s, o cliente o repete e, se a segunda resposta também não chega, reconecta (RF08).
+Quando o cliente detecta a queda — pelo fechamento da conexão, pelo heartbeat sem resposta ou por uma sondagem imediata disparada pelo evento `offline` da `window` —, ele a indica (RF08) e oculta a presença dos outros (RF07) se a resposta do `sync` da reconexão não chegar em até 3 s a partir dessa detecção; uma queda mais curta, como em geral o fim das 2 horas (L02), não é indicada. Ao receber o evento `online` da `window`, o cliente acorda imediatamente a espera do backoff para reconectar sem aguardar o temporizador corrente. Depois de uma queda indicada, a presença dos outros volta a ser mostrada com a resposta do `sync` da reconexão (RF07), e é com ela que o cliente indica a volta da conexão (RF08). Se a resposta do `sync` da reconexão não chega em 15 s, o cliente o repete e, se a segunda resposta também não chega, reconecta (RF08).
 
 Sem conexão, as mensagens entram na fila de reenvio (RF12), mas as demais ações ficam desabilitadas desde a queda, mesmo antes de ela ser indicada: pesquisar, iniciar um chat, criar um grupo, adicionar pessoas, sair de um grupo, trocar o nome de exibição, abrir uma conversa ainda não carregada e voltar no histórico (RF08). Uma requisição sem resposta em 15 s, exceto `sendMessage`, `heartbeat` e `sync`, que têm tratamento próprio, é dada como sem resposta: o cliente avisa que ela pode não ter sido feita, e uma pesquisa ou um carregamento do histórico pode ser repetido (RF09). Uma resposta ou um erro que chega depois é ignorado; um evento como o `conversationAdded` de um grupo criado é aplicado normalmente.
 
@@ -368,7 +368,7 @@ O cliente registra no console do navegador as tentativas de reconexão, os anún
 
 Cada Lambda escreve uma linha JSON por requisição (RNF03), inclusive quando a requisição falha com uma exceção. A linha traz a rota, o resultado, o código de erro, o nome da exceção (quando houver) e a duração, contada a partir do instante em que o API Gateway recebeu a requisição. O resultado indica também se a mensagem era um reenvio e se a resposta deixou de ser entregue porque a conexão já tinha caído. Os identificadores (`connectionId`, `username` e `conversationId`) aparecem anonimizados como os 12 primeiros caracteres hexadecimais de `HMAC-SHA256(segredo, valor)`. O segredo fica no SSM Parameter Store e é o mesmo em todas as Lambdas do estágio, então um mesmo identificador gera sempre o mesmo valor anonimizado e os logs continuam correlacionáveis. O texto das mensagens nunca é registrado.
 
-O segredo é um parâmetro `SecureString` criado uma vez por estágio, fora do CDK, porque o CloudFormation não cria parâmetros desse tipo e o valor não pode ficar no repositório. O stack só referencia o parâmetro pelo nome e concede a leitura às quatro Lambdas de rota (`connect`, `disconnect`, `default` e `app`); cada uma pré-carrega o segredo em paralelo no início a frio (aguardando-o apenas antes de gravar o log) e, em caso de falha do SSM, emite um aviso único no console e omite os identificadores sem vazá-los em claro. O parâmetro é cifrado com a chave gerenciada pela AWS para o SSM (`aws/ssm`), e não com uma chave gerenciada pelo cliente. Decifrar um `SecureString` exige `kms:Decrypt`, então essas quatro Lambdas recebem essa permissão restrita a `alias/aws/ssm` via `ssm.<região>.amazonaws.com`, além de `ssm:GetParameter` no parâmetro. Os `LogGroup`s gerenciados pelo CDK mantêm retenção de `14 dias` em `dev` e `30 dias` em `prod`.
+O segredo é um parâmetro `SecureString` criado uma vez por estágio, fora do CDK, porque o CloudFormation não cria parâmetros desse tipo e o valor não pode ficar no repositório. O stack só referencia o parâmetro pelo nome e concede a leitura às quatro Lambdas de rota (`connect`, `disconnect`, `default` e `app`); cada uma pré-carrega o segredo em paralelo no início a frio (aguardando-o apenas antes de gravar o log) e, quando a leitura do SSM falha, emite um aviso no console, omite os identificadores sem vazá-los em claro e só tenta ler de novo depois de 60 s. O parâmetro é cifrado com a chave gerenciada pela AWS para o SSM (`aws/ssm`), e não com uma chave gerenciada pelo cliente. Decifrar um `SecureString` exige `kms:Decrypt`, então essas quatro Lambdas recebem essa permissão restrita a `alias/aws/ssm` via `ssm.<região>.amazonaws.com`, além de `ssm:GetParameter` no parâmetro. Os `LogGroup`s gerenciados pelo CDK mantêm retenção de `14 dias` em `dev` e `30 dias` em `prod`.
 
 O painel (RNF06) usa as métricas que o API Gateway publica para a API WebSocket (`ConnectCount`, `MessageCount`, `IntegrationError`, `ClientError`, `ExecutionError` e `IntegrationLatency`), as métricas das Lambdas (`Invocations`, `Errors`, `Duration` de `app`/`connect`/`presenceSweeper` e `Throttles`) e as métricas de erro/throttling do DynamoDB (`SystemErrors` e `ThrottledRequests`). O `MessageCount` soma as requisições e os envios aos clientes; as requisições aparecem sozinhas nas invocações das Lambdas `app` e `default`. O API Gateway não publica o número de conexões abertas, então o `presenceSweeper`, que já percorre `Connections` a cada minuto, publica essa contagem como métrica própria (`OpenConnections`). O stack também provisiona três alarmes no CloudWatch por estágio (`AppErrors`, `AppThrottles` e `PresenceSweeperDuration`).
 
@@ -397,5 +397,5 @@ O painel (RNF06) usa as métricas que o API Gateway publica para a API WebSocket
 - O nome de exibição guardado pelo cliente só é compartilhado entre as abas do mesmo navegador (seção 4.6). Um cliente aberto em outro navegador ou dispositivo antes da troca volta a enviar o nome antigo ao reconectar, e os contatos veem o nome voltar, porque vale o nome da conexão mais recente (RF01).
 - O aviso do `beforeunload` não é garantido em navegadores de celular, em que fechar ou descartar a página pode perder sem aviso as mensagens pendentes (seção 4.6, L04); as que o backend já gravou chegam normalmente.
 - As entradas e saídas de membros não geram aviso em um cliente que estava desconectado ou que foi aberto ou recarregado depois delas, porque esses eventos não são reenviados nem guardados, e o `sync` traz só os membros atuais (RF04).
-- Uma mensagem perto do limite do RF11 gera um evento `message` ligeiramente acima de 32 KB. Os testes T2.5 e T5.3 no `dev` confirmaram que o API Gateway divide automaticamente envios por `postToConnection` acima de 32 KB até 128 KB; além disso, o `sendMessage` impõe um teto server-side de `32 KB` UTF-8 para impedir mensagens multi-frame perto de `128 KB` que excederiam o limite do `postToConnection`.
-- A resposta de `sync` não é paginada (enquanto `search` limita a saída a 50 conversas e 50 pessoas e grupos têm teto de 99 membros). Com um número muito grande de conversas por usuário, o `sync` poderia aproximar-se do limite de 128 KB do `@connections`.
+- Uma mensagem perto do limite do RF11 gera um evento `message` ligeiramente acima de 32 KB. Se o API Gateway não dividir em frames os envios por `@connections` (seção 4.4), o limite do RF11 terá de baixar.
+- A resposta de `sync` não é paginada. Com um número muito grande de conversas por usuário, ela poderia aproximar-se do limite de 128 KB do `@connections`. A do `search` não chega perto dele, porque limita as conversas a 50 e a 28 KB e as pessoas a 50.

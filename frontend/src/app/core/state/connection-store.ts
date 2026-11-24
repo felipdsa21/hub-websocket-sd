@@ -1,7 +1,5 @@
 import { DestroyRef, Service, computed, inject, signal } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
-import { Scenarios } from '@/core/fixtures/scenarios';
-import { HubConfig } from '@/core/hub/hub-config';
 import { HubSocket } from '@/core/hub/hub-socket';
 
 export type ConnectionStatus = 'connected' | 'lost';
@@ -11,12 +9,10 @@ export const LOSS_INDICATION_MS = 3_000;
 
 @Service()
 export class ConnectionStore {
-  private readonly scenarios = inject(Scenarios);
-  private readonly config = inject(HubConfig);
   private readonly socket = inject(HubSocket);
 
   private readonly reconnecting = signal(false);
-  private readonly lossIndicatedLive = signal(false);
+  private readonly lossIndicatedSignal = signal(false);
   private readonly reconnectedSubject = new Subject<void>();
   private lossTimer?: ReturnType<typeof setTimeout>;
 
@@ -28,22 +24,17 @@ export class ConnectionStore {
   }
 
   /**
-   * With the backend, open and synced; actions that need the backend are disabled as soon as the
-   * connection drops, even before the drop is indicated (architecture, section 4.6).
+   * Open and synced; actions that need the backend are disabled as soon as the connection drops,
+   * even before the drop is indicated (architecture, section 4.6).
    */
-  public readonly status = computed<ConnectionStatus>(() => {
-    if (this.config.live()) {
-      return this.socket.status() === 'open' && !this.reconnecting() ? 'connected' : 'lost';
-    }
-    return this.scenarios.has('sem-conexao') ? 'lost' : 'connected';
-  });
+  public readonly status = computed<ConnectionStatus>(() =>
+    this.socket.status() === 'open' && !this.reconnecting() ? 'connected' : 'lost',
+  );
 
   public readonly connected = computed(() => this.status() === 'connected');
 
   /** True when the drop banner is shown and others' presence is hidden (RF07, RF08). */
-  public readonly lossIndicated = computed(() =>
-    this.config.live() ? this.lossIndicatedLive() : this.scenarios.has('sem-conexao'),
-  );
+  public readonly lossIndicated = this.lossIndicatedSignal.asReadonly();
 
   /** Others' presence stays visible during a short drop (<= 3 s) and returns after `sync`. */
   public readonly presenceVisible = computed(() => !this.lossIndicated());
@@ -58,7 +49,7 @@ export class ConnectionStore {
     this.lossTimer = setTimeout(() => {
       this.lossTimer = undefined;
       if (this.reconnecting()) {
-        this.lossIndicatedLive.set(true);
+        this.lossIndicatedSignal.set(true);
       }
     }, LOSS_INDICATION_MS);
   }
@@ -67,9 +58,9 @@ export class ConnectionStore {
   public markRecovered(): void {
     clearTimeout(this.lossTimer);
     this.lossTimer = undefined;
-    const wasIndicated = this.lossIndicatedLive();
+    const wasIndicated = this.lossIndicatedSignal();
     this.reconnecting.set(false);
-    this.lossIndicatedLive.set(false);
+    this.lossIndicatedSignal.set(false);
     if (wasIndicated) {
       this.reconnectedSubject.next();
     }
@@ -80,6 +71,6 @@ export class ConnectionStore {
     clearTimeout(this.lossTimer);
     this.lossTimer = undefined;
     this.reconnecting.set(false);
-    this.lossIndicatedLive.set(false);
+    this.lossIndicatedSignal.set(false);
   }
 }

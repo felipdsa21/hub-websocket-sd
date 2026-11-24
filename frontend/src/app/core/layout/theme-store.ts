@@ -1,4 +1,4 @@
-import { DOCUMENT, DestroyRef, Service, computed, inject, signal } from '@angular/core';
+import { DOCUMENT, DestroyRef, Service, inject, signal } from '@angular/core';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -17,35 +17,15 @@ function parsePreference(value: string | null): ThemePreference {
 export class ThemeStore {
   private readonly document = inject(DOCUMENT);
   private readonly window = this.document.defaultView;
-  private readonly darkMedia = this.window?.matchMedia?.('(prefers-color-scheme: dark)') ?? null;
 
   private readonly preferenceSignal = signal<ThemePreference>(this.readStored());
-  private readonly systemDark = signal(this.darkMedia?.matches ?? false);
 
   public readonly preference = this.preferenceSignal.asReadonly();
-  public readonly isDark = computed(() => {
-    const pref = this.preferenceSignal();
-    return pref === 'dark' || (pref === 'system' && this.systemDark());
-  });
 
   constructor() {
     this.apply(this.preferenceSignal());
 
     const win = this.window;
-    const destroyRef = inject(DestroyRef);
-
-    const media = this.darkMedia;
-    if (media) {
-      const onMediaChange = (event: MediaQueryListEvent) => this.systemDark.set(event.matches);
-      if (typeof media.addEventListener === 'function') {
-        media.addEventListener('change', onMediaChange);
-        destroyRef.onDestroy(() => media.removeEventListener?.('change', onMediaChange));
-      } else if (typeof media.addListener === 'function') {
-        media.addListener(onMediaChange);
-        destroyRef.onDestroy(() => media.removeListener?.(onMediaChange));
-      }
-    }
-
     if (win) {
       const onStorage = (event: StorageEvent) => {
         if (event.storageArea && event.storageArea !== this.localStorageOrNull()) {
@@ -58,7 +38,7 @@ export class ThemeStore {
         }
       };
       win.addEventListener('storage', onStorage);
-      destroyRef.onDestroy(() => win.removeEventListener('storage', onStorage));
+      inject(DestroyRef).onDestroy(() => win.removeEventListener('storage', onStorage));
     }
   }
 
@@ -66,11 +46,6 @@ export class ThemeStore {
     this.preferenceSignal.set(preference);
     this.apply(preference);
     this.writeStored(preference);
-  }
-
-  /** Switches between dark and light based on the currently active appearance. */
-  public toggle(): void {
-    this.set(this.isDark() ? 'light' : 'dark');
   }
 
   private apply(preference: ThemePreference): void {
