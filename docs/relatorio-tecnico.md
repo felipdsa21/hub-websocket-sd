@@ -12,7 +12,7 @@ O **Hub Colaborativo WebSocket** é uma aplicação distribuída de comunicaçã
 
 ## 2. Fundamentação científica e mecanismos de comunicação
 
-Com base no whitepaper oficial _Real-Time Communication on AWS_ e nos fundamentos de sistemas distribuídos, a escolha de **WebSockets sobre Amazon API Gateway** resolve limitações estruturais de modelos baseados em HTTP tradicional:
+Com base nos fundamentos de sistemas distribuídos, a escolha de **WebSockets sobre Amazon API Gateway** resolve limitações estruturais de modelos baseados em HTTP tradicional:
 
 - **HTTP Polling / Long Polling:** impõem sobrecarga contínua de cabeçalhos, latência acoplada ao intervalo de consulta e desperdício de computação em requisições vazias.
 - **Server-Sent Events (SSE):** atendem entrega unidirecional servidor → cliente sobre HTTP, exigindo canais separados para envio e oferecendo suporte limitado a controle de sessão bidirecional.
@@ -53,8 +53,8 @@ Conforme detalhado em [docs/observabilidade-implantacao.md](observabilidade-impl
 ### 6.1 Testes unitários, integração na AWS e E2E em navegador real
 
 - **Testes automatizados locais:** **126 testes** unitários/infra no backend (6 suítes Jest + `cdk synth` `dev`/`prod`) e **190 testes** no frontend (58 suítes Angular/Vitest), todos com lint, typecheck e formatação validados.
-- **Bateria de integração ao vivo no estágio `dev` ([docs/testes.md](testes.md)):** **12/12 cenários aprovados** contra a AWS real cobrindo T2 (`31,6 KB` UTF-8), T3 (isolamento, histórico, ordenação concorrente, `lastMember`), T4 (pesquisa sem acento `pt-BR`), T5 (histórico > `128 KB` paginado em 5 páginas), T6 (presença multi-aba), **T7.1 (`410 Gone` / `GoneException` real)**, **T7.2 (expiração real pelo `presenceSweeper`)**, T7.3/5 (reenvio idempotente e recuperação pós-queda), segurança (`$connect` incluindo controles/bidi e `forbidden` RNF01) e auditoria no CloudWatch Logs (`appLogs` com 45 linhas JSON + `presenceSweeperLogs`, zero vazamentos).
-- **Validação E2E em Chromium sobre CloudFront HTTPS:** **13/13 verificações aprovadas** com zero erros de console, zero violações de CSP e zero HTTP >= 400 (incluindo troca de `displayName` paralela sem `offline`, recarga F5 + 2ª aba + sincronização multi-aba de logout/login via `storage`, pesquisa, escolha de pessoas, bloqueio por teclado offline e contraste WCAG AA nos modos claro e escuro).
+- **Bateria de integração ao vivo no estágio `dev` ([docs/testes.md](testes.md)):** **12/12 cenários aprovados** contra a AWS real cobrindo partes do T2 (`31,6 KB` UTF-8, sem o bloqueio de 40 KB no cliente web), T3 (isolamento, histórico, ordenação concorrente, `lastMember`), T4 (pesquisa sem acento `pt-BR`), parte do T5 (histórico > `128 KB` paginado em 5 páginas, com mensagens de ~28 KB), T6 (presença multi-aba), **T7.1 (`410 Gone` / `GoneException` real)**, parte do T7.2 (remoção pelo `presenceSweeper` de um registro gravado já ocioso), T7.5 (reenvio idempotente), recuperação pós-queda com um cliente de script, segurança (`$connect` incluindo controles/bidi e `forbidden` RNF01) e auditoria no CloudWatch Logs (`appLogs` com 45 linhas JSON + `presenceSweeperLogs`, zero vazamentos).
+- **Validação E2E em Chromium sobre CloudFront HTTPS ([docs/testes.md](testes.md)):** zero erros de console, zero violações de CSP e zero HTTP >= 400 (incluindo troca de `displayName` paralela sem `offline`, recarga F5 + 2ª aba + sincronização multi-aba de logout/login via `storage`, pesquisa, escolha de pessoas, bloqueio por teclado offline e contraste WCAG AA nos modos claro e escuro), sem capturas nem logs no repositório.
 
 ### 6.2 Experimento prático de desempenho (T8)
 
@@ -68,7 +68,7 @@ Os resultados completos, gráficos e métricas de infraestrutura estão em [docs
 
 Principais conclusões experimentais:
 
-1. A migração das Lambdas de rota para **`512 MB` ARM64** e a remoção da espera de `30 s` do `presenceSweeper` (`~105 ms` por execução) reduziram o p95 de 10 usuários de `551,06 ms` para **`166,05 ms`** (−69,9%), cumprindo o **RNF02** com mais de 3× de folga e elevando a vazão para **`278,16` entregas/s**.
+1. A migração das Lambdas de rota para **`512 MB` ARM64** e a remoção da espera de `30 s` do `presenceSweeper` (`~105 ms` por execução) reduziram o p95 de 10 usuários de `551,06 ms` (medição anterior, sem dados brutos em `docs/dados/`) para **`166,05 ms`** (−69,9%), cumprindo o **RNF02** com mais de 3× de folga e elevando a vazão para **`278,16` entregas/s**.
 2. O descarte da rodada de aquecimento (R05) reduziu a latência média em **67,1%** sob 10 usuários (`488,86 ms` → `160,67 ms`) e o p95 em **83,4%** (`1.002,33 ms` → `166,05 ms`).
 3. As cinco funções Lambda registraram **0 erros** e as cinco tabelas DynamoDB registraram **0 throttling**, com apenas 1 retry pontual na cauda `p99`/`máx` devido à cota inicial `ConcurrentExecutions = 10` da conta nova (recuperado sem perda nem duplicação por RF12).
 
@@ -78,5 +78,4 @@ A arquitetura _serverless_ com API Gateway WebSocket, Lambda (ARM64) e DynamoDB 
 
 ## Referências
 
-- AWS Whitepaper — _Real-Time Communication on AWS_.
 - Documentação técnica do projeto: [especificacao.md](especificacao.md), [arquitetura.md](arquitetura.md), [sessao.md](sessao.md), [sincronizacao.md](sincronizacao.md), [tolerancia-falhas.md](tolerancia-falhas.md), [observabilidade-implantacao.md](observabilidade-implantacao.md), [testes.md](testes.md), [avaliacao-desempenho.md](avaliacao-desempenho.md), [metricas-infraestrutura.md](metricas-infraestrutura.md) e [roteiro-demonstracao.md](roteiro-demonstracao.md).

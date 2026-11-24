@@ -49,6 +49,8 @@ Os dados completos do CloudWatch exportados durante a bateria ([docs/metricas-in
 
 ### Evolução antes vs. depois das otimizações de memória, arquitetura e `presenceSweeper` (10 usuários — T8)
 
+Os números do baseline vêm de uma medição anterior, cujos dados brutos não estão em `docs/dados/`.
+
 | Configuração          | Memória / Arquitetura (`app`) | `presenceSweeper`                | Média T8 (ms) | p95 T8 (ms) | Vazão (entregas/s) | RNF02 (`p95 < 500 ms`)       |
 | --------------------- | ----------------------------- | -------------------------------- | ------------: | ----------: | -----------------: | ---------------------------- |
 | Baseline inicial      | `128 MB` x86_64               | 2 varreduras, com espera de 30 s |        368,14 |      551,06 |             157,74 | Não atendido                 |

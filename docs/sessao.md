@@ -42,7 +42,7 @@ Toda mensagem WebSocket viaja em um ou mais frames. Cada frame tem um cabeçalho
 - **opcode:** o tipo do frame, de dados (texto `0x1`, binário `0x2`, continuação `0x0`) ou de controle (fechamento `0x8`, ping `0x9`, pong `0xA`).
 - **máscara e tamanho:** os frames do cliente são mascarados, e o cabeçalho traz o tamanho do conteúdo; o navegador e o API Gateway cuidam dos dois.
 
-As requisições do cliente web e os eventos do backend são texto com JSON, nunca binários. O API Gateway impõe limites próprios: 32 KB por frame e 128 KB por mensagem WebSocket, e fecha a conexão ao receber algo acima disso (L03), fragmentando automaticamente envios por `postToConnection` acima de 32 KB até 128 KB (validado em T2.5 e T5.3). Por isso o cliente e o backend limitam o tamanho das mensagens de chat a 32 KB (RF11) e o histórico é enviado em páginas (seção 4.4 da arquitetura).
+As requisições do cliente web e os eventos do backend são texto com JSON, nunca binários. O API Gateway impõe limites próprios: 32 KB por frame e 128 KB por mensagem WebSocket, e fecha a conexão ao receber algo acima disso (L03). Por isso o cliente e o backend limitam o tamanho das mensagens de chat a 32 KB (RF11) e o histórico é enviado em páginas (seção 4.4 da arquitetura).
 
 Os frames de ping e pong existem no protocolo, mas a API WebSocket do navegador não permite enviá-los nem observá-los. Por isso o heartbeat é uma requisição de aplicação (`heartbeat` → `pong`), que, além de manter a conexão ativa, passa pela Lambda e atualiza o `lastSeenAt` usado na expiração por inatividade (RF07, RF08).
 
