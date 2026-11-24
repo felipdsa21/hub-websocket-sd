@@ -62,6 +62,8 @@ describe('ConversationPage', () => {
   afterEach(() => {
     localStorage.clear();
     vi.useRealTimers();
+    // Test files share globals, so the stubs would reach the next files.
+    vi.unstubAllGlobals();
   });
 
   it('should create', () => {
