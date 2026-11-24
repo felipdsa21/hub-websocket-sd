@@ -520,29 +520,20 @@ export function isValidNameLength(name: string): boolean {
   return length >= 1 && length <= 50;
 }
 
-function hasDisallowedNameChar(value: string): boolean {
-  for (const ch of value) {
-    const code = ch.codePointAt(0)!;
-    if (
-      code <= 0x1f ||
-      code === 0x7f ||
-      (code >= 0x202a && code <= 0x202e) ||
-      (code >= 0x2066 && code <= 0x2069)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
+// Controls, line and paragraph separators and format characters (bidi controls, zero-width spaces),
+// except the joiners that emoji sequences and some scripts need.
+const DISALLOWED_NAME_CHAR = /[\p{Cc}\p{Zl}\p{Zp}]|(?![\u200c\u200d])\p{Cf}/u;
+// A character that is neither blank nor ignorable, unlike the Hangul filler.
+const VISIBLE_NAME_CHAR = /[^\s\p{Default_Ignorable_Code_Point}]/u;
 
 /**
  * Validates and normalizes a display or group name (architecture, sections 3.1 and 4.5):
- * rejects ASCII control and bidi override/isolate characters, trims outer whitespace,
- * and requires 1 to 50 Unicode code points.
+ * rejects the characters above, trims outer whitespace, and requires 1 to 50 Unicode code
+ * points with at least one visible character.
  */
 export function parseDisplayName(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  if (hasDisallowedNameChar(value)) return undefined;
+  if (DISALLOWED_NAME_CHAR.test(value)) return undefined;
   const trimmed = value.trim();
-  return isValidNameLength(trimmed) ? trimmed : undefined;
+  return isValidNameLength(trimmed) && VISIBLE_NAME_CHAR.test(trimmed) ? trimmed : undefined;
 }

@@ -77,6 +77,15 @@ describe('connect', () => {
     [{ username: 'ana', displayName: 'Ana\u007f' }, undefined],
     [{ username: 'ana', displayName: 'Ana\u202e' }, undefined],
     [{ username: 'ana', displayName: '\u2066Ana' }, undefined],
+    [{ username: 'ana', displayName: 'Ana\u0085' }, undefined],
+    [{ username: 'ana', displayName: 'Ana\u200b' }, undefined],
+    [{ username: 'ana', displayName: 'Ana\u200e' }, undefined],
+    [{ username: 'ana', displayName: 'Ana\u2028' }, undefined],
+    [{ username: 'ana', displayName: '\u3164' }, undefined],
+    [
+      { username: 'ana', displayName: '\u{1f469}\u200d\u{1f4bb} Ana' },
+      { username: 'ana', displayName: '\u{1f469}\u200d\u{1f4bb} Ana' },
+    ],
   ])('parseIdentity(%j)', (query, expected) => {
     expect(connect.parseIdentity(query)).toEqual(expected);
   });

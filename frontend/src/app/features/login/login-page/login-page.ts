@@ -19,7 +19,8 @@ import { UserStorage } from '@/core/state/user-storage';
 const USERNAME_HINT = '3 a 32 caracteres: letras sem acento, números, . _ -';
 const USERNAME_SPACES = 'Sem espaços: use letras sem acento, números, . _ -';
 const DISPLAY_NAME_HINT = 'Até 50 caracteres; vazio usa o nome de usuário.';
-const DISPLAY_NAME_CONTROL_CHARS = 'Não use caracteres de controle no nome de exibição.';
+const DISPLAY_NAME_CONTROL_CHARS =
+  'Não use caracteres de controle ou invisíveis no nome de exibição.';
 
 @Component({
   selector: 'app-login-page',

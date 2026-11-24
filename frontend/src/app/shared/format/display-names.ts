@@ -12,19 +12,30 @@ export function initials(displayName: string): string {
   return (firstLetter(first) + firstLetter(last)).toLocaleUpperCase('pt-BR');
 }
 
+/** Invisible characters, compatibility forms and runs of spaces don't tell names apart. */
+function displayNameKey(name: string): string {
+  return name
+    .replace(/\p{Default_Ignorable_Code_Point}/gu, '')
+    .normalize('NFKC')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
 /**
  * Display names shared by different users in the same context, which then show the username next
- * to them (specification, section 2).
+ * to them (specification, section 2). Names that only differ as in `displayNameKey` count as shared.
  */
 export function repeatedDisplayNames(users: Iterable<UserState>): ReadonlySet<string> {
-  const usernamesByName = new Map<string, Set<string>>();
+  const groups = new Map<string, { usernames: Set<string>; names: Set<string> }>();
   for (const user of users) {
-    const usernames = usernamesByName.get(user.displayName) ?? new Set();
-    usernames.add(user.username);
-    usernamesByName.set(user.displayName, usernames);
+    const key = displayNameKey(user.displayName);
+    const group = groups.get(key) ?? { usernames: new Set(), names: new Set() };
+    group.usernames.add(user.username);
+    group.names.add(user.displayName);
+    groups.set(key, group);
   }
   return new Set(
-    [...usernamesByName].filter(([, usernames]) => usernames.size > 1).map(([name]) => name),
+    [...groups.values()].filter((g) => g.usernames.size > 1).flatMap((g) => [...g.names]),
   );
 }
 
