@@ -36,6 +36,8 @@ import {
 
 export const MAX_GROUP_MEMBERS = 99;
 export const SEARCH_MAX_RESULTS = 50;
+// Same budget as a getHistory page, so a search reply with large groups stays far below the 128 KB postToConnection limit.
+const SEARCH_MAX_CONVERSATION_BYTES = 28 * 1024;
 
 function normalizeSearch(value: string): string {
   return value
@@ -55,6 +57,24 @@ function mapVisibleConversations(
     if (conv) conversations.push(buildConversationPayload(conv, membership.joinedAt ?? 0, users));
   }
   return conversations.sort(compareConversations);
+}
+
+/** Takes conversations in order up to SEARCH_MAX_RESULTS and the byte budget, keeping at least one. */
+function capSearchConversations(conversations: ConversationPayload[]): ConversationPayload[] {
+  const kept: ConversationPayload[] = [];
+  let usedBytes = 0;
+  for (const conv of conversations) {
+    const bytes = Buffer.byteLength(JSON.stringify(conv)) + (kept.length > 0 ? 1 : 0);
+    if (
+      kept.length >= SEARCH_MAX_RESULTS ||
+      (kept.length > 0 && usedBytes + bytes > SEARCH_MAX_CONVERSATION_BYTES)
+    ) {
+      break;
+    }
+    kept.push(conv);
+    usedBytes += bytes;
+  }
+  return kept;
 }
 
 async function loadVisibleConversations(username: string): Promise<ConversationPayload[]> {
@@ -517,13 +537,13 @@ export async function handleSearch(ctx: RequestContext): Promise<Outcome> {
   ]);
 
   const convById = new Map(convRecords.map((c) => [c.conversationId, c]));
-  const conversations = mapVisibleConversations(memberships, convById, allUsers)
-    .filter((c) => {
+  const conversations = capSearchConversations(
+    mapVisibleConversations(memberships, convById, allUsers).filter((c) => {
       if (c.type === 'group') return matches(c.name ?? '');
       const partner = c.members.find((m) => m.username !== me);
       return partner !== undefined && (matches(partner.username) || matches(partner.displayName));
-    })
-    .slice(0, SEARCH_MAX_RESULTS);
+    }),
+  );
   // Only partners of returned direct chats are left out, so a chat cut by the cap still lists its partner.
   const shownPartners = new Set(
     conversations

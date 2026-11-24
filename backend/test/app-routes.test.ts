@@ -1230,6 +1230,36 @@ describe('sync & search', () => {
     expect(data.people[0].displayName).toContain('João Antônio');
   });
 
+  test('search caps conversations by size when groups are large', async () => {
+    const members = Array.from({ length: MAX_GROUP_MEMBERS - 1 }, (_, i) => ({
+      username: `member${String(i).padStart(2, '0')}`,
+      displayName: `Member ${i} ${'x'.repeat(40)}`,
+      version: 1,
+    }));
+    const memberships = Array.from({ length: 20 }, (_, i) => ({
+      username: 'ana',
+      conversationId: `g:00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      joinedAt: 100 + i,
+    }));
+    const groups = memberships.map((m, i) => ({
+      conversationId: m.conversationId,
+      type: 'group',
+      name: `Turma ${i}`,
+      members: new Set(['ana', ...members.map((u) => u.username)]),
+    }));
+    db.on(UpdateCommand).resolves({ Attributes: { username: 'ana' } });
+    db.on(QueryCommand).resolves({ Items: memberships });
+    db.on(BatchGetCommand).resolves({ Responses: { Conversations: groups } });
+    db.on(ScanCommand).resolves({ Items: [anaUser, ...members] });
+
+    await app.handler(event('search', { requestId: REQ_ID, query: 'turma' }));
+
+    const { conversations } = sentTo()[0]!.payload.data;
+    expect(conversations.length).toBeGreaterThan(0);
+    expect(conversations.length).toBeLessThan(groups.length);
+    expect(Buffer.byteLength(JSON.stringify(conversations))).toBeLessThanOrEqual(28 * 1024);
+  });
+
   test('search lists a person whose direct chat was cut by the cap', async () => {
     const groupMemberships = Array.from({ length: SEARCH_MAX_RESULTS }, (_, i) => ({
       username: 'ana',
