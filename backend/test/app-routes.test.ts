@@ -23,6 +23,7 @@ import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
 import { mockClient } from 'aws-sdk-client-mock';
 import * as app from '../functions/app';
 import { MAX_GROUP_MEMBERS, SEARCH_MAX_RESULTS } from '../functions/conversations';
+import { table } from '../functions/data';
 import { MARKER_TTL_SECONDS, MAX_TEXT_BYTES } from '../functions/messages';
 
 const db = mockClient(DynamoDBDocumentClient);
@@ -1203,5 +1204,17 @@ describe('sync & search', () => {
     expect(data.people).toHaveLength(SEARCH_MAX_RESULTS);
     expect(data.conversations[0].name).toContain('João Antônio');
     expect(data.people[0].displayName).toContain('João Antônio');
+  });
+});
+
+describe('table', () => {
+  test('throws when the table variable is missing', () => {
+    const saved = process.env.MESSAGES_TABLE;
+    delete process.env.MESSAGES_TABLE;
+    try {
+      expect(() => table('MESSAGES_TABLE')).toThrow('Missing environment variable MESSAGES_TABLE');
+    } finally {
+      process.env.MESSAGES_TABLE = saved;
+    }
   });
 });

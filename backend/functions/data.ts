@@ -76,7 +76,11 @@ export interface RequestContext {
   reply: (data: object) => Promise<Outcome>;
 }
 
-export const table = (envKey: string) => process.env[envKey] ?? envKey;
+export function table(envKey: string): string {
+  const name = process.env[envKey];
+  if (!name) throw new Error(`Missing environment variable ${envKey}`);
+  return name;
+}
 
 export function directConversationId(a: string, b: string): string {
   const [first, second] = a < b ? [a, b] : [b, a];
