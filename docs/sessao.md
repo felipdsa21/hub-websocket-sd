@@ -6,7 +6,7 @@
 
 Este documento descreve a sessão persistente entre o cliente web e a API WebSocket: como o handshake transforma uma requisição HTTP em uma conexão WebSocket, como os dados trafegam em frames, em que as mensagens WebSocket diferem do request/response HTTP e o que acontece do `$connect` ao `$disconnect`. Os nomes, as tabelas, os procedimentos e as decisões (D) citados estão na [arquitetura](arquitetura.md), e os requisitos, os riscos, as limitações e os testes (RF, RNF, R, L e T), na [especificação](especificacao.md).
 
-Aqui, *sessão* é o período em que uma conexão WebSocket está aberta. Cada aba do navegador abre a própria conexão, então um usuário pode ter várias sessões ao mesmo tempo.
+Aqui, _sessão_ é o período em que uma conexão WebSocket está aberta. Cada aba do navegador abre a própria conexão, então um usuário pode ter várias sessões ao mesmo tempo.
 
 ## 2. Handshake: de HTTP para WebSocket
 
@@ -50,13 +50,13 @@ Os frames de ping e pong existem no protocolo, mas a API WebSocket do navegador 
 
 No HTTP, cada requisição recebe exatamente uma resposta, e o servidor só fala quando o cliente pergunta. No WebSocket, os dois lados enviam mensagens independentes a qualquer momento, e o protocolo não associa uma mensagem a outra.
 
-| | HTTP | WebSocket no projeto |
-| --- | --- | --- |
-| Conexão | uma por requisição, ou reaproveitada, mas sem estado entre requisições | persistente, até 2 horas (L02) |
-| Quem inicia uma troca | sempre o cliente | os dois lados |
-| Resposta | implícita, uma por requisição | não existe no protocolo; o evento de volta traz o mesmo `requestId` (RF09) ou, em uma mensagem de chat aceita, o mesmo remetente e `messageId` (RF12) |
-| Identidade | enviada em cada requisição | definida no `$connect` e resolvida pelo `connectionId` em cada requisição (RNF01) |
-| Envio do servidor ao cliente | impossível sem uma requisição | `postToConnection` a qualquer momento depois do handshake (RF02) |
+|                              | HTTP                                                                   | WebSocket no projeto                                                                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Conexão                      | uma por requisição, ou reaproveitada, mas sem estado entre requisições | persistente, até 2 horas (L02)                                                                                                                        |
+| Quem inicia uma troca        | sempre o cliente                                                       | os dois lados                                                                                                                                         |
+| Resposta                     | implícita, uma por requisição                                          | não existe no protocolo; o evento de volta traz o mesmo `requestId` (RF09) ou, em uma mensagem de chat aceita, o mesmo remetente e `messageId` (RF12) |
+| Identidade                   | enviada em cada requisição                                             | definida no `$connect` e resolvida pelo `connectionId` em cada requisição (RNF01)                                                                     |
+| Envio do servidor ao cliente | impossível sem uma requisição                                          | `postToConnection` a qualquer momento depois do handshake (RF02)                                                                                      |
 
 Duas consequências aparecem no projeto. Primeiro, como não há resposta implícita, o cliente gera um `requestId` e o backend o devolve no evento `response`, `pong` ou `error`, e o cliente associa os dois. Um `sendMessage` aceito é a exceção: a confirmação é o próprio evento `message`, que o cliente associa pelo remetente e pelo `messageId` (RF02, RF12). Segundo, a Lambda que atende uma rota não responde pela integração: tudo o que o backend envia ao cliente chega por `@connections` (D06), o único caminho que também alcança os demais clientes.
 
@@ -178,16 +178,16 @@ O diretório é formado pelas tabelas `Connections` e `Users` (seção 3.3 da ar
 **Connections**
 
 | `connectionId` | `username` | `connectedAt` | `lastSeenAt` |
-| --- | --- | --- | --- |
-| `c1` | `ana` | 10:00:00 | 10:04:30 |
-| `c2` | `ana` | 10:02:10 | 10:04:40 |
-| `c3` | `bia` | 10:01:05 | 10:04:20 |
+| -------------- | ---------- | ------------- | ------------ |
+| `c1`           | `ana`      | 10:00:00      | 10:04:30     |
+| `c2`           | `ana`      | 10:02:10      | 10:04:40     |
+| `c3`           | `bia`      | 10:01:05      | 10:04:20     |
 
 **Users**
 
 | `username` | `displayName` | `connections` | `version` |
-| --- | --- | --- | --- |
-| `ana` | Ana | `{c1, c2}` | 2 |
-| `bia` | Bia | `{c3}` | 1 |
+| ---------- | ------------- | ------------- | --------- |
+| `ana`      | Ana           | `{c1, c2}`    | 2         |
+| `bia`      | Bia           | `{c3}`        | 1         |
 
 Quando `c1` fecha, o id sai do conjunto de `ana`, e depois o item `c1` sai de `Connections`; `ana` continua online pela `c2` (RF07). Quando `c3` fecha, o atributo `connections` de `bia` desaparece, e os contatos dela recebem o anúncio de offline.

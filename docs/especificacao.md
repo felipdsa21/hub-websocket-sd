@@ -30,7 +30,7 @@ Cada usuário entra com um nome de usuário único, sem senha, e aparece para os
 
 Uma conversa é um chat privado ou um chat em grupo. O chat privado reúne dois usuários e aparece com o nome de exibição do outro participante; o chat em grupo tem nome e membros.
 
-Neste documento, *mensagem* é sempre uma mensagem de chat. Tudo o que o cliente envia pela conexão, seja uma mensagem ou outra ação, é uma *requisição*.
+Neste documento, _mensagem_ é sempre uma mensagem de chat. Tudo o que o cliente envia pela conexão, seja uma mensagem ou outra ação, é uma _requisição_.
 
 ## 3. Requisitos funcionais
 

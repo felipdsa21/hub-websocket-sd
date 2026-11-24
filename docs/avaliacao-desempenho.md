@@ -15,11 +15,11 @@ Seguindo o plano de testes **T8** da [especificação](especificacao.md), o expe
 
 ## 2. Resultados da rodada medida (latência, vazão e ordem)
 
-| Carga | Mensagens | Entregas | Mín (ms) | Média (ms) | p50 (ms) | p95 (ms) | p99 (ms) | Máx (ms) | Vazão (msgs/s) | Entregas/s | Retries | Ordem (RNF04) |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| 2 usuários | 20 | 40 | 104,54 | **128,19** | 123,29 | **153,97** | 155,14 | 155,14 | 15,10 | 30,21 | 0 | 100% (22/22) |
-| 5 usuários | 50 | 250 | 107,84 | **140,87** | 130,30 | **167,66** | 553,41 | 582,52 | 28,54 | 142,70 | 0 | 100% (55/55) |
-| 10 usuários (T8) | 100 | 1.000 | 100,56 | **160,67** | 131,71 | **166,05** | 598,07 | 2.337,24 | 27,82 | 278,16 | 1 | 100% (110/110) |
+| Carga            | Mensagens | Entregas | Mín (ms) | Média (ms) | p50 (ms) |   p95 (ms) | p99 (ms) | Máx (ms) | Vazão (msgs/s) | Entregas/s | Retries | Ordem (RNF04)  |
+| ---------------- | --------: | -------: | -------: | ---------: | -------: | ---------: | -------: | -------: | -------------: | ---------: | ------: | -------------- |
+| 2 usuários       |        20 |       40 |   104,54 | **128,19** |   123,29 | **153,97** |   155,14 |   155,14 |          15,10 |      30,21 |       0 | 100% (22/22)   |
+| 5 usuários       |        50 |      250 |   107,84 | **140,87** |   130,30 | **167,66** |   553,41 |   582,52 |          28,54 |     142,70 |       0 | 100% (55/55)   |
+| 10 usuários (T8) |       100 |    1.000 |   100,56 | **160,67** |   131,71 | **166,05** |   598,07 | 2.337,24 |          27,82 |     278,16 |       1 | 100% (110/110) |
 
 A distribuição de latência entre a confirmação ao remetente e a entrega aos demais participantes manteve-se simétrica em todas as cargas (em 10 usuários: confirmação média `159,80 ms` / p95 `164,66 ms` vs. entrega aos pares média `160,76 ms` / p95 `166,49 ms`, com `0` entregas duplicadas), confirmando o paralelismo efetivo do `fanOut`.
 
@@ -29,11 +29,11 @@ A distribuição de latência entre a confirmação ao remetente e a entrega aos
 
 ## 3. Rodada de aquecimento (impacto de cold start — R05)
 
-| Carga | Mensagens | Entregas | Média aquecimento (ms) | p95 aquecimento (ms) | Média medida (ms) | Redução na média |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 2 usuários | 2 | 4 | 167,30 | 191,85 | 128,19 | −23,4% |
-| 5 usuários | 5 | 25 | 209,76 | 303,88 | 140,87 | −32,8% |
-| 10 usuários (T8) | 10 | 100 | 488,86 | 1.002,33 | 160,67 | −67,1% |
+| Carga            | Mensagens | Entregas | Média aquecimento (ms) | p95 aquecimento (ms) | Média medida (ms) | Redução na média |
+| ---------------- | --------: | -------: | ---------------------: | -------------------: | ----------------: | ---------------: |
+| 2 usuários       |         2 |        4 |                 167,30 |               191,85 |            128,19 |           −23,4% |
+| 5 usuários       |         5 |       25 |                 209,76 |               303,88 |            140,87 |           −32,8% |
+| 10 usuários (T8) |        10 |      100 |                 488,86 |             1.002,33 |            160,67 |           −67,1% |
 
 O descarte da rodada de aquecimento reduziu a latência média em **67,1%** no cenário de 10 usuários (`488,86 ms` → `160,67 ms`) e o p95 em **83,4%** (`1.002,33 ms` → `166,05 ms`), validando a mitigação definida em **R05**.
 
@@ -49,10 +49,10 @@ Os dados completos do CloudWatch exportados durante a bateria ([docs/metricas-in
 
 ### Evolução antes vs. depois das otimizações da auditoria E2E (10 usuários — T8)
 
-| Configuração | Memória / Arquitetura (`app`) | `presenceSweeper` | Média T8 (ms) | p95 T8 (ms) | Vazão (entregas/s) | RNF02 (`p95 < 500 ms`) |
-| --- | --- | --- | ---: | ---: | ---: | --- |
-| Baseline inicial | `128 MB` x86_64 | 2 varreduras (`setTimeout` 30 s) | 368,14 | 551,06 | 157,74 | Não atendido |
-| **Otimizado (atual)** | **`512 MB` ARM64** | **Passagem única (~105 ms)** | **160,67** | **166,05** | **278,16** | **Aprovado (−69,9% no p95)** |
+| Configuração          | Memória / Arquitetura (`app`) | `presenceSweeper`                | Média T8 (ms) | p95 T8 (ms) | Vazão (entregas/s) | RNF02 (`p95 < 500 ms`)       |
+| --------------------- | ----------------------------- | -------------------------------- | ------------: | ----------: | -----------------: | ---------------------------- |
+| Baseline inicial      | `128 MB` x86_64               | 2 varreduras (`setTimeout` 30 s) |        368,14 |      551,06 |             157,74 | Não atendido                 |
+| **Otimizado (atual)** | **`512 MB` ARM64**            | **Passagem única (~105 ms)**     |    **160,67** |  **166,05** |         **278,16** | **Aprovado (−69,9% no p95)** |
 
 ### Avaliação frente aos requisitos (RNF02 e RNF04)
 

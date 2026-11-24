@@ -47,22 +47,22 @@ flowchart LR
     Lambda -.->|"logs e métricas"| CW
 ```
 
-| Componente | Papel |
-| --- | --- |
-| Cliente web | Aplicação Angular servida pelo CloudFront a partir de um bucket S3 (RNF07). Abre uma conexão WebSocket por aba, envia as requisições e mantém a fila de reenvio (RF12) e o heartbeat (RF08). |
-| API Gateway | API WebSocket com a route selection expression `$request.body.action`. Encaminha cada rota a uma Lambda e expõe a Management API (`@connections`) para o envio aos clientes. |
-| Lambda `connect` | Rota `$connect`: valida o nome de usuário, vincula a conexão ao usuário e anuncia a mudança aos contatos (RF01, RF07). |
-| Lambda `disconnect` | Rota `$disconnect`: desvincula a conexão e anuncia a mudança aos contatos (RF01, RF07). |
-| Lambda `default` | Rota `$default`: responde com erro às requisições sem rota (RF09). |
-| Lambda `app` | Todas as rotas de aplicação (seção 4), escolhidas internamente pelo `routeKey`. |
+| Componente               | Papel                                                                                                                                                                                                                        |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cliente web              | Aplicação Angular servida pelo CloudFront a partir de um bucket S3 (RNF07). Abre uma conexão WebSocket por aba, envia as requisições e mantém a fila de reenvio (RF12) e o heartbeat (RF08).                                 |
+| API Gateway              | API WebSocket com a route selection expression `$request.body.action`. Encaminha cada rota a uma Lambda e expõe a Management API (`@connections`) para o envio aos clientes.                                                 |
+| Lambda `connect`         | Rota `$connect`: valida o nome de usuário, vincula a conexão ao usuário e anuncia a mudança aos contatos (RF01, RF07).                                                                                                       |
+| Lambda `disconnect`      | Rota `$disconnect`: desvincula a conexão e anuncia a mudança aos contatos (RF01, RF07).                                                                                                                                      |
+| Lambda `default`         | Rota `$default`: responde com erro às requisições sem rota (RF09).                                                                                                                                                           |
+| Lambda `app`             | Todas as rotas de aplicação (seção 4), escolhidas internamente pelo `routeKey`.                                                                                                                                              |
 | Lambda `presenceSweeper` | Acionada a cada minuto pelo EventBridge Scheduler; desvincula as conexões sem requisições há 10 minutos (RF07, R01), refaz os anúncios interrompidos por falha e publica o número de conexões abertas (seções 3.4, 3.5 e 5). |
-| DynamoDB | Diretório de nomes (usuários e conexões), conversas, participações e mensagens (seção 3.3). |
-| SSM Parameter Store | Segredo usado para anonimizar os identificadores nos logs (seção 5). |
-| CloudWatch | Logs com identificadores anonimizados (RNF03), métricas e painel (RNF06). |
+| DynamoDB                 | Diretório de nomes (usuários e conexões), conversas, participações e mensagens (seção 3.3).                                                                                                                                  |
+| SSM Parameter Store      | Segredo usado para anonimizar os identificadores nos logs (seção 5).                                                                                                                                                         |
+| CloudWatch               | Logs com identificadores anonimizados (RNF03), métricas e painel (RNF06).                                                                                                                                                    |
 
 As Lambdas são escritas em TypeScript, no runtime Node.js 22.x em arquitetura **ARM64 (Graviton2)**, e empacotadas pelo CDK. As quatro Lambdas de rota (`connect`, `disconnect`, `default` e `app`) têm memória de `512 MB` e tempo limite de `10 s`; o `presenceSweeper` tem `256 MB` e tempo limite de `30 s` (seção 3.4); a sobreposição da reconexão (seção 4.4) depende dos `10 s` da Lambda `app`. Todas recebem `execute-api:ManageConnections` no estágio (R04), e as permissões no DynamoDB seguem menor privilégio: apenas `app` recebe leitura e gravação nas cinco tabelas, enquanto `connect`, `disconnect`, `default` e `presenceSweeper` recebem leitura e gravação em `Connections` e `Users` e somente leitura em `Memberships` e `Conversations`, sem acesso a `Messages`. Para o segredo dos logs, apenas as quatro Lambdas de rota (`connect`, `disconnect`, `default` e `app`) recebem `ssm:GetParameter` no parâmetro do estágio e `kms:Decrypt` na chave `alias/aws/ssm` via `ssm.<região>.amazonaws.com` (seção 5); o `presenceSweeper` não lê esse parâmetro porque não registra identificadores, e recebe `cloudwatch:PutMetricData`.
 
-Toda a infraestrutura é declarada no stack do AWS CDK em `backend/` (RNF05). Há um stack por estágio, `dev` para desenvolvimento e `prod` para a apresentação, cada um com a própria API (com throttling padrão de `1.000 req/s` e burst `2.000`), as próprias Lambdas, os próprios `LogGroup`s (retenção de `14 dias` em `dev` e `30 dias` em `prod`), as próprias tabelas (com *Point-in-Time Recovery* habilitado em `prod`), painel e alarmes no CloudWatch, e distribuição CloudFront com OAC sobre bucket S3 privado (versionado em `prod`, com cabeçalhos de segurança HTTP e `CACHING_DISABLED` em `config.json` e `index.html`), na região `sa-east-1` (D07, D08).
+Toda a infraestrutura é declarada no stack do AWS CDK em `backend/` (RNF05). Há um stack por estágio, `dev` para desenvolvimento e `prod` para a apresentação, cada um com a própria API (com throttling padrão de `1.000 req/s` e burst `2.000`), as próprias Lambdas, os próprios `LogGroup`s (retenção de `14 dias` em `dev` e `30 dias` em `prod`), as próprias tabelas (com _Point-in-Time Recovery_ habilitado em `prod`), painel e alarmes no CloudWatch, e distribuição CloudFront com OAC sobre bucket S3 privado (versionado em `prod`, com cabeçalhos de segurança HTTP e `CACHING_DISABLED` em `config.json` e `index.html`), na região `sa-east-1` (D07, D08).
 
 As falhas e atrasos controlados descritos no plano de testes da especificação — erro forçado em `sendMessage`/`search`/`getHistory` (T2, passo 6), omissão/atraso de confirmação ao remetente com fila pendente e `beforeunload` (T2, passos 7 a 9) e desativação/falha de `heartbeat` com expiração (T7, passo 4) — não são ativados por chaves de injeção de falha no backend implantado na AWS. Em vez disso, são verificados de forma determinística pelas suítes automatizadas unitárias e de componente (`backend/test/` em Jest e `frontend/src/**/*.spec.ts` em Vitest, com relógios e sockets simulados), mantendo o stack `dev` fiel ao comportamento de produção.
 
@@ -70,14 +70,14 @@ As falhas e atrasos controlados descritos no plano de testes da especificação 
 
 ### 3.1 Nomes
 
-| Nome | Quem gera | Formato | Escopo e duração | Identifica |
-| --- | --- | --- | --- | --- |
-| `username` | o usuário, no `$connect` | `^[a-z0-9._-]{3,32}$`, convertido para minúsculas | único no estágio; permanente | o usuário |
-| `displayName` | o usuário, no `$connect` | 1 a 50 caracteres Unicode (code points), depois de aparar os espaços das pontas; rejeita caracteres de controle ASCII (`\u0000–\u001F`, `\u007F`) e controles bidirecionais (`\u202A–\u202E`, `\u2066–\u2069`) | o do último `$connect` (RF01) | nada; é só um rótulo |
-| `connectionId` | o API Gateway | opaco | uma conexão; até 2 horas (L02) | o ponto de entrega de uma aba |
-| `conversationId` | o backend | chat privado: `d:<username1>:<username2>`, em ordem alfabética; grupo: `g:<UUID v4>` | permanente | a conversa |
-| `messageId` | o cliente | UUID v4 | único por remetente | a mensagem do remetente, inclusive nos reenvios (RF12) |
-| `requestId` | o cliente | UUID v4 | uma requisição | a requisição, para associar a ela a resposta ou o erro (RF09) |
+| Nome             | Quem gera                | Formato                                                                                                                                                                                                        | Escopo e duração               | Identifica                                                    |
+| ---------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------- |
+| `username`       | o usuário, no `$connect` | `^[a-z0-9._-]{3,32}$`, convertido para minúsculas                                                                                                                                                              | único no estágio; permanente   | o usuário                                                     |
+| `displayName`    | o usuário, no `$connect` | 1 a 50 caracteres Unicode (code points), depois de aparar os espaços das pontas; rejeita caracteres de controle ASCII (`\u0000–\u001F`, `\u007F`) e controles bidirecionais (`\u202A–\u202E`, `\u2066–\u2069`) | o do último `$connect` (RF01)  | nada; é só um rótulo                                          |
+| `connectionId`   | o API Gateway            | opaco                                                                                                                                                                                                          | uma conexão; até 2 horas (L02) | o ponto de entrega de uma aba                                 |
+| `conversationId` | o backend                | chat privado: `d:<username1>:<username2>`, em ordem alfabética; grupo: `g:<UUID v4>`                                                                                                                           | permanente                     | a conversa                                                    |
+| `messageId`      | o cliente                | UUID v4                                                                                                                                                                                                        | único por remetente            | a mensagem do remetente, inclusive nos reenvios (RF12)        |
+| `requestId`      | o cliente                | UUID v4                                                                                                                                                                                                        | uma requisição                 | a requisição, para associar a ela a resposta ou o erro (RF09) |
 
 O `:` e o `#` não são aceitos no nome de usuário, e o backend recusa um `messageId` fora do formato (RF09); assim, nem um `conversationId` nem uma chave de mensagem (seção 3.3) é ambíguo. O nome de exibição não identifica nada, porque se repete entre usuários (RF05) e muda a cada conexão (RF01).
 
@@ -106,68 +106,68 @@ O backend nunca usa um nome de usuário vindo no corpo de uma requisição para 
 
 ### 3.3 Diretório (DynamoDB)
 
-As tabelas usam cobrança sob demanda (com *Point-in-Time Recovery* habilitado no estágio `prod`). Todas as leituras são fortemente consistentes, e nenhuma usa índice secundário (D04), então uma conexão, um membro ou uma mensagem recém-gravados sempre aparecem na leitura seguinte.
+As tabelas usam cobrança sob demanda (com _Point-in-Time Recovery_ habilitado no estágio `prod`). Todas as leituras são fortemente consistentes, e nenhuma usa índice secundário (D04), então uma conexão, um membro ou uma mensagem recém-gravados sempre aparecem na leitura seguinte.
 
 **Connections**: conexão → usuário.
 
-| Atributo | Tipo | Descrição |
-| --- | --- | --- |
-| `connectionId` | S (PK) | identificador da conexão |
-| `username` | S | usuário vinculado |
-| `connectedAt` | N | instante do `$connect`, em ms |
-| `lastSeenAt` | N | instante da última requisição, em ms (RF07) |
-| `expiresAt` | N (TTL) | `connectedAt` + 3 horas, em segundos, porque o TTL do DynamoDB não aceita ms; só faxina de registros esquecidos |
+| Atributo       | Tipo    | Descrição                                                                                                       |
+| -------------- | ------- | --------------------------------------------------------------------------------------------------------------- |
+| `connectionId` | S (PK)  | identificador da conexão                                                                                        |
+| `username`     | S       | usuário vinculado                                                                                               |
+| `connectedAt`  | N       | instante do `$connect`, em ms                                                                                   |
+| `lastSeenAt`   | N       | instante da última requisição, em ms (RF07)                                                                     |
+| `expiresAt`    | N (TTL) | `connectedAt` + 3 horas, em segundos, porque o TTL do DynamoDB não aceita ms; só faxina de registros esquecidos |
 
 **Users**: usuário → conexões.
 
-| Atributo | Tipo | Descrição |
-| --- | --- | --- |
-| `username` | S (PK) | nome de usuário |
-| `displayName` | S | nome de exibição atual |
-| `connections` | SS | `connectionId`s abertos; ausente quando o usuário está offline |
-| `version` | N | versão do usuário, incrementada a cada alteração de `connections` ou de `displayName` (seção 3.5) |
-| `changedAt` | N | instante da última alteração de `version` |
-| `announcedVersion` | N | última versão anunciada aos contatos, 0 na criação do usuário (seção 3.5) |
+| Atributo           | Tipo   | Descrição                                                                                         |
+| ------------------ | ------ | ------------------------------------------------------------------------------------------------- |
+| `username`         | S (PK) | nome de usuário                                                                                   |
+| `displayName`      | S      | nome de exibição atual                                                                            |
+| `connections`      | SS     | `connectionId`s abertos; ausente quando o usuário está offline                                    |
+| `version`          | N      | versão do usuário, incrementada a cada alteração de `connections` ou de `displayName` (seção 3.5) |
+| `changedAt`        | N      | instante da última alteração de `version`                                                         |
+| `announcedVersion` | N      | última versão anunciada aos contatos, 0 na criação do usuário (seção 3.5)                         |
 
 **Conversations**: conversa → membros.
 
-| Atributo | Tipo | Descrição |
-| --- | --- | --- |
-| `conversationId` | S (PK) | identificador da conversa |
-| `type` | S | `direct` ou `group` |
-| `name` | S | nome do grupo; ausente no chat privado |
-| `members` | SS | nomes de usuário dos membros |
-| `started` | BOOL | chat privado: já tem mensagem (RF10) |
-| `lastMessageAt` | N | instante da última mensagem |
-| `lastMessageBy` | S | remetente da última mensagem (RF10) |
+| Atributo         | Tipo   | Descrição                              |
+| ---------------- | ------ | -------------------------------------- |
+| `conversationId` | S (PK) | identificador da conversa              |
+| `type`           | S      | `direct` ou `group`                    |
+| `name`           | S      | nome do grupo; ausente no chat privado |
+| `members`        | SS     | nomes de usuário dos membros           |
+| `started`        | BOOL   | chat privado: já tem mensagem (RF10)   |
+| `lastMessageAt`  | N      | instante da última mensagem            |
+| `lastMessageBy`  | S      | remetente da última mensagem (RF10)    |
 
 **Memberships**: usuário → conversas (RF10).
 
-| Atributo | Tipo | Descrição |
-| --- | --- | --- |
-| `username` | S (PK) | membro |
-| `conversationId` | S (SK) | conversa |
-| `hidden` | BOOL | só na participação do outro usuário em um chat privado sem mensagens, que ainda não aparece para ele (D11) |
-| `joinedAt` | N | `requestTimeEpoch` da requisição que tornou a participação visível; ausente enquanto ela está oculta (RF10) |
+| Atributo         | Tipo   | Descrição                                                                                                   |
+| ---------------- | ------ | ----------------------------------------------------------------------------------------------------------- |
+| `username`       | S (PK) | membro                                                                                                      |
+| `conversationId` | S (SK) | conversa                                                                                                    |
+| `hidden`         | BOOL   | só na participação do outro usuário em um chat privado sem mensagens, que ainda não aparece para ele (D11)  |
+| `joinedAt`       | N      | `requestTimeEpoch` da requisição que tornou a participação visível; ausente enquanto ela está oculta (RF10) |
 
 **Messages**: histórico de cada conversa (RF06).
 
-| Atributo | Tipo | Descrição |
-| --- | --- | --- |
-| `conversationId` | S (PK) | conversa |
-| `sk` | S (SK) | mensagem: `m#<sentAt com 13 dígitos>#<sender>#<messageId>`; marcador de duplicata: `id#<sender>#<messageId>` |
-| `messageId` | S | identificador gerado pelo cliente |
-| `sender` | S | nome de usuário do remetente |
-| `text` | S | texto |
-| `sentAt` | N | `requestContext.requestTimeEpoch`: o instante em que o API Gateway recebeu a requisição (RF02) |
-| `ref` | S | só no marcador de duplicata: o `sk` da mensagem original |
-| `expiresAt` | N (TTL) | só no marcador de duplicata: `sentAt` + 7 dias, em segundos, para limpar marcadores antigos sem remover as mensagens `m#…` |
+| Atributo         | Tipo    | Descrição                                                                                                                  |
+| ---------------- | ------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `conversationId` | S (PK)  | conversa                                                                                                                   |
+| `sk`             | S (SK)  | mensagem: `m#<sentAt com 13 dígitos>#<sender>#<messageId>`; marcador de duplicata: `id#<sender>#<messageId>`               |
+| `messageId`      | S       | identificador gerado pelo cliente                                                                                          |
+| `sender`         | S       | nome de usuário do remetente                                                                                               |
+| `text`           | S       | texto                                                                                                                      |
+| `sentAt`         | N       | `requestContext.requestTimeEpoch`: o instante em que o API Gateway recebeu a requisição (RF02)                             |
+| `ref`            | S       | só no marcador de duplicata: o `sk` da mensagem original                                                                   |
+| `expiresAt`      | N (TTL) | só no marcador de duplicata: `sentAt` + 7 dias, em segundos, para limpar marcadores antigos sem remover as mensagens `m#…` |
 
 As consultas ao histórico se restringem ao prefixo `m#`, para não trazer os marcadores.
 
 Os membros de uma conversa ficam em `Conversations.members`, lido em uma única leitura consistente; a tabela `Memberships` existe para listar as conversas de um usuário. As duas são alteradas juntas, em uma transação, quando um membro entra ou sai (seção 4.5).
 
-As transações envolvem só `Conversations`, `Memberships` e `Messages`. Uma gravação nessas tabelas que encontra uma transação em andamento sobre o mesmo item falha com `TransactionConflict`, e uma transação que encontra outra falha da mesma forma. O backend repete a gravação com *backoff* exponencial curto e *jitter*, até 3 vezes. Se o conflito persistir, a requisição recebe o erro `conflict` (RF09), exceto o envio de mensagem, que tem tratamento próprio (seção 4.3).
+As transações envolvem só `Conversations`, `Memberships` e `Messages`. Uma gravação nessas tabelas que encontra uma transação em andamento sobre o mesmo item falha com `TransactionConflict`, e uma transação que encontra outra falha da mesma forma. O backend repete a gravação com _backoff_ exponencial curto e _jitter_, até 3 vezes. Se o conflito persistir, a requisição recebe o erro `conflict` (RF09), exceto o envio de mensagem, que tem tratamento próprio (seção 4.3).
 
 ### 3.4 Vínculo e desvínculo de conexões
 
@@ -205,7 +205,7 @@ Nos passos 1 e 2 do T7, regravar o registro de uma conexão significa gravar de 
 
 ### 3.5 Contatos e anúncios
 
-Os anúncios de presença (RF07) e de nome de exibição (RF01) vão aos *contatos* do usuário: os membros de todas as conversas em que ele tem participação, visível ou oculta (D11). A resolução é `Memberships[username]` → `Conversations.members` de cada conversa → `Users.connections` de cada contato. O cliente pode receber o anúncio de um usuário que ainda não aparece em nenhuma das suas conversas, como o de quem abriu com ele um chat privado ainda sem mensagens; ele guarda o último anúncio de cada usuário, conhecido ou não, para não ficar com um estado mais antigo quando esse usuário aparecer.
+Os anúncios de presença (RF07) e de nome de exibição (RF01) vão aos _contatos_ do usuário: os membros de todas as conversas em que ele tem participação, visível ou oculta (D11). A resolução é `Memberships[username]` → `Conversations.members` de cada conversa → `Users.connections` de cada contato. O cliente pode receber o anúncio de um usuário que ainda não aparece em nenhuma das suas conversas, como o de quem abriu com ele um chat privado ainda sem mensagens; ele guarda o último anúncio de cada usuário, conhecido ou não, para não ficar com um estado mais antigo quando esse usuário aparecer.
 
 Anunciar é enviar aos contatos o evento `presence` com o estado atual do usuário (`online`, se o conjunto `connections` não está vazio, e `displayName`) e a `version` devolvida pela alteração; depois, gravar `announcedVersion` com essa versão, se for maior que a gravada. Toda alteração é anunciada, mesmo a que não muda o que os contatos veem, como a abertura de uma segunda aba. O cliente aplica um anúncio só se a versão for maior que a última que tem daquele usuário, e, como as alterações de um mesmo item são serializadas pelo DynamoDB, um anúncio atrasado nunca desfaz um mais novo (D10).
 
@@ -217,20 +217,20 @@ Se a Lambda falha antes de anunciar, `announcedVersion` fica menor que `version`
 
 O API Gateway escolhe a rota pelo campo `action` da requisição (route selection expression `$request.body.action`). Toda requisição de aplicação leva também um `requestId`.
 
-| Rota (`action`) | Lambda | Campos | Requisitos |
-| --- | --- | --- | --- |
-| `$connect` | connect | query string: `username`, `displayName` | RF01 |
-| `$disconnect` | disconnect | — | RF01, RF07 |
-| `$default` | default | — | RF09 |
-| `sync` | app | `since` (opcional, instante em ms) | RF07, RF08, RF10 |
-| `heartbeat` | app | — | RF07, RF08 |
-| `sendMessage` | app | `conversationId`, `messageId`, `text` | RF02, RF11, RF12 |
-| `openDirect` | app | `username` | RF03 |
-| `createGroup` | app | `name`, `members` | RF04 |
-| `addMember` | app | `conversationId`, `username` | RF04 |
-| `leaveGroup` | app | `conversationId` e, opcionalmente, `confirm` | RF04 |
-| `getHistory` | app | `conversationId` e, opcionalmente, `before` ou `after` (um limite de `sk`) | RF06, RF08 |
-| `search` | app | `query` | RF05 |
+| Rota (`action`) | Lambda     | Campos                                                                     | Requisitos       |
+| --------------- | ---------- | -------------------------------------------------------------------------- | ---------------- |
+| `$connect`      | connect    | query string: `username`, `displayName`                                    | RF01             |
+| `$disconnect`   | disconnect | —                                                                          | RF01, RF07       |
+| `$default`      | default    | —                                                                          | RF09             |
+| `sync`          | app        | `since` (opcional, instante em ms)                                         | RF07, RF08, RF10 |
+| `heartbeat`     | app        | —                                                                          | RF07, RF08       |
+| `sendMessage`   | app        | `conversationId`, `messageId`, `text`                                      | RF02, RF11, RF12 |
+| `openDirect`    | app        | `username`                                                                 | RF03             |
+| `createGroup`   | app        | `name`, `members`                                                          | RF04             |
+| `addMember`     | app        | `conversationId`, `username`                                               | RF04             |
+| `leaveGroup`    | app        | `conversationId` e, opcionalmente, `confirm`                               | RF04             |
+| `getHistory`    | app        | `conversationId` e, opcionalmente, `before` ou `after` (um limite de `sk`) | RF06, RF08       |
+| `search`        | app        | `query`                                                                    | RF05             |
 
 Exemplo:
 
@@ -250,17 +250,17 @@ Em toda requisição, a Lambda `app` atualiza `lastSeenAt` e resolve o usuário 
 
 Tudo o que o cliente recebe, inclusive as respostas às próprias requisições, chega por `postToConnection` (D06). Todo evento tem um campo `type`.
 
-| `type` | Quando | Campos principais |
-| --- | --- | --- |
-| `response` | resposta a uma requisição | `requestId`, `data` |
-| `error` | requisição recusada (RF09) | `requestId` (quando houver), `messageId` (quando a requisição é uma mensagem, RF12), `code`, `message` e, em alguns erros, `details` |
-| `pong` | resposta ao heartbeat | `requestId` |
-| `message` | nova mensagem em uma conversa (RF02) | `conversationId`, `sk`, `messageId`, `sender`, `text`, `sentAt` |
-| `presence` | anúncio do estado de um contato (RF01, RF07) | `username`, `displayName`, `online`, `version` |
-| `conversationAdded` | conversa nova visível (RF10) | `conversation`, com os mesmos campos de cada conversa do `sync` (seção 4.5) |
-| `conversationRemoved` | saída de um grupo (RF04) | `conversationId` |
-| `memberJoined` | entrada de membro (RF04, RF07) | `conversationId` e `member` (estado do novo membro) |
-| `memberLeft` | saída de membro (RF04) | `conversationId`, `username` |
+| `type`                | Quando                                       | Campos principais                                                                                                                    |
+| --------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `response`            | resposta a uma requisição                    | `requestId`, `data`                                                                                                                  |
+| `error`               | requisição recusada (RF09)                   | `requestId` (quando houver), `messageId` (quando a requisição é uma mensagem, RF12), `code`, `message` e, em alguns erros, `details` |
+| `pong`                | resposta ao heartbeat                        | `requestId`                                                                                                                          |
+| `message`             | nova mensagem em uma conversa (RF02)         | `conversationId`, `sk`, `messageId`, `sender`, `text`, `sentAt`                                                                      |
+| `presence`            | anúncio do estado de um contato (RF01, RF07) | `username`, `displayName`, `online`, `version`                                                                                       |
+| `conversationAdded`   | conversa nova visível (RF10)                 | `conversation`, com os mesmos campos de cada conversa do `sync` (seção 4.5)                                                          |
+| `conversationRemoved` | saída de um grupo (RF04)                     | `conversationId`                                                                                                                     |
+| `memberJoined`        | entrada de membro (RF04, RF07)               | `conversationId` e `member` (estado do novo membro)                                                                                  |
+| `memberLeft`          | saída de membro (RF04)                       | `conversationId`, `username`                                                                                                         |
 
 O estado de um usuário é sempre o mesmo conjunto de campos: `username`, `displayName`, `online` e `version`. Ele acompanha cada membro em `conversationAdded`, em `memberJoined` e nas respostas de `sync`, `openDirect` e `createGroup`, e cada usuário no resultado de `search`. Assim, o cliente recebe a presença de quem surge em uma das suas conversas (RF07) e compara pela versão o estado dessas respostas com o dos anúncios (seção 3.5). O backend lê esses estados depois de gravar a participação que torna os usuários contatos; uma mudança posterior à leitura já encontra a participação gravada e é anunciada ao novo contato.
 

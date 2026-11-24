@@ -15,6 +15,7 @@
 ## 2. Sequência da demonstração
 
 ### Bloco 1 — Conexão persistente, diretório, troca de nome paralela e presença multi-aba (2 min)
+
 **Requisitos evidenciados:** RF01, RF07, T1, T6.
 
 1. No **Cliente A**, entrar como `ana` (nome de exibição `Ana Silva`); no **Cliente B**, entrar como `bruno` (`Bruno Costa`). (Opcionalmente demonstrar a alternância de tema claro/escuro na tela de entrada ou no menu da conta.)
@@ -23,6 +24,7 @@
 4. Abrir uma segunda aba no mesmo navegador do **Cliente B**: ela restaura automaticamente a sessão via `localStorage` (`hub:current-user`); fechar apenas uma das abas mantém Bruno **online** para Ana, e ao clicar em **Sair** em uma aba, a outra também desconecta automaticamente via evento `storage` (anunciando `online: false` em tempo real para Ana).
 
 ### Bloco 2 — Chat privado, grupos, isolamento e autorização (2,5 min)
+
 **Requisitos evidenciados:** RF02, RF03, RF04, RF05, RF10, RNF01, T2, T3, T4.
 
 1. No **Cliente A**, usar a busca (`search`, tolerante a acentos `pt-BR`) por `bruno` e iniciar um chat privado (`openDirect`). Destacar que o chat ainda **não aparece** para Bruno antes da primeira mensagem (D11 — participação oculta).
@@ -31,9 +33,10 @@
 4. Comentar a autorização por requisição (**RNF01**): qualquer tentativa de envio, leitura de histórico ou alteração de grupo por um não-membro recebe `forbidden`, validado na bateria automatizada de 12 cenários ([docs/testes.md](testes.md)).
 
 ### Bloco 3 — Tolerância a falhas ao vivo: queda de rede, backoff e fila local (3 min)
+
 **Requisitos evidenciados:** RF07, RF08, RF12, T7.
 
-1. No DevTools do **Cliente A** (aba *Network*), alternar para **Offline** (simulando queda abrupta sem `$disconnect`).
+1. No DevTools do **Cliente A** (aba _Network_), alternar para **Offline** (simulando queda abrupta sem `$disconnect`).
 2. Observar: o evento `offline` da `window` dispara a verificação imediata; as ações dependentes do backend ficam desabilitadas (`connected = false`), e após **3 segundos** entram o banner de queda e a ocultação da presença dos contatos (evitando ruído em quedas breves como o limite de 2 h, L02).
 3. Ainda offline, enviar **duas mensagens** pelo **Cliente A** (elas ficam como pendentes na fila local) e enviar **uma mensagem** pelo **Cliente B** para Ana.
 4. Mostrar no Console do **Cliente A** os intervalos crescentes de backoff exponencial (`0 ms`, `1 s`, `2 s`, `4 s`…).
@@ -43,6 +46,7 @@
    - A mensagem enviada por Bruno enquanto Ana estava offline aparece exatamente uma vez e na mesma ordem cronológica (`sk`) nos dois clientes (RNF04).
 
 ### Bloco 4 — Telemetria no cliente, logs anonimizados e painel CloudWatch (2 min)
+
 **Requisitos evidenciados:** RNF03, RNF06, T8.
 
 1. No menu da conta do **Cliente A**, abrir **Telemetria e eventos** e ativar **Exibir latência (RTT) na barra superior** para mostrar o RTT em milissegundos e o registro de eventos (conexão/reconexões, presença, reenvios e latência).
@@ -50,6 +54,7 @@
 3. Alternar para o **Dashboard `HubWebSocket-dev`**: exibir `ConnectCount`, `OpenConnections` (métrica customizada do `presenceSweeper`), `MessageCount`, `IntegrationLatency`, `Throttles`, erros DynamoDB e os 3 alarmes configurados.
 
 ### Bloco 5 — Resultados experimentais e decisões arquiteturais (1,5 min)
+
 **Requisitos evidenciados:** RNF02, RNF04, RNF05, RNF06.
 
 1. Apresentar os gráficos da [avaliação de desempenho](avaliacao-desempenho.md) (2, 5 e 10 usuários simultâneos, aquecimento vs. rodada medida, consumo DynamoDB e painel CloudWatch).
