@@ -50,9 +50,9 @@ export class MessageComposer {
   }
 
   protected sendOnEnter(event: Event): void {
-    // Enter sends; Shift+Enter breaks the line. The Enter that confirms an IME composition doesn't
-    // send (keyCode 229 covers browsers that end the composition before this event).
+    // Enter sends; Shift+Enter breaks the line. The Enter that confirms an IME composition doesn't.
     const key = event as KeyboardEvent;
+    // eslint-disable-next-line @typescript-eslint/no-deprecated -- Safari can end the composition before this event, leaving only keyCode 229.
     if (key.isComposing || key.keyCode === 229) {
       return;
     }

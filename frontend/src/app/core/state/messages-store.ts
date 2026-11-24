@@ -58,6 +58,7 @@ export class MessagesStore {
       const onBeforeUnload = (event: BeforeUnloadEvent) => {
         if (this.pendingCount() > 0) {
           event.preventDefault();
+          // eslint-disable-next-line @typescript-eslint/no-deprecated -- Chrome before 119 needs it to show the prompt.
           event.returnValue = '';
         }
       };
