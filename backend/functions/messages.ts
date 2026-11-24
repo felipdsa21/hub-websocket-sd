@@ -20,7 +20,6 @@ import {
 } from './data';
 import {
   Outcome,
-  USERNAME,
   UUID,
   db,
   getCancellationReasons,
@@ -45,10 +44,8 @@ interface SendMessageInput {
 }
 
 // The shape messageSk produces; history cursors must match it so they stay within DynamoDB's key size.
-// Built from USERNAME and UUID so the rules can't drift; only the UUID ignores case, like messageId does.
-const MESSAGE_SK = new RegExp(
-  `^m#\\d{13}#${USERNAME.source.slice(1, -1)}#(?i:${UUID.source.slice(1, -1)})$`,
-);
+const MESSAGE_SK =
+  /^m#\d{13}#[a-z0-9._-]{3,32}#[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 // An instant alone sorts before every message sent at it; `after` accepts it to resume from a time.
 const INSTANT_SK = /^m#\d{13}#$/;
 
