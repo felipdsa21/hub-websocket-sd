@@ -1,15 +1,10 @@
 <main class="card" aria-labelledby="login-title">
   <div class="card-header">
     <h1 id="login-title">Hub Colaborativo</h1>
-    <button
-      matIconButton
-      type="button"
-      aria-label="Modo escuro"
-      [attr.aria-pressed]="theme.isDark()"
-      (click)="theme.toggle()"
-    >
-      <mat-icon aria-hidden="true">{{ theme.isDark() ? 'light_mode' : 'dark_mode' }}</mat-icon>
+    <button matIconButton type="button" aria-label="Tema" [matMenuTriggerFor]="themeMenu.menu()">
+      <mat-icon aria-hidden="true">{{ themeMenu.icon() }}</mat-icon>
     </button>
+    <app-theme-menu #themeMenu />
   </div>
   <p class="intro">Entre com um nome de usuário. Não há senha.</p>
 

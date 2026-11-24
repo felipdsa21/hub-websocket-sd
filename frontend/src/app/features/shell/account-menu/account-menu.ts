@@ -5,7 +5,6 @@ import { MatDivider } from '@angular/material/divider';
 import { MatMenu, MatMenuItem, MatMenuTrigger } from '@angular/material/menu';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router } from '@angular/router';
-import { ThemeStore } from '@/core/layout/theme-store';
 import { ConnectionStore } from '@/core/state/connection-store';
 import { MessagesStore } from '@/core/state/messages-store';
 import { SessionStore } from '@/core/state/session-store';
@@ -13,13 +12,14 @@ import { DisplayNameDialog } from '@/features/account/display-name-dialog/displa
 import { LeaveAccountDialog } from '@/features/account/leave-account-dialog/leave-account-dialog';
 import { TelemetryDialog } from '@/features/account/telemetry-dialog/telemetry-dialog';
 import { Avatar } from '@/shared/ui/avatar/avatar';
+import { ThemeMenu } from '@/shared/ui/theme-menu/theme-menu';
 
 /**
  * The user's avatar and menu. Its dot shows this tab's connection, not the presence contacts see.
  */
 @Component({
   selector: 'app-account-menu',
-  imports: [Avatar, MatDivider, MatIconButton, MatMenu, MatMenuItem, MatMenuTrigger],
+  imports: [Avatar, MatDivider, MatIconButton, MatMenu, MatMenuItem, MatMenuTrigger, ThemeMenu],
   templateUrl: './account-menu.html',
   styleUrl: './account-menu.scss',
 })
@@ -30,7 +30,6 @@ export class AccountMenu {
   private readonly snackBar = inject(MatSnackBar);
   private readonly messages = inject(MessagesStore);
   protected readonly connected = inject(ConnectionStore).connected;
-  protected readonly theme = inject(ThemeStore);
 
   protected readonly user = this.session.user;
 

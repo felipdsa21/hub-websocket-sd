@@ -74,20 +74,26 @@ describe('LoginPage', () => {
     expect(TestBed.inject(SessionStore).user()).toBeNull();
   });
 
-  it('toggles dark mode from the entry screen', async () => {
+  it('chooses the theme from a menu on the entry screen', async () => {
     localStorage.clear();
     document.documentElement.classList.remove('theme-dark', 'theme-light');
     const { element, fixture } = await render();
-    const toggle = element.querySelector<HTMLButtonElement>('button[aria-pressed]')!;
+    const trigger = element.querySelector<HTMLButtonElement>('button[aria-label="Tema"]')!;
+    expect(trigger.textContent?.trim()).toBe('brightness_auto');
 
-    expect(toggle.getAttribute('aria-label')).toBe('Modo escuro');
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
-    toggle.click();
+    trigger.click();
     await fixture.whenStable();
+    const options = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
+    expect(options.map((o) => [o.textContent?.trim(), o.getAttribute('aria-checked')])).toEqual([
+      ['checkSistema', 'true'],
+      ['Claro', 'false'],
+      ['Escuro', 'false'],
+    ]);
 
-    expect(toggle.getAttribute('aria-label')).toBe('Modo escuro');
-    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    options[2]!.click();
+    await fixture.whenStable();
     expect(document.documentElement.classList.contains('theme-dark')).toBe(true);
+    expect(trigger.textContent?.trim()).toBe('dark_mode');
     document.documentElement.classList.remove('theme-dark', 'theme-light');
     localStorage.clear();
   });

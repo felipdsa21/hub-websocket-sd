@@ -4,9 +4,9 @@ import { MatButton, MatIconButton } from '@angular/material/button';
 import { MatError, MatFormField, MatHint, MatLabel, MatSuffix } from '@angular/material/form-field';
 import { MatIcon } from '@angular/material/icon';
 import { MatInput } from '@angular/material/input';
+import { MatMenuTrigger } from '@angular/material/menu';
 import { MatProgressSpinner } from '@angular/material/progress-spinner';
 import { Router } from '@angular/router';
-import { ThemeStore } from '@/core/layout/theme-store';
 import {
   hasForbiddenNameChars,
   isValidDisplayName,
@@ -15,6 +15,7 @@ import {
 } from '@/core/model/names';
 import { SessionStore } from '@/core/state/session-store';
 import { UserStorage } from '@/core/state/user-storage';
+import { ThemeMenu } from '@/shared/ui/theme-menu/theme-menu';
 
 const USERNAME_HINT = '3 a 32 caracteres: letras sem acento, números, . _ -';
 const USERNAME_SPACES = 'Sem espaços: use letras sem acento, números, . _ -';
@@ -34,8 +35,10 @@ const DISPLAY_NAME_CONTROL_CHARS =
     MatIconButton,
     MatInput,
     MatLabel,
+    MatMenuTrigger,
     MatProgressSpinner,
     MatSuffix,
+    ThemeMenu,
   ],
   templateUrl: './login-page.html',
   styleUrl: './login-page.scss',
@@ -44,7 +47,6 @@ export class LoginPage {
   private readonly session = inject(SessionStore);
   private readonly storage = inject(UserStorage);
   private readonly router = inject(Router);
-  protected readonly theme = inject(ThemeStore);
 
   protected readonly usernameHint = USERNAME_HINT;
   protected readonly displayNameHint = DISPLAY_NAME_HINT;

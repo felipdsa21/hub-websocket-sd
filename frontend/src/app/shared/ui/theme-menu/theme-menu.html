@@ -1,0 +1,14 @@
+<mat-menu xPosition="before">
+  @for (option of options; track option.value) {
+    @let selected = theme.preference() === option.value;
+    <button
+      mat-menu-item
+      role="menuitemradio"
+      [attr.aria-checked]="selected"
+      (click)="theme.set(option.value)"
+    >
+      <mat-icon aria-hidden="true">{{ selected ? 'check' : '' }}</mat-icon>
+      <span>{{ option.label }}</span>
+    </button>
+  }
+</mat-menu>

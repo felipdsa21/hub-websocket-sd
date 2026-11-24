@@ -1,11 +1,10 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatFabButton, MatIconButton } from '@angular/material/button';
+import { MatFabButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router, RouterOutlet } from '@angular/router';
 import { Breakpoints } from '@/core/layout/breakpoints';
-import { ThemeStore } from '@/core/layout/theme-store';
 import { urlSignal } from '@/core/signals/observed-signals';
 import { ConnectionStore } from '@/core/state/connection-store';
 import { TelemetryStore } from '@/core/state/telemetry-store';
@@ -23,7 +22,6 @@ import { ConversationList } from '../conversation-list/conversation-list';
     ConversationList,
     MatFabButton,
     MatIcon,
-    MatIconButton,
     RouterOutlet,
     SearchBox,
   ],
@@ -42,7 +40,6 @@ export class ShellPage {
   protected readonly connected = this.connection.connected;
   protected readonly lossIndicated = this.connection.lossIndicated;
   protected readonly telemetry = inject(TelemetryStore);
-  protected readonly theme = inject(ThemeStore);
   private readonly newConversations = inject(NewConversationDialogs);
   private readonly snackBar = inject(MatSnackBar);
 

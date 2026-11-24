@@ -18,7 +18,7 @@
 
 **Requisitos evidenciados:** RF01, RF07, T1, T6.
 
-1. No **Cliente A**, entrar como `ana` (nome de exibição `Ana Silva`); no **Cliente B**, entrar como `bruno` (`Bruno Costa`). (Opcionalmente demonstrar a alternância de tema claro/escuro na tela de entrada ou no menu da conta.)
+1. No **Cliente A**, entrar como `ana` (nome de exibição `Ana Silva`); no **Cliente B**, entrar como `bruno` (`Bruno Costa`). (Opcionalmente demonstrar a escolha do tema (sistema, claro ou escuro) na tela de entrada ou no menu da conta.)
 2. Explicar rapidamente o fluxo de `$connect` → gravação em `Connections` e `Users.connections` → `sync` inicial.
 3. No **Cliente A**, alterar o nome de exibição para `Ana S.` pelo menu da conta e mostrar que o **Cliente B** vê o novo nome imediatamente (reconexão paralela sem nenhum evento `offline`).
 4. Abrir uma segunda aba no mesmo navegador do **Cliente B**: ela restaura automaticamente a sessão via `localStorage` (`hub:current-user`); fechar apenas uma das abas mantém Bruno **online** para Ana, e ao clicar em **Sair** em uma aba, a outra também desconecta automaticamente via evento `storage` (anunciando `online: false` em tempo real para Ana).

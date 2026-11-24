@@ -23,6 +23,25 @@ describe('AccountMenu', () => {
     expect(component).toBeTruthy();
   });
 
+  it('chooses the theme from the "Tema" submenu', async () => {
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.trigger')!.click();
+    await fixture.whenStable();
+    const submenu = [...document.querySelectorAll<HTMLElement>('[mat-menu-item]')].find(
+      (item) => item.textContent?.trim() === 'Tema',
+    )!;
+    submenu.click();
+    await fixture.whenStable();
+    const dark = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find((o) =>
+      o.textContent?.includes('Escuro'),
+    )!;
+    dark.click();
+    await fixture.whenStable();
+
+    expect(document.documentElement.classList.contains('theme-dark')).toBe(true);
+    localStorage.clear();
+    document.documentElement.classList.remove('theme-dark', 'theme-light');
+  });
+
   it('reports failure via snackbar when changing displayName fails (C2)', async () => {
     const dialog = TestBed.inject(MatDialog);
     const snackBar = TestBed.inject(MatSnackBar);
