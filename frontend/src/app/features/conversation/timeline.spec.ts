@@ -139,4 +139,14 @@ describe('buildTimeline', () => {
       ['recusada', undefined, 'Não enviada: requisição fora do formato'],
     ]);
   });
+
+  it('shows message text without bidi embeddings, overrides and isolates', () => {
+    const items = messagesOf(
+      timeline({
+        messages: [message('bruno', '2026-11-02T09:00', 'foto\u202egpj.exe')],
+        outgoing: [{ conversationId: 'g:1', messageId: 'p', text: '\u2067oi\u2069' }],
+      }),
+    );
+    expect(items.map((m) => m.text)).toEqual(['fotogpj.exe', 'oi']);
+  });
 });

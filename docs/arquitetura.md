@@ -158,7 +158,7 @@ As tabelas usam cobrança sob demanda (com _Point-in-Time Recovery_ habilitado n
 | `sk`             | S (SK)  | mensagem: `m#<sentAt com 13 dígitos>#<sender>#<messageId>`; marcador de duplicata: `id#<sender>#<messageId>`               |
 | `messageId`      | S       | identificador gerado pelo cliente                                                                                          |
 | `sender`         | S       | nome de usuário do remetente                                                                                               |
-| `text`           | S       | texto                                                                                                                      |
+| `text`           | S       | texto; o cliente o exibe sem os controles bidirecionais (`\u202A–\u202E`, `\u2066–\u2069`)                                 |
 | `sentAt`         | N       | `requestContext.requestTimeEpoch`: o instante em que o API Gateway recebeu a requisição (RF02)                             |
 | `ref`            | S       | só no marcador de duplicata: o `sk` da mensagem original                                                                   |
 | `expiresAt`      | N (TTL) | só no marcador de duplicata: `sentAt` + 7 dias, em segundos, para limpar marcadores antigos sem remover as mensagens `m#…` |

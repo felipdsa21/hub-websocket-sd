@@ -9,6 +9,11 @@ import { AvatarKind } from '@/shared/ui/avatar/avatar';
 /** Consecutive messages of the same sender within this interval are grouped (design note). */
 export const GROUP_INTERVAL_MS = 5 * 60 * 1000;
 
+/** Without bidi embeddings, overrides and isolates, a message can't show its characters reordered. */
+function displayText(text: string): string {
+  return text.replace(/[\u202a-\u202e\u2066-\u2069]/g, '');
+}
+
 export type TimelineItem =
   | { readonly kind: 'start'; readonly key: string }
   | { readonly kind: 'day'; readonly key: string; readonly label: string }
@@ -109,7 +114,7 @@ export function buildTimeline(input: TimelineInput): TimelineItem[] {
       key: `out-${message.messageId}`,
       own: true,
       first: false,
-      text: message.text,
+      text: displayText(message.text),
       status: message.error
         ? {
             pending: false,
@@ -135,7 +140,7 @@ function messageItem(
     key: message.sk,
     own,
     first,
-    text: message.text,
+    text: displayText(message.text),
     time: timeLabel(message.sentAt, input.time.timeZone),
     sender:
       own || !first
