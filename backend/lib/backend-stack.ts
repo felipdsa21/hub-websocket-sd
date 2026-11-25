@@ -32,6 +32,7 @@ import * as cdk from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { TableEnvKey } from '../functions/shared';
 
 export interface BackendStackProps extends cdk.StackProps {
   stage: 'dev' | 'prod';
@@ -73,7 +74,7 @@ export class BackendStack extends cdk.Stack {
       CONVERSATIONS_TABLE: table('Conversations', 'conversationId'),
       MEMBERSHIPS_TABLE: table('Memberships', 'username', 'conversationId'),
       MESSAGES_TABLE: table('Messages', 'conversationId', 'sk', 'expiresAt'),
-    };
+    } satisfies Record<TableEnvKey, Table>;
     type TableKey = keyof typeof tables;
 
     const fn = (
