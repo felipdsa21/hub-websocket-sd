@@ -38,10 +38,10 @@ aws ssm put-parameter \
   --value "$(openssl rand -hex 32)"
 ```
 
-Para a GitHub Actions, implante o papel OIDC, informando o repositório que poderá assumi-lo, e guarde a saída `DeployRoleArn` numa variável do repositório. Se a conta já tiver o provedor OIDC do GitHub, passe também o ARN dele com `-c githubOidcProviderArn=<arn>`.
+Para a GitHub Actions, implante o papel OIDC e guarde a saída `DeployRoleArn` em uma variável do repositório. Se a conta já tiver o provedor OIDC do GitHub, passe também o ARN dele com `-c githubOidcProviderArn=<arn>`.
 
 ```sh
-npx cdk deploy HubWebSocket-GitHubOidc -c githubRepository=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+npx cdk deploy HubWebSocket-GitHubOidc -c githubSubjectPrefix=$(gh api repos/{owner}/{repo}/actions/oidc/customization/sub --jq .sub_claim_prefix)
 gh variable set AWS_DEPLOY_ROLE_ARN --body <DeployRoleArn>
 ```
 

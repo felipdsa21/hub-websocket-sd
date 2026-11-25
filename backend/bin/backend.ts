@@ -10,14 +10,26 @@ const stages = ['dev', 'prod'] as const;
 for (const stage of stages) {
   new BackendStack(app, `HubWebSocket-${stage}`, { stage, env });
 }
-// Deployed by hand with -c githubRepository=<owner/name>; GitHub Actions only deploys the
-// stage stacks, but synthesizes this one too since it sets GITHUB_REPOSITORY.
-const repository: string | undefined =
-  app.node.tryGetContext('githubRepository') ?? process.env.GITHUB_REPOSITORY;
-if (repository) {
+/** The prefix in GitHub's immutable format, from the variables GitHub Actions sets. */
+function actionsSubjectPrefix(): string | undefined {
+  const {
+    GITHUB_REPOSITORY_OWNER: owner,
+    GITHUB_REPOSITORY_OWNER_ID: ownerId,
+    GITHUB_REPOSITORY: repository,
+    GITHUB_REPOSITORY_ID: repositoryId,
+  } = process.env;
+  if (!owner || !ownerId || !repository || !repositoryId) return undefined;
+  return `repo:${owner}@${ownerId}/${repository.slice(owner.length + 1)}@${repositoryId}`;
+}
+
+// Deployed by hand with -c githubSubjectPrefix=<prefix> (see the README). GitHub Actions
+// only deploys the stage stacks, but synthesizes this one too.
+const subjectPrefix: string | undefined =
+  app.node.tryGetContext('githubSubjectPrefix') ?? actionsSubjectPrefix();
+if (subjectPrefix) {
   new GitHubOidcStack(app, 'HubWebSocket-GitHubOidc', {
     env,
-    repository,
+    subjectPrefix,
     environments: [...stages],
     existingProviderArn: app.node.tryGetContext('githubOidcProviderArn'),
   });

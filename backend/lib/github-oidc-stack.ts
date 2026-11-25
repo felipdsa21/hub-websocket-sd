@@ -8,8 +8,11 @@ import * as cdk from 'aws-cdk-lib/core';
 import { Construct } from 'constructs';
 
 export interface GitHubOidcStackProps extends cdk.StackProps {
-  /** GitHub repository in `owner/name` form. */
-  repository: string;
+  /**
+   * Start of the `sub` claim of the repository's OIDC tokens, before `:environment:<name>`,
+   * such as `repo:owner@<owner id>/name@<repo id>` in GitHub's immutable format.
+   */
+  subjectPrefix: string;
   /** GitHub Environments allowed to assume the deploy role. */
   environments: string[];
   /** ARN of an existing GitHub OIDC provider; an account holds at most one per URL. */
@@ -30,12 +33,12 @@ export class GitHubOidcStack extends cdk.Stack {
 
     const issuer = GITHUB_OIDC_URL.replace('https://', '');
     const role = new Role(this, 'DeployRole', {
-      description: `GitHub Actions deploys from ${props.repository}`,
+      description: `GitHub Actions deploys from ${props.subjectPrefix}`,
       assumedBy: new OpenIdConnectPrincipal(provider, {
         StringEquals: {
           [`${issuer}:aud`]: AUDIENCE,
           [`${issuer}:sub`]: props.environments.map(
-            (env) => `repo:${props.repository}:environment:${env}`,
+            (env) => `${props.subjectPrefix}:environment:${env}`,
           ),
         },
       }),

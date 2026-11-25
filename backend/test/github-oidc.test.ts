@@ -4,7 +4,7 @@ import { GitHubOidcStack } from '../lib/github-oidc-stack';
 
 const props = {
   env: { account: '123456789012', region: 'sa-east-1' },
-  repository: 'owner/repo',
+  subjectPrefix: 'repo:owner@1/repo@2',
   environments: ['dev', 'prod'],
 };
 // As in cdk.json, so the role ARNs come out as plain strings.
@@ -26,8 +26,8 @@ test('trusts only the repository environments and can only assume the CDK bootst
             StringEquals: {
               'token.actions.githubusercontent.com:aud': 'sts.amazonaws.com',
               'token.actions.githubusercontent.com:sub': [
-                'repo:owner/repo:environment:dev',
-                'repo:owner/repo:environment:prod',
+                'repo:owner@1/repo@2:environment:dev',
+                'repo:owner@1/repo@2:environment:prod',
               ],
             },
           },
