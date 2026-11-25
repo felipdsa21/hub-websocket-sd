@@ -20,6 +20,8 @@ npx cdk synth HubWebSocket-dev
 
 A GitHub Actions implanta o `dev` a cada push na `develop` e o `prod` a cada push na `main`, depois que a CI passa; o `prod` aguarda aprovação no environment `prod` do GitHub. Ela entra na AWS por OIDC, assumindo o papel do stack `HubWebSocket-GitHubOidc`, que só pode assumir os papéis criados pelo `cdk bootstrap`.
 
+Tudo o que um deploy cria, pela Actions ou à mão, fica sob o permissions boundary `HubWebSocket-DeployBoundary`, do mesmo stack: só os serviços que o projeto usa, sem alterar o caminho de deploy e sem criar usuários, chaves de acesso ou provedores de identidade. O `HubWebSocket-GitHubOidc` é implantado à mão, com as suas próprias credenciais e fora do boundary; um serviço novo no projeto entra na lista do boundary e chega à conta por esse deploy.
+
 ### Configuração inicial
 
 Com as credenciais da AWS configuradas (`aws configure`), uma vez por conta e região:
@@ -43,6 +45,12 @@ Para a GitHub Actions, implante o papel OIDC e guarde a saída `DeployRoleArn` e
 ```sh
 npx cdk deploy HubWebSocket-GitHubOidc -c githubSubjectPrefix=$(gh api repos/{owner}/{repo}/actions/oidc/customization/sub --jq .sub_claim_prefix)
 gh variable set AWS_DEPLOY_ROLE_ARN --body <DeployRoleArn>
+```
+
+Em seguida, refaça o bootstrap para aplicar o boundary, que o stack acima acabou de criar, ao papel de execução do CloudFormation:
+
+```sh
+npx cdk bootstrap aws://<conta>/sa-east-1 --custom-permissions-boundary HubWebSocket-DeployBoundary
 ```
 
 Por fim, crie no GitHub os environments `dev`, restrito ao branch `develop`, e `prod`, restrito ao branch `main` e com revisor obrigatório.
