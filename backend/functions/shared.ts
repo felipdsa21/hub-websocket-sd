@@ -17,8 +17,16 @@ import type { APIGatewayProxyWebsocketEventV2 } from 'aws-lambda';
 import { createHmac } from 'node:crypto';
 
 export const db = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+/** Environment variables the stack fills with the generated table names. */
+export type TableEnvKey =
+  | 'CONNECTIONS_TABLE'
+  | 'USERS_TABLE'
+  | 'CONVERSATIONS_TABLE'
+  | 'MEMBERSHIPS_TABLE'
+  | 'MESSAGES_TABLE';
+
 /** The name of a DynamoDB table, failing when its environment variable is missing. */
-export function table(envKey: string): string {
+export function table(envKey: TableEnvKey): string {
   const name = process.env[envKey];
   if (!name) throw new Error(`Missing environment variable ${envKey}`);
   return name;
