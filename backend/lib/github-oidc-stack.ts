@@ -1,6 +1,9 @@
 import {
+  Effect,
+  ManagedPolicy,
   OidcProviderNative,
   OpenIdConnectPrincipal,
+  PolicyDocument,
   PolicyStatement,
   Role,
 } from 'aws-cdk-lib/aws-iam';
@@ -19,13 +22,38 @@ export interface GitHubOidcStackProps extends cdk.StackProps {
   existingProviderArn?: string;
 }
 
+/** Managed policy that caps every role the stage stacks create, including the bootstrap's CloudFormation execution role. */
+export const DEPLOY_BOUNDARY_NAME = 'HubWebSocket-DeployBoundary';
+
+/** Services the stage stacks create resources in or call at run time; roles under the boundary get nothing else. */
+export const BOUNDARY_SERVICES = [
+  'apigateway',
+  'cloudfront',
+  'cloudwatch',
+  'dynamodb',
+  'execute-api',
+  'iam',
+  'kms',
+  'lambda',
+  'logs',
+  's3',
+  'scheduler',
+  'ssm',
+];
+
 const GITHUB_OIDC_URL = 'https://token.actions.githubusercontent.com';
 const AUDIENCE = 'sts.amazonaws.com';
 
-/** Role assumed by GitHub Actions to run `cdk deploy`, deployed once by hand. */
+/**
+ * GitHub Actions' access to the account and the limits on what its deploys can do: the role
+ * assumed through OIDC to run `cdk deploy`, and the permissions boundary.
+ *
+ * Deployed by hand with the deployer's own credentials, not the bootstrap roles, so nothing
+ * running under the boundary can change it.
+ */
 export class GitHubOidcStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: GitHubOidcStackProps) {
-    super(scope, id, props);
+    super(scope, id, { synthesizer: new cdk.CliCredentialsStackSynthesizer(), ...props });
 
     const provider = props.existingProviderArn
       ? OidcProviderNative.fromOidcProviderArn(this, 'Provider', props.existingProviderArn)
@@ -65,6 +93,110 @@ export class GitHubOidcStack extends cdk.Stack {
       }),
     );
 
+    new ManagedPolicy(this, 'DeployBoundary', {
+      managedPolicyName: DEPLOY_BOUNDARY_NAME,
+      description:
+        'Permissions boundary for the roles that CDK deploys create (see GitHubOidcStack)',
+      document: this.boundaryDocument(qualifier),
+    });
+
     new cdk.CfnOutput(this, 'DeployRoleArn', { value: role.roleArn });
+  }
+
+  private boundaryDocument(qualifier: string): PolicyDocument {
+    const iamArn = (resource: string, resourceName: string) =>
+      cdk.Arn.format({ service: 'iam', region: '', resource, resourceName }, this);
+    const boundaryArn = iamArn('policy', DEPLOY_BOUNDARY_NAME);
+    const stagingBucket = cdk.Arn.format(
+      {
+        service: 's3',
+        region: '',
+        account: '',
+        resource: `cdk-${qualifier}-assets-${this.account}-${this.region}`,
+      },
+      this,
+    );
+    const bootstrapVersion = cdk.Arn.format(
+      { service: 'ssm', resource: 'parameter', resourceName: `cdk-bootstrap/${qualifier}/version` },
+      this,
+    );
+    const deny = (sid: string, actions: string[], resources: string[], conditions?: object) =>
+      new PolicyStatement({ sid, effect: Effect.DENY, actions, resources, conditions });
+
+    return new PolicyDocument({
+      statements: [
+        new PolicyStatement({
+          sid: 'AllowProjectServices',
+          actions: BOUNDARY_SERVICES.map((service) => `${service}:*`),
+          resources: ['*'],
+        }),
+        // Every role created under the boundary carries it, so none can escape it.
+        deny(
+          'DenyRolesWithoutBoundary',
+          ['iam:CreateRole', 'iam:PutRolePermissionsBoundary'],
+          ['*'],
+          {
+            StringNotEquals: { 'iam:PermissionsBoundary': boundaryArn },
+          },
+        ),
+        deny(
+          'DenyBoundaryRemoval',
+          ['iam:DeleteRolePermissionsBoundary', 'iam:DeleteUserPermissionsBoundary'],
+          ['*'],
+        ),
+        deny(
+          'DenyBoundaryChanges',
+          [
+            'iam:CreatePolicyVersion',
+            'iam:DeletePolicy',
+            'iam:DeletePolicyVersion',
+            'iam:SetDefaultPolicyVersion',
+          ],
+          [boundaryArn],
+        ),
+        // No users, keys or identity providers that would outlive a deploy.
+        deny(
+          'DenyLongLivedIdentities',
+          [
+            'iam:CreateUser',
+            'iam:CreateAccessKey',
+            'iam:CreateLoginProfile',
+            'iam:UpdateLoginProfile',
+            'iam:CreateServiceSpecificCredential',
+            'iam:*OpenIDConnectProvider*',
+            'iam:*SAMLProvider*',
+          ],
+          ['*'],
+        ),
+        // The deploy path itself: bootstrap roles, this stack's roles, the staging bucket and
+        // the bootstrap version. CloudFormation isn't in the allowed services, which already
+        // keeps these stacks out of reach.
+        deny(
+          'DenyDeployPathChanges',
+          [
+            'iam:Attach*',
+            'iam:Create*',
+            'iam:Delete*',
+            'iam:Detach*',
+            'iam:PassRole',
+            'iam:Put*',
+            'iam:Tag*',
+            'iam:Untag*',
+            'iam:Update*',
+          ],
+          [iamArn('role', `cdk-${qualifier}-*`), iamArn('role', `${this.stackName}-*`)],
+        ),
+        deny(
+          'DenyStagingChanges',
+          ['s3:Delete*', 's3:Put*'],
+          [stagingBucket, `${stagingBucket}/*`],
+        ),
+        deny(
+          'DenyBootstrapVersionChanges',
+          ['ssm:Delete*', 'ssm:Put*', 'ssm:Label*'],
+          [bootstrapVersion],
+        ),
+      ],
+    });
   }
 }

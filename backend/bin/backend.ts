@@ -1,14 +1,19 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib/core';
 import { BackendStack } from '../lib/backend-stack';
-import { GitHubOidcStack } from '../lib/github-oidc-stack';
+import { DEPLOY_BOUNDARY_NAME, GitHubOidcStack } from '../lib/github-oidc-stack';
 
 const app = new cdk.App();
 const env = { account: process.env.CDK_DEFAULT_ACCOUNT, region: 'sa-east-1' };
 // One stack per stage, each with its own API, Lambdas and tables, in São Paulo (D07).
 const stages = ['dev', 'prod'] as const;
 for (const stage of stages) {
-  new BackendStack(app, `HubWebSocket-${stage}`, { stage, env });
+  new BackendStack(app, `HubWebSocket-${stage}`, {
+    stage,
+    env,
+    // The bootstrap's execution role only creates roles that carry this boundary.
+    permissionsBoundary: cdk.PermissionsBoundary.fromName(DEPLOY_BOUNDARY_NAME),
+  });
 }
 /** The prefix in GitHub's immutable format, from the variables GitHub Actions sets. */
 function actionsSubjectPrefix(): string | undefined {
