@@ -5,6 +5,8 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
+  # Reruns the checks and, on main or develop, the deploy.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -56,3 +58,56 @@ jobs:
       - run: npx prettier --check . "../docs/**/*.md" "../*.md"
       - run: npx ng test --watch=false
       - run: npm run build
+      - if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-dist
+          path: frontend/dist/hub-websocket-sd-frontend/browser
+          # Matches the longest a deploy can wait for approval.
+          retention-days: 30
+
+  # develop deploys dev; main deploys prod once approved in the prod environment.
+  deploy:
+    needs: [backend, frontend]
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+      url: ${{ steps.deploy.outputs.frontend_url }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      STACK: HubWebSocket-${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm install -g "$(node -p "require('./package.json').packageManager")"
+      - run: npm ci
+      # The stack picks up the bundle from this path and publishes it with config.json.
+      - uses: actions/download-artifact@v8
+        with:
+          name: frontend-dist
+          path: frontend/dist/hub-websocket-sd-frontend/browser
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: sa-east-1
+      - id: deploy
+        run: |
+          npx cdk deploy "$STACK" --require-approval never --outputs-file cdk-outputs.json
+          frontend_url=$(jq -r --arg s "$STACK" '.[$s].FrontendUrl' cdk-outputs.json)
+          websocket_url=$(jq -r --arg s "$STACK" '.[$s].WebSocketUrl' cdk-outputs.json)
+          echo "frontend_url=$frontend_url" >> "$GITHUB_OUTPUT"
+          {
+            echo "### $STACK"
+            echo "- Frontend: $frontend_url"
+            echo "- WebSocket: \`$websocket_url\`"
+          } >> "$GITHUB_STEP_SUMMARY"
