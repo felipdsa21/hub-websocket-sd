@@ -46,6 +46,8 @@ O código, incluindo nomes, comentários e docstrings, é escrito em inglês.
 
 Uma mudança de comportamento atualiza a documentação no mesmo pull request.
 
+As URLs do frontend e do WebSocket dos estágios ficam fora do repositório, dos pull requests e das evidências de teste: o sistema não tem senha, e o endereço é o que limita o acesso. Em capturas de tela, recorte ou oculte a URL.
+
 ## Onde documentar
 
 - **Especificação:** o que o sistema faz e o que o usuário vê, sem detalhes de tela, em requisitos, riscos, limitações e plano de testes.
