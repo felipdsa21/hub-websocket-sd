@@ -71,9 +71,7 @@ jobs:
     needs: [backend, frontend]
     if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    environment:
-      name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
-      url: ${{ steps.deploy.outputs.frontend_url }}
+    environment: ${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}
     permissions:
       contents: read
       id-token: write
@@ -100,14 +98,9 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: sa-east-1
-      - id: deploy
-        run: |
-          npx cdk deploy "$STACK" --require-approval never --outputs-file cdk-outputs.json
-          frontend_url=$(jq -r --arg s "$STACK" '.[$s].FrontendUrl' cdk-outputs.json)
-          websocket_url=$(jq -r --arg s "$STACK" '.[$s].WebSocketUrl' cdk-outputs.json)
-          echo "frontend_url=$frontend_url" >> "$GITHUB_OUTPUT"
-          {
-            echo "### $STACK"
-            echo "- Frontend: $frontend_url"
-            echo "- WebSocket: \`$websocket_url\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+      # The logs of a public repository are open to anyone signed in, so the stage URLs
+      # are hidden; they stay in the stack outputs.
+      - run: |
+          set -o pipefail
+          npx cdk deploy "$STACK" --require-approval never 2>&1 \
+            | sed -E 's#(https|wss)://[a-z0-9]+\.(cloudfront\.net|execute-api\.[a-z0-9-]+\.amazonaws\.com)#\1://***#g'
