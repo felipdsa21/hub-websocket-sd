@@ -24,6 +24,7 @@ Nada é commitado diretamente na `main` ou na `develop`: toda mudança entra por
 
 2. Faça os commits e envie: `git push -u origin feature/<nome>`.
 3. Abra um pull request para a `develop`. A CI roda build, lint, formatação e testes do backend e do frontend, além do typecheck do frontend e do `cdk synth` do backend, e precisa passar.
+4. Depois do merge, a GitHub Actions implanta o estágio `dev`. O merge na `main` implanta o `prod` assim que um revisor aprova o deploy.
 
 Branches `release/*` e `hotfix/*` precisam de dois pull requests: um para a `main` e outro para a `develop`.
 
@@ -53,7 +54,7 @@ Uma mudança de comportamento atualiza a documentação no mesmo pull request.
 - **Sessão:** ciclo de vida da sessão (handshake, frames, `$connect` e `$disconnect`). Ilustra os nomes e procedimentos da arquitetura, que continua sendo a referência.
 - **Sincronização e consistência:** ordenação temporal, deduplicação, consistência no DynamoDB e ciclo de vida das conversas. Ilustra e aprofunda os mecanismos da arquitetura, que continua sendo a referência.
 - **Tolerância a falhas:** conexões órfãs (`410 Gone`), isolamento de falhas na difusão, expiração por inatividade (`presenceSweeper`), recuperação após falhas parciais, reenvio sem duplicação, heartbeat, reconexão e recuperação no cliente. Ilustra os mecanismos da arquitetura, que continua sendo a referência.
-- **Observabilidade e implantação:** logs estruturados com anonimização HMAC-SHA256, métricas, painel e alarmes no CloudWatch, permissões IAM de menor privilégio e pipeline de empacotamento/hospedagem S3 + CloudFront via CDK. Ilustra a seção 5 e as decisões de implantação da arquitetura.
+- **Observabilidade e implantação:** logs estruturados com anonimização HMAC-SHA256, métricas, painel e alarmes no CloudWatch, permissões IAM de menor privilégio e pipeline de empacotamento/hospedagem S3 + CloudFront via CDK e deploy pela GitHub Actions. Ilustra a seção 5 e as decisões de implantação da arquitetura.
 - **Evidências de teste:** evidências do T1, painel do T8, bateria automatizada no estágio `dev` (`scripts/integration-tests-dev.mjs`) e validação E2E em navegador real.
 - **Avaliação de desempenho e métricas de infraestrutura:** metodologia, latências e vazão do experimento T8, consumo do DynamoDB, gráficos SVG (`scripts/generate-charts.py`) e exportação do CloudWatch (`scripts/collect-cloudwatch-metrics.mjs`).
 - **Relatório técnico e roteiro de demonstração:** síntese consolidada do projeto (fundamentação científica, arquitetura, resiliência, observabilidade e resultados) e guia passo a passo para a apresentação ao vivo.
