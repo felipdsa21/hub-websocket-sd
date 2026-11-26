@@ -18,7 +18,7 @@ npx cdk synth HubWebSocket-dev
 
 ## Implantação
 
-A GitHub Actions implanta o `dev` a cada push na `develop` e o `prod` a cada push na `main`, depois que a CI passa; o `prod` aguarda aprovação no environment `prod` do GitHub. Ela entra na AWS por OIDC, assumindo o papel do stack `HubWebSocket-GitHubOidc`, que só pode assumir os papéis criados pelo `cdk bootstrap`.
+A GitHub Actions implanta o `dev` a cada push na `develop` e o `prod` a cada push na `main`, depois que a CI passa; o `prod` aguarda aprovação no environment `prod` do GitHub. Ela entra na AWS por OIDC, assumindo o papel do stack `HubWebSocket-GitHubOidc`, que só pode assumir os papéis criados pelo `cdk bootstrap`. Como os logs de um repositório público ficam abertos a qualquer pessoa logada no GitHub, o job oculta as URLs do estágio; elas continuam nas saídas do stack (`aws cloudformation describe-stacks --region sa-east-1 --stack-name HubWebSocket-<estágio> --query "Stacks[0].Outputs"`).
 
 Tudo o que um deploy cria, pela Actions ou à mão, fica sob o permissions boundary `HubWebSocket-DeployBoundary`, do mesmo stack: só os serviços que o projeto usa, sem alterar o caminho de deploy e sem criar usuários, chaves de acesso ou provedores de identidade. O `HubWebSocket-GitHubOidc` é implantado à mão, com as suas próprias credenciais e fora do boundary; um serviço novo no projeto entra na lista do boundary e chega à conta por esse deploy.
 
